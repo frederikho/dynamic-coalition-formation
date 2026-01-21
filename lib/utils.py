@@ -4,6 +4,27 @@ from typing import List, Dict, Tuple, Any
 from lib.state import State
 
 
+def _escape_latex(s: str) -> str:
+    """Escape common LaTeX special characters in a string for safe captions."""
+    if not isinstance(s, str):
+        return s
+    replacements = {
+        "\\": "\\textbackslash{}",
+        "&": "\\&",
+        "%": "\\%",
+        "$": "\\$",
+        "#": "\\#",
+        "_": "\\_",
+        "{": "\\{",
+        "}": "\\}",
+        "~": "\\textasciitilde{}",
+        "^": "\\textasciicircum{}",
+    }
+    for old, new in replacements.items():
+        s = s.replace(old, new)
+    return s
+
+
 def get_payoff_matrix(states: List[State], columns: List[str]) -> pd.DataFrame:
     """
     Calculate a payoff matrix for all states and countries in the game.
@@ -345,5 +366,7 @@ def write_latex_tables(result: Dict[str, Any], variables: List[str],
     for variable in variables:
 
         path = f"{results_path}/{variable}_{experiment}.tex"
+        raw_caption = f"{experiment}: {variable}"
+        safe_caption = _escape_latex(raw_caption)
         result[variable].to_latex(buf=path, float_format=float_format,
-                                  caption=f"{experiment}: {variable}")
+                      caption=safe_caption)
