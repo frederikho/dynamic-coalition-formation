@@ -99,7 +99,7 @@ async function loadGraph() {
 
     // Render graph
     initRenderer();
-    const threshold = parseFloat(probThresholdInput.value) || 0.001;
+    const threshold = parseFloat(probThresholdInput.value) || 0;
     renderer!.render(graphData, threshold);
 
     // Update metadata display
@@ -175,7 +175,7 @@ resetViewBtn.addEventListener('click', () => {
 
 probThresholdInput.addEventListener('change', () => {
   if (currentGraphData && renderer) {
-    const threshold = parseFloat(probThresholdInput.value) || 0.001;
+    const threshold = parseFloat(probThresholdInput.value) || 0;
     initRenderer();
     renderer.render(currentGraphData, threshold);
   }

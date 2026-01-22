@@ -1,20 +1,28 @@
-import Graph from 'graphology';
-import Sigma from 'sigma';
-import { Attributes } from 'graphology-types';
-import forceAtlas2 from 'graphology-layout-forceatlas2';
-import circular from 'graphology-layout/circular';
-import type { GraphData, GraphEdge } from './types';
+import cytoscape, { Core, NodeSingular } from 'cytoscape';
+import coseBilkent from 'cytoscape-cose-bilkent';
+import type { GraphData } from './types';
+
+// Register layout algorithm
+cytoscape.use(coseBilkent);
+
+// Preset positions for 5-state case (3-country model)
+// Pentagon layout matching the paper's figure
+const PRESET_POSITIONS_5_STATES: Record<string, { x: number; y: number }> = {
+  '( )': { x: 0, y: -180 },        // Top center
+  '(TC)': { x: 171, y: -55 },      // Upper right
+  '(WT)': { x: 106, y: 145 },      // Lower right
+  '(WTC)': { x: -106, y: 145 },    // Lower left
+  '(WC)': { x: -171, y: -55 }      // Upper left
+};
 
 export class GraphRenderer {
-  private graph: Graph;
-  private sigma: Sigma | null = null;
+  private cy: Core | null = null;
   private container: HTMLElement;
   private selectedNode: string | null = null;
   private onNodeSelect: ((nodeId: string | null) => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
-    this.graph = new Graph({ multi: true, type: 'directed' });
   }
 
   setOnNodeSelect(callback: (nodeId: string | null) => void) {
@@ -22,152 +30,199 @@ export class GraphRenderer {
   }
 
   render(graphData: GraphData, probThreshold: number = 0.001) {
-    // Clear existing graph
-    this.graph.clear();
-    if (this.sigma) {
-      this.sigma.kill();
-      this.sigma = null;
+    // Destroy existing instance
+    if (this.cy) {
+      this.cy.destroy();
+      this.cy = null;
     }
 
     // Filter edges by probability threshold
     const filteredEdges = graphData.edges.filter(e => e.p >= probThreshold);
 
-    // Add nodes
-    graphData.nodes.forEach(node => {
-      this.graph.addNode(node.id, {
-        label: node.label,
-        x: node.x ?? 0,
-        y: node.y ?? 0,
-        size: 15,
-        color: '#2563eb',
-        meta: node.meta
-      });
+    // Check if we should use preset positions (5 states matching the preset keys)
+    const usePresetPositions = graphData.nodes.length === 5 &&
+      graphData.nodes.every(n => n.id in PRESET_POSITIONS_5_STATES);
+
+    // Convert to Cytoscape format
+    const elements: cytoscape.ElementDefinition[] = [
+      // Nodes
+      ...graphData.nodes.map(node => {
+        const element: cytoscape.ElementDefinition = {
+          group: 'nodes' as const,
+          data: {
+            id: node.id,
+            label: node.label,
+            geo_level: node.meta?.geo_level || 0
+          }
+        };
+
+        // Add preset position if available
+        if (usePresetPositions && node.id in PRESET_POSITIONS_5_STATES) {
+          element.position = PRESET_POSITIONS_5_STATES[node.id];
+        }
+
+        return element;
+      }),
+      // Edges
+      ...filteredEdges.map(edge => ({
+        group: 'edges' as const,
+        data: {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          label: edge.p.toFixed(3),
+          probability: edge.p,
+          isSelfLoop: edge.source === edge.target,
+          width: this.getEdgeWidth(edge.p)
+        }
+      }))
+    ];
+
+    // Create Cytoscape instance
+    this.cy = cytoscape({
+      container: this.container,
+      elements,
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'background-color': '#cbd5e1',
+            'label': 'data(label)',
+            'color': '#1e293b',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'font-size': '14px',
+            'font-weight': 'normal',
+            'width': 60,
+            'height': 60,
+            'text-outline-width': 0
+          }
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'background-color': '#94a3b8',
+            'border-width': 3,
+            'border-color': '#475569'
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': 'data(width)',
+            'line-color': '#334155',
+            'target-arrow-color': '#334155',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': 'data(label)',
+            'font-size': '11px',
+            'text-rotation': 'autorotate',
+            'text-margin-y': -10,
+            'color': '#1e293b',
+            'text-background-color': 'transparent',
+            'text-background-opacity': 0
+          }
+        },
+        {
+          selector: 'edge[isSelfLoop]',
+          style: {
+            'curve-style': 'loop',
+            'loop-direction': '0deg',
+            'loop-sweep': '90deg',
+            'control-point-step-size': 40
+          }
+        },
+        {
+          selector: '.highlighted',
+          style: {
+            'line-color': '#0f172a',
+            'target-arrow-color': '#0f172a',
+            'opacity': 1
+          }
+        },
+        {
+          selector: '.dimmed',
+          style: {
+            'opacity': 0.2
+          }
+        }
+      ],
+      layout: usePresetPositions ? {
+        name: 'preset'
+      } : {
+        name: 'cose-bilkent',
+        animate: false,
+        randomize: true,
+        nodeRepulsion: 4500,
+        idealEdgeLength: 100,
+        edgeElasticity: 0.45,
+        nestingFactor: 0.1,
+        gravity: 0.25,
+        numIter: 2500,
+        tile: true,
+        tilingPaddingVertical: 10,
+        tilingPaddingHorizontal: 10
+      },
+      minZoom: 0.3,
+      maxZoom: 3,
+      wheelSensitivity: 0.2
     });
 
-    // Add edges (including self-loops)
-    filteredEdges.forEach(edge => {
-      this.graph.addEdge(edge.source, edge.target, {
-        type: 'arrow',
-        label: edge.p.toFixed(3),
-        size: 2,
-        color: this.getEdgeColor(edge.p),
-        probability: edge.p,
-        isSelfLoop: edge.source === edge.target,
-        // Self-loops will be rendered with default arrow type
-        // Sigma.js handles them reasonably well
-      });
-    });
-
-    // Apply layout if no positions provided
-    if (!graphData.nodes[0]?.x) {
-      this.applyLayout();
-    }
-
-    // Create Sigma instance
-    this.sigma = new Sigma(this.graph, this.container, {
-      renderEdgeLabels: true,
-      defaultEdgeType: 'arrow',
-      labelSize: 12,
-      labelWeight: 'bold',
-      edgeLabelSize: 10,
-      edgeLabelColor: { color: '#666' },
-    });
-
-    // Setup interactions
     this.setupInteractions();
   }
 
-  private applyLayout() {
-    // First apply circular layout for initial positions
-    circular.assign(this.graph);
-
-    // Then refine with force atlas
-    const settings = forceAtlas2.inferSettings(this.graph);
-    forceAtlas2.assign(this.graph, {
-      iterations: 500,
-      settings: {
-        ...settings,
-        scalingRatio: 10,
-        gravity: 1,
-        barnesHutOptimize: false
-      }
-    });
-  }
-
-  private getEdgeColor(probability: number): string {
-    // Color based on probability: red (low) -> yellow (mid) -> green (high)
-    if (probability >= 0.5) return '#16a34a'; // green
-    if (probability >= 0.1) return '#eab308'; // yellow
-    return '#94a3b8'; // gray
+  private getEdgeWidth(probability: number): number {
+    // Width scales with probability: min 1px, max 8px
+    // Linear scaling: width = 1 + 7 * probability
+    return Math.max(1, Math.min(8, 1 + 7 * probability));
   }
 
   private setupInteractions() {
-    if (!this.sigma) return;
+    if (!this.cy) return;
 
-    // Click to select node
-    this.sigma.on('clickNode', ({ node }) => {
-      if (this.selectedNode === node) {
+    // Click node to select
+    this.cy.on('tap', 'node', (evt) => {
+      const node = evt.target;
+      if (this.selectedNode === node.id()) {
         this.deselectNode();
       } else {
-        this.selectNode(node);
+        this.selectNode(node.id());
       }
     });
 
-    // Click stage to deselect
-    this.sigma.on('clickStage', () => {
-      this.deselectNode();
+    // Click background to deselect
+    this.cy.on('tap', (evt) => {
+      if (evt.target === this.cy) {
+        this.deselectNode();
+      }
     });
 
     // Hover effects
-    let hoveredNode: string | null = null;
-    let hoveredNeighbors: Set<string> | null = null;
+    this.cy.on('mouseover', 'node', (evt) => {
+      const node = evt.target;
 
-    this.sigma.on('enterNode', ({ node }) => {
-      hoveredNode = node;
-      hoveredNeighbors = new Set(this.graph.neighbors(node));
-      hoveredNeighbors.add(node);
+      // Highlight connected edges
+      const connectedEdges = node.connectedEdges();
+      connectedEdges.addClass('highlighted');
 
-      this.sigma?.setSetting('nodeReducer', (n, data) => {
-        if (hoveredNeighbors?.has(n)) {
-          return { ...data };
-        }
-        return { ...data, color: '#ddd', hidden: false };
-      });
-
-      this.sigma?.setSetting('edgeReducer', (edge, data) => {
-        const source = this.graph.source(edge);
-        const target = this.graph.target(edge);
-        if (source === node || target === node) {
-          return { ...data };
-        }
-        return { ...data, color: '#e5e5e5', hidden: false };
-      });
-
-      this.sigma?.refresh();
+      // Dim everything else
+      this.cy?.elements().not(node).not(connectedEdges).addClass('dimmed');
     });
 
-    this.sigma.on('leaveNode', () => {
-      hoveredNode = null;
-      hoveredNeighbors = null;
-
-      this.sigma?.setSetting('nodeReducer', null);
-      this.sigma?.setSetting('edgeReducer', null);
-      this.sigma?.refresh();
+    this.cy.on('mouseout', 'node', () => {
+      this.cy?.elements().removeClass('highlighted dimmed');
     });
   }
 
   private selectNode(nodeId: string) {
+    if (!this.cy) return;
+
     this.selectedNode = nodeId;
 
-    // Highlight selected node
-    this.sigma?.setSetting('nodeReducer', (node, data) => {
-      if (node === nodeId) {
-        return { ...data, color: '#dc2626', highlighted: true };
-      }
-      return { ...data };
-    });
-
-    this.sigma?.refresh();
+    // Deselect all and select the clicked node
+    this.cy.nodes().unselect();
+    const node = this.cy.$id(nodeId);
+    node.select();
 
     if (this.onNodeSelect) {
       this.onNodeSelect(nodeId);
@@ -175,10 +230,10 @@ export class GraphRenderer {
   }
 
   private deselectNode() {
-    this.selectedNode = null;
+    if (!this.cy) return;
 
-    this.sigma?.setSetting('nodeReducer', null);
-    this.sigma?.refresh();
+    this.selectedNode = null;
+    this.cy.nodes().unselect();
 
     if (this.onNodeSelect) {
       this.onNodeSelect(null);
@@ -186,22 +241,33 @@ export class GraphRenderer {
   }
 
   resetView() {
-    this.sigma?.getCamera().setState({ x: 0.5, y: 0.5, angle: 0, ratio: 1 });
+    if (!this.cy) return;
+    this.cy.fit(undefined, 50);
   }
 
-  getNodeData(nodeId: string): Attributes | undefined {
-    if (!this.graph.hasNode(nodeId)) return undefined;
-    return this.graph.getNodeAttributes(nodeId);
+  getNodeData(nodeId: string): any {
+    if (!this.cy) return undefined;
+    const node = this.cy.$id(nodeId);
+    if (node.length === 0) return undefined;
+    return {
+      label: node.data('label'),
+      meta: {
+        geo_level: node.data('geo_level')
+      }
+    };
   }
 
   getOutgoingEdges(nodeId: string): Array<{ target: string; probability: number }> {
-    if (!this.graph.hasNode(nodeId)) return [];
+    if (!this.cy) return [];
+
+    const node = this.cy.$id(nodeId);
+    if (node.length === 0) return [];
 
     const edges: Array<{ target: string; probability: number }> = [];
-    this.graph.forEachOutEdge(nodeId, (edge, attrs, source, target) => {
+    node.outgoers('edge').forEach(edge => {
       edges.push({
-        target,
-        probability: attrs.probability
+        target: edge.target().id(),
+        probability: edge.data('probability')
       });
     });
 
@@ -209,13 +275,16 @@ export class GraphRenderer {
   }
 
   getIncomingEdges(nodeId: string): Array<{ source: string; probability: number }> {
-    if (!this.graph.hasNode(nodeId)) return [];
+    if (!this.cy) return [];
+
+    const node = this.cy.$id(nodeId);
+    if (node.length === 0) return [];
 
     const edges: Array<{ source: string; probability: number }> = [];
-    this.graph.forEachInEdge(nodeId, (edge, attrs, source, target) => {
+    node.incomers('edge').forEach(edge => {
       edges.push({
-        source,
-        probability: attrs.probability
+        source: edge.source().id(),
+        probability: edge.data('probability')
       });
     });
 
@@ -223,10 +292,9 @@ export class GraphRenderer {
   }
 
   destroy() {
-    if (this.sigma) {
-      this.sigma.kill();
-      this.sigma = null;
+    if (this.cy) {
+      this.cy.destroy();
+      this.cy = null;
     }
-    this.graph.clear();
   }
 }
