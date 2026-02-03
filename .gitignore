@@ -4,3 +4,6 @@ __pycache__/
 .~lock*
 
 .venv
+
+scripts/combined*overview.txt
+scripts/combined*

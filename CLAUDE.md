@@ -103,6 +103,31 @@ npm run dev
 
 See `VIZ_README.md` for complete documentation.
 
+### Equilibrium Solver (NEW)
+
+An equilibrium solver is available to automatically find equilibrium strategy profiles from random initialization:
+
+```bash
+# Find equilibrium for a scenario
+python3 find_equilibrium.py --scenario power_threshold
+
+# Test solver on known equilibria
+python3 test_equilibrium_solver.py
+
+# Or use as a module
+python3 -m lib.equilibrium.find --scenario weak_governance
+```
+
+The solver uses a **smoothed fixed-point iteration algorithm** with simulated annealing to discover equilibria computationally. This extends the framework beyond hand-picked strategy profiles to allow exploration of new scenarios.
+
+**Key features:**
+- Finds equilibria from random initialization
+- Validated on all three equilibria from the paper (exact recovery)
+- Configurable solver parameters for robustness
+- Outputs standard Excel strategy tables compatible with existing code
+
+See `lib/equilibrium/README.md` for complete documentation and algorithmic details.
+
 ### Testing
 ```bash
 pytest
