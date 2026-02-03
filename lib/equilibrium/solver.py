@@ -152,8 +152,19 @@ class EquilibriumSolver:
 
     def _compute_transition_probabilities(self, strategy_df: pd.DataFrame) -> Tuple:
         """Compute transition probabilities from strategy DataFrame."""
+        # Fill NaN values with 0.0 (NaN values indicate non-committee members or zero probabilities)
+        strategy_df_filled = strategy_df.copy()
+        strategy_df_filled.fillna(0., inplace=True)
+
+        # Check for invalid probability values
+        if (strategy_df_filled < -1e-10).any().any() or (strategy_df_filled > 1.0 + 1e-10).any().any():
+            print("WARNING: Strategy DataFrame contains values outside [0,1]:")
+            mask = (strategy_df_filled < -1e-10) | (strategy_df_filled > 1.0 + 1e-10)
+            if mask.any().any():
+                print(strategy_df_filled[mask].stack())
+
         tp = TransitionProbabilities(
-            df=strategy_df,
+            df=strategy_df_filled,
             effectivity=self.effectivity,
             players=self.players,
             states=self.states,

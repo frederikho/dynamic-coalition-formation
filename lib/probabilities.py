@@ -65,13 +65,28 @@ class TransitionProbabilities:
 
     def safety_checks(self):
         """Check that all computed values are valid probabilities."""
-        # All rows in the state transition probability matrix sum up to one.
-        assert np.isclose(self.P.sum(axis=1), 1.).all()
+        # Tolerance for floating point comparisons
+        tol = 1e-10
 
-        # All probabilities are in [0, 1].
-        assert (0. <= self.P.values).all() and (self.P.values <= 1.).all()
-        assert all(0. <= val <= 1. for val in self.P_proposals.values())
-        assert all(0. <= val <= 1. for val in self.P_approvals.values())
+        # All rows in the state transition probability matrix sum up to one.
+        row_sums = self.P.sum(axis=1)
+        if not np.isclose(row_sums, 1., atol=tol).all():
+            print(f"ERROR: Row sums not all 1.0: {row_sums.values}")
+            print(f"P matrix:\n{self.P}")
+            raise AssertionError("Row sums not all 1.0")
+
+        # All probabilities are in [0, 1] (with tolerance for floating point errors).
+        if not ((-tol <= self.P.values).all() and (self.P.values <= 1.0 + tol).all()):
+            print(f"ERROR: P matrix contains values outside [0,1]")
+            print(f"Min: {self.P.values.min()}, Max: {self.P.values.max()}")
+            print(f"P matrix:\n{self.P}")
+            mask = (self.P < -tol) | (self.P > 1 + tol)
+            if mask.any().any():
+                print(f"Values outside [0,1]:\n{self.P[mask].stack()}")
+            raise AssertionError("P matrix values outside [0,1]")
+
+        assert all(-tol <= val <= 1.0 + tol for val in self.P_proposals.values()), "P_proposals values outside [0,1]"
+        assert all(-tol <= val <= 1.0 + tol for val in self.P_approvals.values()), "P_approvals values outside [0,1]"
 
     def read_proposal_prob(self, proposer: str, current_state: str,
                            next_state: str) -> float:
@@ -184,7 +199,7 @@ class TransitionProbabilities:
                     # where C is the only one who needs to approve.
                     elif len(approvers) == 1:
                         p_approved = self.read_approval_probs(
-                            approvers, *indx).values
+                            approvers, *indx).values[0]
                         # print(*indx, approvers, p_approved)
 
                     # For a larger approval committee, we need to consider

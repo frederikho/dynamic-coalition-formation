@@ -208,15 +208,26 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         'tau_decay': 0.9, # if this is close to 1, the annealing is slow
         'tau_min': 1e-8, # the temperature that has to be reached for convergence
         'max_outer_iter': 1000,  # Safety valve - convergence criterion will stop earlier
-        'max_inner_iter': 10,
+        'max_inner_iter': 100,
         'damping': 1,  # 1 means no damping
         'inner_tol': 1e-10,
         'outer_tol': 1e-9,  # If this is None, defaults to 10*inner_tol = 1e-9
-        'consecutive_tol': 1, 
+        'consecutive_tol': 1,
         'tau_margin': 0.01,
         'project_to_exact': True
     }
-        
+
+    # Special parameters for non-unanimity scenarios (more complex, needs more smoothing)
+    if not config['unanimity_required']:
+        default_params.update({
+            'tau_p_init': 1.0,      # Start with higher temperature for exploration
+            'tau_r_init': 1.0,      # Smoother sigmoid to avoid oscillations
+            'tau_decay': 0.6,      # Slower annealing
+            'tau_min': 0.01,        # Higher minimum to maintain some smoothness
+            'damping': 0.5,         # Add damping to stabilize updates
+            'max_inner_iter': 100,  # More iterations per temperature
+        })
+
     default_params.update(solver_params)
 
     # Setup experiment
