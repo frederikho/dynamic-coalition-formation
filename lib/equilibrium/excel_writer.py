@@ -25,7 +25,7 @@ COLORS = {
 
 
 def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: list,
-                              effectivity: dict = None, states: list = None):
+                              effectivity: dict = None, states: list = None, metadata: dict = None):
     """
     Write a strategy DataFrame to Excel with exact formatting matching original files.
 
@@ -37,10 +37,12 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
         players: List of player names (e.g., ['W', 'T', 'C'])
         effectivity: Effectivity correspondence dict (optional)
         states: List of state names (optional, inferred from df if not provided)
+        metadata: Dictionary of configuration parameters to save in metadata sheet (optional)
     """
     # Create new workbook
     wb = Workbook()
     ws = wb.active
+    ws.title = "Strategy"
 
     # Extract structure from DataFrame
     if states is None:
@@ -171,6 +173,7 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                     ws.cell(row=current_row, column=col, value=None)
                 else:
                     ws.cell(row=current_row, column=col, value=float(val))
+                    ws.cell(row=current_row, column=col).number_format = '0.###'
 
                 ws.cell(row=current_row, column=col).fill = PatternFill(
                     start_color=COLORS['proposition_row'],
@@ -234,6 +237,7 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                     else:
                         # Has value: Player is in approval committee
                         ws.cell(row=current_row, column=col, value=float(val))
+                        ws.cell(row=current_row, column=col).number_format = '0.###'
 
                         # Dark orange if: player == proposer AND unilateral transition
                         # (transitions the proposer can do without consulting others)
@@ -330,6 +334,43 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                     bottom=border_kwargs.get('bottom', existing_border.bottom)
                 )
                 cell.border = final_border
+
+    # Add metadata sheet if metadata is provided
+    if metadata is not None:
+        ws_meta = wb.create_sheet(title="Metadata")
+
+        # Set column widths
+        ws_meta.column_dimensions['A'].width = 25
+        ws_meta.column_dimensions['B'].width = 40
+
+        # Write header
+        ws_meta.cell(row=1, column=1, value="Parameter")
+        ws_meta.cell(row=1, column=2, value="Value")
+        ws_meta.cell(row=1, column=1).font = Font(name='Calibri', bold=True, size=11)
+        ws_meta.cell(row=1, column=2).font = Font(name='Calibri', bold=True, size=11)
+        ws_meta.cell(row=1, column=1).fill = PatternFill(
+            start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+        )
+        ws_meta.cell(row=1, column=2).fill = PatternFill(
+            start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+        )
+
+        # Write metadata rows
+        row = 2
+        for key, value in metadata.items():
+            ws_meta.cell(row=row, column=1, value=str(key))
+            ws_meta.cell(row=row, column=2, value=str(value))
+            ws_meta.cell(row=row, column=1).font = Font(name='Calibri', size=10)
+            ws_meta.cell(row=row, column=2).font = Font(name='Calibri', size=10)
+            row += 1
+
+        # Add borders to metadata table
+        for r in range(1, row):
+            for c in range(1, 3):
+                ws_meta.cell(row=r, column=c).border = Border(
+                    left=thin_border, right=thin_border,
+                    top=thin_border, bottom=thin_border
+                )
 
     # Save workbook
     wb.save(excel_file_path)

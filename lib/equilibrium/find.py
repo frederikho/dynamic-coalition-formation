@@ -9,6 +9,10 @@ import argparse
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import hashlib
+import json
+import time
+from datetime import datetime
 from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
@@ -18,6 +22,85 @@ from lib.utils import (derive_effectivity, get_payoff_matrix,
                        verify_equilibrium, get_geoengineering_levels)
 from lib.probabilities import TransitionProbabilities
 from lib.mdp import MDP
+
+
+def generate_config_hash(config, length=6):
+    """
+    Generate a short hash from configuration parameters.
+
+    Args:
+        config: Configuration dictionary
+        length: Length of hash to return (default: 6)
+
+    Returns:
+        Short hash string (e.g., 'a3f2b1')
+    """
+    # Create a sorted JSON string of relevant config parameters
+    # Exclude non-config items like 'experiment_name'
+    hash_params = {k: v for k, v in sorted(config.items())
+                   if k not in ['experiment_name', 'state_names']}
+
+    # Convert to JSON string (with sorted keys for consistency)
+    config_str = json.dumps(hash_params, sort_keys=True, default=str)
+
+    # Generate hash
+    hash_obj = hashlib.md5(config_str.encode())
+    return hash_obj.hexdigest()[:length]
+
+
+def generate_filename(config, description=None, output_dir='./strategy_tables'):
+    """
+    Generate filename from configuration parameters.
+
+    Format: eq_n{n}_{power_rule_abbrev}_{unan/maj}_{description}_{hash}.xlsx
+    Example: eq_n3_power_thresh_unan_RICE50_a3f2b1.xlsx
+
+    Args:
+        config: Configuration dictionary
+        description: Optional custom description/tag
+        output_dir: Output directory
+
+    Returns:
+        Full path to output file
+    """
+    # Number of players
+    n = len(config['players'])
+
+    # Power rule abbreviation
+    power_rule_abbrev = {
+        'power_threshold': 'power_thresh',
+        'weak_governance': 'weak_gov',
+        'weak': 'weak_gov',
+        'threshold': 'power_thresh'
+    }.get(config['power_rule'], config['power_rule'][:12])
+
+    # Unanimity abbreviation
+    unanimity_abbrev = 'unan' if config.get('unanimity_required', True) else 'maj'
+
+    # Generate hash
+    config_hash = generate_config_hash(config)
+
+    # Build filename parts
+    parts = [
+        'eq',
+        f'n{n}',
+        power_rule_abbrev,
+        unanimity_abbrev
+    ]
+
+    # Add optional description
+    if description:
+        # Sanitize description (remove special chars, limit length)
+        clean_desc = ''.join(c for c in description if c.isalnum() or c in '-_')[:20]
+        parts.append(clean_desc)
+
+    # Add hash
+    parts.append(config_hash)
+
+    # Combine into filename
+    filename = '_'.join(parts) + '.xlsx'
+
+    return str(Path(output_dir) / filename)
 
 
 def setup_experiment(config):
@@ -81,7 +164,7 @@ def setup_experiment(config):
     }
 
 
-def find_equilibrium(config, output_file=None, solver_params=None, verbose=True):
+def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None):
     """
     Find equilibrium for a given configuration.
 
@@ -90,10 +173,15 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True)
         output_file: Path to save the equilibrium strategy profile (optional)
         solver_params: Dictionary of solver parameters (optional)
         verbose: Whether to print progress
+        description: Optional description/tag for filename generation
 
     Returns:
         Dictionary with equilibrium results
     """
+    # Track runtime
+    start_time = time.time()
+    start_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     if solver_params is None:
         solver_params = {}
 
@@ -204,18 +292,82 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True)
         print("\nGeoengineering levels:")
         print(setup['geoengineering'])
 
+    # Calculate runtime
+    end_time = time.time()
+    runtime_seconds = end_time - start_time
+    end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     # Save to file if requested
     if output_file is not None:
+        # Generate filename if not provided explicitly
+        if output_file == 'auto':
+            output_file = generate_filename(config, description=description)
+
         # Ensure directory exists
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Build metadata dictionary
+        metadata = {
+            '--- RUN INFO ---': '',
+            'start_time': start_timestamp,
+            'end_time': end_timestamp,
+            'runtime_seconds': f'{runtime_seconds:.2f}',
+            'runtime_formatted': f'{runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s',
+            'verification_success': success,
+            '': '',
+            '--- GAME CONFIG ---': '',
+            'n_players': len(setup['players']),
+            'players': ', '.join(setup['players']),
+            'n_states': len(setup['state_names']),
+            'states': ', '.join(setup['state_names']),
+            'power_rule': config['power_rule'],
+            'min_power': config.get('min_power', 'N/A'),
+            'unanimity_required': config['unanimity_required'],
+            'discounting': config['discounting'],
+            ' ': '',
+            '--- PLAYER PARAMETERS ---': '',
+        }
+
+        # Add player-specific parameters
+        for player in setup['players']:
+            metadata[f'base_temp_{player}'] = config['base_temp'][player]
+            metadata[f'ideal_temp_{player}'] = config['ideal_temp'][player]
+            metadata[f'delta_temp_{player}'] = config['delta_temp'][player]
+            metadata[f'm_damage_{player}'] = config['m_damage'][player]
+            metadata[f'power_{player}'] = config['power'][player]
+
+        # Add protocol
+        metadata['  '] = ''
+        metadata['--- PROTOCOL ---'] = ''
+        for player in setup['players']:
+            metadata[f'protocol_{player}'] = config['protocol'][player]
+
+        # Add solver info
+        metadata['   '] = ''
+        metadata['--- SOLVER INFO ---'] = ''
+        metadata['converged'] = solver_result.get('converged', 'N/A')
+        metadata['outer_iterations'] = solver_result.get('outer_iterations', 'N/A')
+        metadata['final_tau_p'] = f"{solver_result.get('final_tau_p', 'N/A'):.6f}" if 'final_tau_p' in solver_result else 'N/A'
+        metadata['final_tau_r'] = f"{solver_result.get('final_tau_r', 'N/A'):.6f}" if 'final_tau_r' in solver_result else 'N/A'
+
+        # Add config hash for reference
+        metadata['    '] = ''
+        metadata['config_hash'] = generate_config_hash(config, length=10)
+
+        # Add description if provided
+        if description:
+            metadata['custom_description'] = description
+
         # Write with custom Excel writer to match original format exactly
-        write_strategy_table_excel(found_strategy_df, output_file, setup['players'],
-                                   setup['effectivity'], setup['state_names'])
+        write_strategy_table_excel(
+            found_strategy_df, output_file, setup['players'],
+            setup['effectivity'], setup['state_names'], metadata=metadata
+        )
 
         if verbose:
             print(f"\nEquilibrium strategy saved to: {output_file}")
+            print(f"Runtime: {runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s")
 
     result['verification_success'] = success
     result['verification_message'] = message
@@ -238,8 +390,14 @@ def main():
     parser.add_argument(
         '--output',
         type=str,
+        default='auto',
+        help='Output file path for equilibrium strategy. Use "auto" to generate filename automatically (default: auto)'
+    )
+    parser.add_argument(
+        '--description',
+        type=str,
         default=None,
-        help='Output file path for equilibrium strategy (e.g., ./strategy_tables/found_equilibrium.xlsx)'
+        help='Optional custom description/tag for filename (e.g., "RICE50", "lowdiscount")'
     )
     parser.add_argument(
         '--max-outer-iter',
@@ -302,10 +460,6 @@ def main():
 
     config = {**base_config, **scenario_configs[args.scenario]}
 
-    # Set output file if not specified
-    if args.output is None:
-        args.output = f"./strategy_tables/found_{args.scenario}.xlsx"
-
     # Solver parameters: only include when provided on CLI so file defaults remain
     solver_params = {}
     if args.max_outer_iter is not None:
@@ -322,6 +476,8 @@ def main():
     print(f"  Unanimity required: {config['unanimity_required']}")
     print(f"  Damage parameters: {config['m_damage']}")
     print(f"  Discounting: {config['discounting']}")
+    if args.description:
+        print(f"  Description: {args.description}")
     print()
 
     # Find equilibrium
@@ -329,7 +485,8 @@ def main():
         config,
         output_file=args.output,
         solver_params=solver_params,
-        verbose=not args.quiet
+        verbose=not args.quiet,
+        description=args.description
     )
 
     if result['verification_success']:
