@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple, Optional
 from lib.probabilities import TransitionProbabilities
 from lib.mdp import MDP
 from lib.utils import derive_effectivity, get_approval_committee, verify_equilibrium
+import copy
 
 
 def sigmoid(x: np.ndarray, temperature: float = 1.0) -> np.ndarray:
@@ -23,7 +24,10 @@ def sigmoid(x: np.ndarray, temperature: float = 1.0) -> np.ndarray:
     Returns:
         Probability in [0, 1]
     """
-    return 1.0 / (1.0 + np.exp(-x / temperature))
+    z = x / temperature
+    # Clip to avoid overflow in exp for extreme z
+    z = np.clip(z, -50.0, 50.0)
+    return 1.0 / (1.0 + np.exp(-z))
 
 
 def softmax(values: np.ndarray, temperature: float = 1.0) -> np.ndarray:
@@ -119,8 +123,8 @@ class EquilibriumSolver:
             names=['Current State', 'Type', 'Player']
         )
 
-        # Create DataFrame
-        df = pd.DataFrame(0.0, index=index, columns=columns)
+        # Create DataFrame (initialize with NaN)
+        df = pd.DataFrame(np.nan, index=index, columns=columns)
 
         # Fill in proposal probabilities
         for proposer in self.players:
@@ -130,7 +134,8 @@ class EquilibriumSolver:
                     df.loc[(current_state, 'Proposition', np.nan),
                            (f'Proposer {proposer}', next_state)] = self.p_proposals[key]
 
-        # Fill in acceptance probabilities
+        # Fill in acceptance probabilities (only for committee members)
+        # Non-committee cells remain as NaN
         for proposer in self.players:
             for current_state in self.states:
                 for next_state in self.states:
@@ -268,6 +273,46 @@ class EquilibriumSolver:
             damped[key] = (1 - damping) * old_dict[key] + damping * new_dict[key]
         return damped
 
+    def _verify_candidate_equilibrium(self, strategy_df: pd.DataFrame) -> Tuple[bool, str, pd.DataFrame]:
+        """Verify if a strategy profile is a valid equilibrium.
+
+        Args:
+            strategy_df: Strategy DataFrame to verify
+
+        Returns:
+            (success, message, V): Verification result, message, and value functions
+        """
+        # Compute transition probabilities
+        tp = TransitionProbabilities(
+            df=strategy_df,
+            effectivity=self.effectivity,
+            players=self.players,
+            states=self.states,
+            protocol=self.protocol,
+            unanimity_required=self.unanimity_required
+        )
+        P, P_proposals, P_approvals = tp.get_probabilities()
+
+        # Solve value functions
+        V = self._solve_value_functions(P)
+
+        # Build result structure for verification
+        result = {
+            'V': V,
+            'P': P,
+            'P_proposals': P_proposals,
+            'P_approvals': P_approvals,
+            'players': self.players,
+            'state_names': self.states,
+            'effectivity': self.effectivity,
+            'strategy_df': strategy_df,
+        }
+
+        # Verify equilibrium
+        success, message = verify_equilibrium(result)
+
+        return success, message, V
+
     def _project_to_exact_equilibrium(self, V: pd.DataFrame):
         """Project strategies to exact equilibrium conditions.
 
@@ -340,6 +385,9 @@ class EquilibriumSolver:
               max_inner_iter: int = 100,
               damping: float = 0.5,
               inner_tol: float = 1e-6,
+              outer_tol: Optional[float] = None,
+              consecutive_tol: int = 2,
+              tau_margin: float = 0.01,
               project_to_exact: bool = True) -> Tuple[pd.DataFrame, Dict]:
         """
         Solve for equilibrium strategy profile using smoothed fixed-point iteration.
@@ -349,32 +397,44 @@ class EquilibriumSolver:
             tau_r_init: Initial smoothing temperature for acceptances
             tau_decay: Decay rate for temperatures
             tau_min: Minimum temperature threshold
-            max_outer_iter: Maximum outer loop iterations (annealing)
+            max_outer_iter: Maximum outer loop iterations (safety valve)
             max_inner_iter: Maximum inner loop iterations (fixed-point)
             damping: Damping factor for updates (lambda)
             inner_tol: Convergence tolerance for inner loop
+            outer_tol: Convergence tolerance for outer loop (defaults to 10*inner_tol)
+            consecutive_tol: Number of consecutive converged outer iterations required
+            tau_margin: Margin for checking if tau is near tau_min (default 0.01 = 1%)
             project_to_exact: Whether to project to exact equilibrium at end
 
         Returns:
             strategy_df: Equilibrium strategy DataFrame
             result: Dictionary with convergence information
         """
+        # Set outer tolerance if not provided
+        if outer_tol is None:
+            outer_tol = 10 * inner_tol
+
         tau_p = tau_p_init
         tau_r = tau_r_init
 
         outer_iter = 0
         converged = False
 
+        # Track convergence history for consecutive check
+        recent_max_changes = []
+
         if self.verbose:
             print("Starting equilibrium solver...")
             print(f"Initial tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
+            print(f"Outer tolerance: {outer_tol:.2e}, consecutive required: {consecutive_tol}")
 
-        while outer_iter < max_outer_iter and (tau_p > tau_min or tau_r > tau_min):
+        while outer_iter < max_outer_iter:
             if self.verbose:
                 print(f"\nOuter iteration {outer_iter + 1}/{max_outer_iter}")
                 print(f"  tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
 
             # Inner fixed-point iteration
+            max_change = float('inf')  # Track final max_change from inner loop
             for inner_iter in range(max_inner_iter):
                 # Save old strategies
                 old_proposals = self.p_proposals.copy()
@@ -424,16 +484,104 @@ class EquilibriumSolver:
                         print(f"    Converged after {inner_iter + 1} iterations")
                     break
 
+            # Track this outer iteration's convergence
+            recent_max_changes.append(max_change)
+            if len(recent_max_changes) > consecutive_tol:
+                recent_max_changes.pop(0)  # Keep only last consecutive_tol changes
+
+            if self.verbose:
+                print(f"  Outer iteration max_change: {max_change:.6e}")
+
+            # Check if strategies have stabilized
+            consecutive_converged = (len(recent_max_changes) >= consecutive_tol and
+                                    all(change < outer_tol for change in recent_max_changes))
+
+            # Early termination: if strategies are stable, try projection and verification
+            if consecutive_converged:
+                if self.verbose:
+                    print(f"\n  Strategies stable for {consecutive_tol} iterations, attempting early verification...")
+
+                # Save current strategies
+                old_proposals = self.p_proposals.copy()
+                old_acceptances = self.r_acceptances.copy()
+
+                # Create current strategy DataFrame
+                current_strategy_df = self._create_strategy_dataframe()
+
+                # Compute current value functions
+                P, _, _ = self._compute_transition_probabilities(current_strategy_df)
+                V_current = self._solve_value_functions(P)
+
+                # Project to exact equilibrium (temporarily)
+                self._project_to_exact_equilibrium(V_current)
+
+                # Create projected strategy DataFrame
+                projected_strategy_df = self._create_strategy_dataframe()
+
+                # Verify the projected equilibrium
+                success, message, V_projected = self._verify_candidate_equilibrium(projected_strategy_df)
+
+                if success:
+                    # Found valid equilibrium - stop early!
+                    converged = True
+                    if self.verbose:
+                        print(f"  ✓ Equilibrium verification PASSED")
+                        print(f"\n  Early termination (equilibrium found):")
+                        print(f"    - Strategies stable for {consecutive_tol} iterations")
+                        print(f"    - Projected equilibrium verified")
+                        print(f"    - tau_p={tau_p:.4e}, tau_r={tau_r:.4e} (not yet at tau_min={tau_min:.4e})")
+                    # Keep the projected strategies (already in self.p_proposals, self.r_acceptances)
+                    break
+                else:
+                    # Verification failed - restore old strategies and continue annealing
+                    self.p_proposals = old_proposals
+                    self.r_acceptances = old_acceptances
+                    if self.verbose:
+                        print(f"  ✗ Equilibrium verification failed: {message}")
+                        print(f"  Continuing annealing...")
+
+            # Check regular convergence criterion (temperature + stability)
+            tau_near_min = (tau_p <= tau_min * (1 + tau_margin) and
+                           tau_r <= tau_min * (1 + tau_margin))
+
+            if tau_near_min and consecutive_converged:
+                converged = True
+                if self.verbose:
+                    print(f"\n  Convergence criterion met (annealing complete):")
+                    print(f"    - tau_p={tau_p:.4e} <= {tau_min * (1 + tau_margin):.4e}")
+                    print(f"    - tau_r={tau_r:.4e} <= {tau_min * (1 + tau_margin):.4e}")
+                    print(f"    - Last {consecutive_tol} max_changes < {outer_tol:.2e}")
+                break
+
             # Decay temperatures
             tau_p = max(tau_p * tau_decay, tau_min)
             tau_r = max(tau_r * tau_decay, tau_min)
             outer_iter += 1
 
-        if self.verbose:
-            print(f"\nAnnealing complete after {outer_iter} outer iterations")
+        # Determine the stopping reason
+        early_stop_via_verification = False
+        if converged and tau_p > tau_min * (1 + tau_margin):
+            # Stopped early via verification (not via temperature convergence)
+            early_stop_via_verification = True
+            stopping_reason = 'early_verification'
+        elif converged:
+            # Stopped via regular convergence criterion
+            stopping_reason = 'converged'
+        else:
+            # Hit safety valve
+            stopping_reason = 'max_iter'
 
-        # Final projection to exact equilibrium
-        if project_to_exact:
+        if self.verbose:
+            if early_stop_via_verification:
+                print(f"\nStopped early after {outer_iter + 1} outer iterations (equilibrium verified)")
+            elif converged:
+                print(f"\nAnnealing converged after {outer_iter + 1} outer iterations")
+            else:
+                print(f"\nAnnealing stopped at max_outer_iter={max_outer_iter} (safety valve)")
+                print(f"  Final max_change: {max_change:.6e} (outer_tol: {outer_tol:.2e})")
+
+        # Final projection to exact equilibrium (unless we already did it via early stopping)
+        if project_to_exact and not early_stop_via_verification:
             if self.verbose:
                 print("\nProjecting to exact equilibrium...")
 
@@ -444,15 +592,21 @@ class EquilibriumSolver:
 
             # Project to exact equilibrium
             self._project_to_exact_equilibrium(V)
+        elif early_stop_via_verification and self.verbose:
+            print("\nSkipping final projection (already projected and verified)")
 
         # Final strategy DataFrame
         final_strategy_df = self._create_strategy_dataframe()
 
         result = {
             'converged': converged,
-            'outer_iterations': outer_iter,
+            'stopping_reason': stopping_reason,  # 'early_verification', 'converged', or 'max_iter'
+            'outer_iterations': outer_iter + 1 if converged else outer_iter,
             'final_tau_p': tau_p,
             'final_tau_r': tau_r,
+            'final_max_change': max_change,
+            'outer_tol': outer_tol,
+            'recent_max_changes': recent_max_changes.copy(),
         }
 
         if self.verbose:

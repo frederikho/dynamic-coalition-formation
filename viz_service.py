@@ -20,6 +20,98 @@ from lib.probabilities import TransitionProbabilities
 from lib.utils import derive_effectivity
 
 
+def generate_all_partitions(elements):
+    """
+    Generate all possible partitions of a set.
+    A partition is a way of grouping elements into non-empty subsets.
+    
+    This generates Bell number B(n) partitions for n elements.
+    """
+    if len(elements) == 0:
+        yield []
+        return
+    
+    if len(elements) == 1:
+        yield [[elements[0]]]
+        return
+    
+    first = elements[0]
+    rest = elements[1:]
+    
+    # For each partition of the rest
+    for partition in generate_all_partitions(rest):
+        # Add first element to each existing subset
+        for i, subset in enumerate(partition):
+            yield partition[:i] + [subset + [first]] + partition[i+1:]
+        # Add first element as a new singleton subset
+        yield [[first]] + partition
+
+
+def partition_to_state_name(partition):
+    """
+    Convert a partition to coalition structure notation.
+    
+    Examples:
+        [[A], [B], [C]] -> '( )' (all singletons)
+        [[A, B], [C]] -> '(AB)'
+        [[A, B, C]] -> '(ABC)'
+        [[A, C], [B]] -> '(AC)'
+    """
+    # Filter out singletons and sort coalitions
+    coalitions = sorted(
+        [sorted(subset) for subset in partition if len(subset) > 1],
+        key=lambda x: (len(x), x)
+    )
+    
+    if not coalitions:
+        return '( )'
+    
+    # Join coalitions
+    coalition_strs = [''.join(coal) for coal in coalitions]
+    return ''.join(f'({c})' for c in coalition_strs)
+
+
+def generate_coalition_structures(n: int) -> list:
+    """
+    Generate all possible coalition structure names for n players.
+    Uses letters W, T, C for n=3 (to match existing convention),
+    and A, B, C, D, E, F for other player counts.
+    
+    Returns list of state names following Bell numbers:
+    n=2: 2, n=3: 5, n=4: 15, n=5: 52, n=6: 203, etc.
+    """
+    # Use consistent player naming
+    if n == 3:
+        player_letters = ['W', 'T', 'C']
+    else:
+        player_letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'][:n]
+    
+    # Generate all partitions
+    all_partitions = list(generate_all_partitions(player_letters))
+    
+    # Convert to state names
+    state_names = []
+    seen = set()
+    
+    for partition in all_partitions:
+        state_name = partition_to_state_name(partition)
+        if state_name not in seen:
+            state_names.append(state_name)
+            seen.add(state_name)
+    
+    # Sort: all singletons first, then by size and alphabetically
+    def sort_key(name):
+        if name == '( )':
+            return (0, '')
+        # Count coalitions and total size
+        coalitions = name.strip('()').split(')(')
+        return (1, len(coalitions), sum(len(c) for c in coalitions), name)
+    
+    state_names.sort(key=sort_key)
+    
+    return state_names
+
+
 app = FastAPI(title="Coalition Formation Visualizer API")
 
 # Enable CORS for local development
@@ -49,7 +141,8 @@ DEFAULT_CONFIG = {
 
 def compute_transition_graph(
     xlsx_path: str,
-    config: Dict[str, Any] = None
+    config: Dict[str, Any] = None,
+    n: int = 3
 ) -> Dict[str, Any]:
     """
     Compute transition graph from an XLSX strategy profile.
@@ -57,12 +150,44 @@ def compute_transition_graph(
     Args:
         xlsx_path: Path to the XLSX strategy profile
         config: Configuration dict (uses DEFAULT_CONFIG if None)
+        n: Number of players (2-6)
 
     Returns:
         Dict with 'nodes', 'edges', and 'metadata'
     """
     if config is None:
         config = DEFAULT_CONFIG.copy()
+    
+    # For n≠3, generate placeholder nodes without transitions
+    if n != 3:
+        state_names = generate_coalition_structures(n)
+        nodes = []
+        for i, state_name in enumerate(state_names):
+            nodes.append({
+                "id": state_name,
+                "label": state_name,
+                "meta": {
+                    "index": i,
+                    "geo_level": 0.0  # Placeholder
+                }
+            })
+        
+        return {
+            "nodes": nodes,
+            "edges": [],  # No transitions yet
+            "metadata": {
+                "profile_path": xlsx_path,
+                "num_players": n,
+                "num_states": len(nodes),
+                "num_transitions": 0,
+                "config": {
+                    "power_rule": config["power_rule"],
+                    "unanimity_required": config["unanimity_required"],
+                    "min_power": config["min_power"]
+                },
+                "note": "Transition probabilities not yet computed for this player count"
+            }
+        }
 
     # 1. Initialize countries
     all_countries = []
@@ -153,6 +278,7 @@ def compute_transition_graph(
         "edges": edges,
         "metadata": {
             "profile_path": xlsx_path,
+            "num_players": len(config["players"]),
             "num_states": len(nodes),
             "num_transitions": len(edges),
             "config": {
@@ -178,6 +304,7 @@ async def root():
 
 @app.get("/graph")
 async def get_graph(
+    n: int = Query(3, description="Number of players (2-6)"),
     profile: str = Query(..., description="Path to XLSX strategy profile (relative or absolute)"),
     power_rule: str = Query("weak_governance", description="Power rule: 'weak_governance' or 'power_threshold'"),
     min_power: float = Query(None, description="Minimum power threshold (for power_threshold rule)"),
@@ -189,6 +316,13 @@ async def get_graph(
     Recomputes on every request - no caching.
     """
     try:
+        # Validate number of players
+        if n < 2 or n > 6:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Number of players must be between 2 and 6, got {n}"
+            )
+        
         # Resolve path
         profile_path = Path(profile)
 
@@ -212,7 +346,7 @@ async def get_graph(
         config["unanimity_required"] = unanimity
 
         # Compute graph
-        graph_data = compute_transition_graph(str(profile_path), config)
+        graph_data = compute_transition_graph(str(profile_path), config, n)
 
         return graph_data
 

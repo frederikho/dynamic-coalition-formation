@@ -1,7 +1,0 @@
-# Ignore all output files
-*.xlsx
-*.tex
-*.txt
-
-# Keep this directory structure in git
-!.gitignore

@@ -13,6 +13,7 @@ from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
 from lib.equilibrium.solver import EquilibriumSolver
+from lib.equilibrium.excel_writer import write_strategy_table_excel
 from lib.utils import (derive_effectivity, get_payoff_matrix,
                        verify_equilibrium, get_geoengineering_levels)
 from lib.probabilities import TransitionProbabilities
@@ -102,12 +103,32 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True)
         'tau_r_init': 1.0,
         'tau_decay': 0.95,
         'tau_min': 0.01,
-        'max_outer_iter': 50,
+        'max_outer_iter': 1000,  # Safety valve - rarely hit with convergence criterion
         'max_inner_iter': 100,
         'damping': 0.5,
         'inner_tol': 1e-6,
+        'outer_tol': None,  # Defaults to 10*inner_tol
+        'consecutive_tol': 2,
+        'tau_margin': 0.01,
         'project_to_exact': True
     }
+
+    # overwrite with parameters to resemble Jere's implementation
+    default_params = {
+        'tau_p_init': 1e-6, # if this is small, the softmax ...
+        'tau_r_init': 1e-6, # if this is small, the sigmoid for acceptance becomes step-like
+        'tau_decay': 0.9, # if this is close to 1, the annealing is slow
+        'tau_min': 1e-8, # the temperature that has to be reached for convergence
+        'max_outer_iter': 1000,  # Safety valve - convergence criterion will stop earlier
+        'max_inner_iter': 10,
+        'damping': 1,  # 1 means no damping
+        'inner_tol': 1e-10,
+        'outer_tol': 1e-9,  # If this is None, defaults to 10*inner_tol = 1e-9
+        'consecutive_tol': 1, 
+        'tau_margin': 0.01,
+        'project_to_exact': True
+    }
+        
     default_params.update(solver_params)
 
     # Setup experiment
@@ -185,8 +206,14 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True)
 
     # Save to file if requested
     if output_file is not None:
-        # Save the version with NaN for non-committee members
-        found_strategy_df.to_excel(output_file)
+        # Ensure directory exists
+        output_path = Path(output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write with custom Excel writer to match original format exactly
+        write_strategy_table_excel(found_strategy_df, output_file, setup['players'],
+                                   setup['effectivity'], setup['state_names'])
+
         if verbose:
             print(f"\nEquilibrium strategy saved to: {output_file}")
 
@@ -212,7 +239,7 @@ def main():
         '--output',
         type=str,
         default=None,
-        help='Output file path for equilibrium strategy (e.g., ./lib/equilibrium/outputs/found_equilibrium.xlsx)'
+        help='Output file path for equilibrium strategy (e.g., ./strategy_tables/found_equilibrium.xlsx)'
     )
     parser.add_argument(
         '--max-outer-iter',
@@ -277,7 +304,7 @@ def main():
 
     # Set output file if not specified
     if args.output is None:
-        args.output = f"./lib/equilibrium/outputs/found_{args.scenario}.xlsx"
+        args.output = f"./strategy_tables/found_{args.scenario}.xlsx"
 
     # Solver parameters: only include when provided on CLI so file defaults remain
     solver_params = {}

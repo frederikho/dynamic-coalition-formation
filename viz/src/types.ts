@@ -26,6 +26,7 @@ export interface GraphData {
   edges: GraphEdge[];
   metadata: {
     profile_path: string;
+    num_players: number;
     num_states: number;
     num_transitions: number;
     config: {
@@ -33,6 +34,7 @@ export interface GraphData {
       unanimity_required: boolean;
       min_power: number | null;
     };
+    note?: string;
   };
 }
 

@@ -3,6 +3,7 @@ import { fetchProfiles, fetchGraph } from './api';
 import type { GraphData } from './types';
 
 // UI Elements
+const numPlayersSelect = document.getElementById('num-players') as HTMLSelectElement;
 const profileSelect = document.getElementById('profile-select') as HTMLSelectElement;
 const powerRuleSelect = document.getElementById('power-rule') as HTMLSelectElement;
 const minPowerInput = document.getElementById('min-power') as HTMLInputElement;
@@ -89,6 +90,7 @@ async function loadGraph() {
     showStatus('Computing transition graph...', 'info');
 
     const graphData = await fetchGraph({
+      numPlayers: parseInt(numPlayersSelect.value),
       profile: profileSelect.value,
       powerRule: powerRuleSelect.value,
       minPower: powerRuleSelect.value === 'power_threshold' ? parseFloat(minPowerInput.value) : null,
@@ -105,7 +107,12 @@ async function loadGraph() {
     // Update metadata display
     updateMetadata(graphData);
 
-    showStatus('Graph loaded successfully', 'success');
+    // Show appropriate status message
+    if (graphData.edges.length === 0) {
+      showStatus('State nodes loaded. Transition probabilities not yet available for this player count.', 'info');
+    } else {
+      showStatus('Graph loaded successfully', 'success');
+    }
   } catch (error) {
     showStatus(`Error: ${error}`, 'error');
     console.error('Error loading graph:', error);
@@ -117,6 +124,7 @@ async function loadGraph() {
 // Update metadata display
 function updateMetadata(data: GraphData) {
   metadataDiv.innerHTML = `
+    <div><strong>Players:</strong> ${data.metadata.num_players ?? 3}</div>
     <div><strong>Profile:</strong> ${data.metadata.profile_path.split('/').pop()}</div>
     <div><strong>States:</strong> ${data.metadata.num_states}</div>
     <div><strong>Transitions:</strong> ${data.metadata.num_transitions}</div>
@@ -182,8 +190,35 @@ probThresholdInput.addEventListener('change', () => {
 });
 
 // Power rule change - enable/disable min power input
-powerRuleSelect.addEventListener('change', () => {
+powerRuleSelect.addEventListener('change', async () => {
   minPowerInput.disabled = powerRuleSelect.value !== 'power_threshold';
+  // Auto-refresh when power rule changes
+  await loadGraph();
+});
+
+// Profile change should auto-refresh
+profileSelect.addEventListener('change', async () => {
+  await loadGraph();
+});
+
+// Min power input should auto-refresh when changed
+minPowerInput.addEventListener('change', async () => {
+  await loadGraph();
+});
+
+// Unanimity toggle should auto-refresh
+unanimityCheckbox.addEventListener('change', async () => {
+  await loadGraph();
+});
+
+// Number of players change - reload profiles
+numPlayersSelect.addEventListener('change', async () => {
+  await loadProfiles();
+  // loadProfiles will auto-load the first profile which calls loadGraph,
+  // but ensure we refresh if a profile was already selected
+  if (profileSelect.value) {
+    await loadGraph();
+  }
 });
 
 // Initialize
