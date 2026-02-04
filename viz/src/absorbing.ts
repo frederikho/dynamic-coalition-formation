@@ -56,18 +56,24 @@ function tarjanSCC(
  * Compute absorbing sets from graph data.
  * An absorbing set is a strongly connected component with no outgoing edges
  * to nodes outside the component.
- * 
- * Returns a map from node ID to absorbing set ID (or null if not in an absorbing set).
+ *
+ * @param graphData - The full graph data
+ * @param edgesToUse - Optional subset of edges to use (e.g., filtered by threshold). If not provided, uses all edges.
+ * @returns A map from node ID to absorbing set ID (or null if not in an absorbing set).
  */
-export function computeAbsorbingSets(graphData: GraphData): Map<string, number | null> {
+export function computeAbsorbingSets(
+  graphData: GraphData,
+  edgesToUse?: typeof graphData.edges
+): Map<string, number | null> {
   const nodeIds = graphData.nodes.map(n => n.id);
-  
+  const edges = edgesToUse ?? graphData.edges;
+
   // Build adjacency list
   const adjacency = new Map<string, string[]>();
   for (const node of nodeIds) {
     adjacency.set(node, []);
   }
-  for (const edge of graphData.edges) {
+  for (const edge of edges) {
     const targets = adjacency.get(edge.source) || [];
     // Only add if not already present (avoid duplicates)
     if (!targets.includes(edge.target)) {

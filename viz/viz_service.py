@@ -212,16 +212,30 @@ def parse_coalition_structure(state_name: str, all_countries: List[Country]) -> 
 def read_metadata_from_xlsx(xlsx_path: str) -> Dict[str, Any]:
     """
     Read metadata from the second sheet of an XLSX file.
-    
+
     Args:
         xlsx_path: Path to the XLSX strategy profile
-        
+
     Returns:
         Dict containing metadata extracted from the file
     """
     try:
+        # Try multiple possible sheet names for metadata
+        xl = pd.ExcelFile(xlsx_path)
+        metadata_sheet_name = None
+
+        # Check for common metadata sheet names
+        for possible_name in ['Metadata', 'metadata', 'Tabelle2', 'Sheet2']:
+            if possible_name in xl.sheet_names:
+                metadata_sheet_name = possible_name
+                break
+
+        if metadata_sheet_name is None:
+            # No metadata sheet found
+            return {}
+
         # Read the Metadata sheet
-        metadata_df = pd.read_excel(xlsx_path, sheet_name='Metadata')
+        metadata_df = pd.read_excel(xlsx_path, sheet_name=metadata_sheet_name)
         
         # Convert to a dictionary
         metadata = {}
@@ -490,6 +504,45 @@ async def list_profiles(profiles_dir: str = Query("strategy_tables", description
         raise HTTPException(
             status_code=500,
             detail=f"Error listing profiles: {str(e)}"
+        )
+
+
+@app.get("/download")
+async def download_profile(
+    profile: str = Query(..., description="Path to XLSX strategy profile (relative or absolute)")
+):
+    """
+    Download an XLSX strategy profile file.
+    """
+    try:
+        from fastapi.responses import FileResponse
+
+        # Resolve path
+        profile_path = Path(profile)
+
+        # If not absolute, check if it exists as-is first
+        if not profile_path.is_absolute():
+            if not profile_path.exists():
+                # Try prepending strategy_tables/ if it doesn't start with it
+                if not str(profile_path).startswith("strategy_tables"):
+                    profile_path = Path("strategy_tables") / profile_path
+
+        if not profile_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Profile not found: {profile_path}"
+            )
+
+        return FileResponse(
+            path=str(profile_path),
+            filename=profile_path.name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error downloading profile: {str(e)}"
         )
 
 

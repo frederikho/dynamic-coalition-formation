@@ -106,15 +106,54 @@ export class GraphRenderer {
     this.onNodeSelect = callback;
   }
 
-  render(graphData: GraphData, probThreshold: number = 0.001, options?: { colorByAbsorbing?: boolean }) {
+  render(graphData: GraphData, probThreshold: number = 0.001, options?: { colorByAbsorbing?: boolean; filterMode?: 'absolute' | 'cumulative' }) {
     // Destroy existing instance
     if (this.cy) {
       this.cy.destroy();
       this.cy = null;
     }
 
+    const filterMode = options?.filterMode || 'absolute';
+
     // Filter edges by probability threshold
-    const filteredEdges = graphData.edges.filter(e => e.p >= probThreshold);
+    let filteredEdges: typeof graphData.edges;
+
+    if (filterMode === 'cumulative') {
+      // Cumulative tail filtering: for each target node, remove smallest incoming edges until sum reaches threshold
+      const edgesToRemove = new Set<string>();
+
+      // Group edges by target node
+      const edgesByTarget = new Map<string, typeof graphData.edges>();
+      for (const edge of graphData.edges) {
+        if (!edgesByTarget.has(edge.target)) {
+          edgesByTarget.set(edge.target, []);
+        }
+        edgesByTarget.get(edge.target)!.push(edge);
+      }
+
+      // For each target node, identify edges to remove
+      for (const [target, edges] of edgesByTarget) {
+        // Sort by probability ascending (smallest first)
+        const sorted = [...edges].sort((a, b) => a.p - b.p);
+
+        let cumSum = 0;
+        for (const edge of sorted) {
+          if (cumSum + edge.p <= probThreshold) {
+            // Remove this edge
+            edgesToRemove.add(edge.id);
+            cumSum += edge.p;
+          } else {
+            // Stop - keep this and all remaining edges
+            break;
+          }
+        }
+      }
+
+      filteredEdges = graphData.edges.filter(e => !edgesToRemove.has(e.id));
+    } else {
+      // Absolute threshold filtering
+      filteredEdges = graphData.edges.filter(e => e.p >= probThreshold);
+    }
 
     // Get preset positions for specific cases
     let presetPositions: Record<string, { x: number; y: number }> = {};
@@ -128,9 +167,9 @@ export class GraphRenderer {
     // Prepare coloring by absorbing set if requested
     const colorByAbsorbing = options?.colorByAbsorbing ?? false;
     const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
-    
-    // Compute absorbing sets from transition structure
-    const nodeToAbsorbing = colorByAbsorbing ? computeAbsorbingSets(graphData) : new Map<string, number | null>();
+
+    // Compute absorbing sets from transition structure using filtered edges
+    const nodeToAbsorbing = colorByAbsorbing ? computeAbsorbingSets(graphData, filteredEdges) : new Map<string, number | null>();
     const absorbingSetIds = new Set<number>();
     if (colorByAbsorbing) {
       nodeToAbsorbing.forEach(setId => {
@@ -178,10 +217,10 @@ export class GraphRenderer {
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          label: edge.p.toFixed(3),
+          label: this.formatProbability(edge.p),
           probability: edge.p,
           isSelfLoop: edge.source === edge.target,
-          width: this.getEdgeWidth(edge.p)
+          width: this.getEdgeWidth(edge.p, edge.source === edge.target, filteredEdges)
         }
       }))
     ];
@@ -290,10 +329,41 @@ export class GraphRenderer {
     }
   }
 
-  private getEdgeWidth(probability: number): number {
-    // Width scales with probability: min 1px, max 8px
-    // Linear scaling: width = 1 + 7 * probability
-    return Math.max(1, Math.min(8, 1 + 7 * probability));
+  private formatProbability(p: number): string {
+    // Convert to percentage and format with comma as decimal separator
+    const percentage = (p * 100).toFixed(2);
+    return percentage.replace('.', ',') + '%';
+  }
+
+  private getEdgeWidth(probability: number, isSelfLoop: boolean, allEdges: typeof import('./types').GraphData.edges): number {
+    // Use separate scales for self-loops vs state transitions
+    // This makes differences visible in both categories
+
+    if (isSelfLoop) {
+      // Self-loops typically have high probabilities (0.7-1.0)
+      // Find min/max among self-loops for adaptive scaling
+      const selfLoopProbs = allEdges.filter(e => e.source === e.target).map(e => e.p);
+      const minSelfLoop = Math.min(...selfLoopProbs);
+      const maxSelfLoop = Math.max(...selfLoopProbs);
+      const range = maxSelfLoop - minSelfLoop || 0.1; // Avoid division by zero
+
+      // Map to 2-6px range
+      const normalized = (probability - minSelfLoop) / range;
+      return Math.max(2, Math.min(6, 2 + 4 * normalized));
+    } else {
+      // Transitions typically have lower probabilities (0-0.3)
+      // Find min/max among transitions for adaptive scaling
+      const transitionProbs = allEdges.filter(e => e.source !== e.target).map(e => e.p);
+      if (transitionProbs.length === 0) return 2;
+
+      const minTransition = Math.min(...transitionProbs);
+      const maxTransition = Math.max(...transitionProbs);
+      const range = maxTransition - minTransition || 0.1;
+
+      // Map to 1-5px range
+      const normalized = (probability - minTransition) / range;
+      return Math.max(1, Math.min(5, 1 + 4 * normalized));
+    }
   }
 
   private setupInteractions() {

@@ -5,7 +5,10 @@ import { computeAbsorbingSets } from './absorbing';
 
 // UI Elements
 const profileSelect = document.getElementById('profile-select') as HTMLSelectElement;
+const downloadXlsxBtn = document.getElementById('download-xlsx-btn') as HTMLButtonElement;
 const probThresholdInput = document.getElementById('prob-threshold') as HTMLInputElement;
+const filterModeRadios = document.querySelectorAll('input[name="filter-mode"]') as NodeListOf<HTMLInputElement>;
+const thresholdTooltip = document.getElementById('threshold-tooltip') as HTMLSpanElement;
 const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
 const resetViewBtn = document.getElementById('reset-view-btn') as HTMLButtonElement;
 const statusDiv = document.getElementById('status') as HTMLDivElement;
@@ -30,6 +33,22 @@ function initRenderer() {
   }
   renderer = new GraphRenderer(graphContainer);
   renderer.setOnNodeSelect(handleNodeSelect);
+}
+
+// Get selected filter mode
+function getFilterMode(): 'absolute' | 'cumulative' {
+  const selected = Array.from(filterModeRadios).find(radio => radio.checked);
+  return (selected?.value as 'absolute' | 'cumulative') || 'absolute';
+}
+
+// Update tooltip based on filter mode
+function updateTooltip() {
+  const mode = getFilterMode();
+  if (mode === 'cumulative') {
+    thresholdTooltip.textContent = 'For each node, hide smallest incoming edges until their sum reaches this value';
+  } else {
+    thresholdTooltip.textContent = 'Hide edges with probability below this value';
+  }
 }
 
 // Status display
@@ -91,7 +110,8 @@ async function loadGraph() {
     // Render graph
     initRenderer();
     const threshold = parseFloat(probThresholdInput.value) || 0;
-    renderer!.render(graphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox?.checked ?? false });
+    const filterMode = getFilterMode();
+    renderer!.render(graphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox?.checked ?? false, filterMode });
 
     // Update metadata display
     updateMetadata(graphData);
@@ -105,9 +125,13 @@ async function loadGraph() {
     } else {
       showStatus('Graph loaded successfully', 'success');
     }
+
+    // Enable download button
+    downloadXlsxBtn.disabled = false;
   } catch (error) {
     showStatus(`Error: ${error}`, 'error');
     console.error('Error loading graph:', error);
+    downloadXlsxBtn.disabled = true;
   } finally {
     refreshBtn.disabled = false;
   }
@@ -173,7 +197,17 @@ function updateAbsorbingLegend(data: GraphData, enabled: boolean) {
 // Update metadata display
 function updateMetadata(data: GraphData) {
   const fileMetadata = data.metadata.file_metadata || {};
-  
+
+  // Helper to parse boolean values that might be strings
+  const parseBool = (val: any): boolean => {
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'string') return val.toLowerCase() === 'true';
+    return !!val;
+  };
+
+  // Determine unanimity value - prefer config over file_metadata as it's already parsed correctly
+  const unanimityValue = data.metadata.config.unanimity_required;
+
   metadataDiv.innerHTML = `
     <div><strong>Profile:</strong> ${data.metadata.profile_path.split('/').pop()}</div>
     <div><strong>Players:</strong> ${fileMetadata.players || data.metadata.num_players || 'N/A'}</div>
@@ -181,7 +215,7 @@ function updateMetadata(data: GraphData) {
     <div><strong>Transitions:</strong> ${data.metadata.num_transitions}</div>
     <div><strong>Power Rule:</strong> ${fileMetadata.power_rule || data.metadata.config.power_rule}</div>
     ${fileMetadata.min_power ? `<div><strong>Min Power:</strong> ${fileMetadata.min_power}</div>` : ''}
-    <div><strong>Unanimity:</strong> ${fileMetadata.unanimity_required !== undefined ? (fileMetadata.unanimity_required ? 'Yes' : 'No') : (data.metadata.config.unanimity_required ? 'Yes' : 'No')}</div>
+    <div><strong>Unanimity:</strong> ${unanimityValue ? 'Yes' : 'No'}</div>
     ${fileMetadata.discounting ? `<div><strong>Discounting:</strong> ${fileMetadata.discounting}</div>` : ''}
     ${fileMetadata.converged !== undefined ? `<div><strong>Converged:</strong> ${fileMetadata.converged ? 'Yes' : 'No'}</div>` : ''}
     ${fileMetadata.outer_iterations ? `<div><strong>Iterations:</strong> ${fileMetadata.outer_iterations}</div>` : ''}
@@ -236,11 +270,29 @@ resetViewBtn.addEventListener('click', () => {
   }
 });
 
+downloadXlsxBtn.addEventListener('click', () => {
+  if (!profileSelect.value) {
+    showStatus('No profile selected', 'error');
+    return;
+  }
+
+  // Create a temporary link to download the file
+  const link = document.createElement('a');
+  link.href = `http://127.0.0.1:8000/download?profile=${encodeURIComponent(profileSelect.value)}`;
+  link.download = profileSelect.value.split('/').pop() || 'profile.xlsx';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  showStatus('Downloading XLSX file...', 'success');
+});
+
 probThresholdInput.addEventListener('change', () => {
   if (currentGraphData && renderer) {
     const threshold = parseFloat(probThresholdInput.value) || 0;
+    const filterMode = getFilterMode();
     initRenderer();
-    renderer.render(currentGraphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox?.checked ?? false });
+    renderer.render(currentGraphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox?.checked ?? false, filterMode });
     updateAbsorbingLegend(currentGraphData, colorByAbsorbingCheckbox?.checked ?? false);
   }
 });
@@ -254,15 +306,33 @@ if (colorByAbsorbingCheckbox) {
   colorByAbsorbingCheckbox.addEventListener('change', async () => {
     if (currentGraphData && renderer) {
       const threshold = parseFloat(probThresholdInput.value) || 0;
+      const filterMode = getFilterMode();
       initRenderer();
-      renderer.render(currentGraphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox.checked });
+      renderer.render(currentGraphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox.checked, filterMode });
       updateAbsorbingLegend(currentGraphData, colorByAbsorbingCheckbox.checked);
     }
   });
 }
 
+// Filter mode change
+filterModeRadios.forEach(radio => {
+  radio.addEventListener('change', () => {
+    updateTooltip();
+    if (currentGraphData && renderer) {
+      const threshold = parseFloat(probThresholdInput.value) || 0;
+      const filterMode = getFilterMode();
+      initRenderer();
+      renderer.render(currentGraphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox?.checked ?? false, filterMode });
+      updateAbsorbingLegend(currentGraphData, colorByAbsorbingCheckbox?.checked ?? false);
+    }
+  });
+});
+
 // Initialize
 async function init() {
+  // Initialize tooltip
+  updateTooltip();
+
   // Load profiles
   await loadProfiles();
 }
