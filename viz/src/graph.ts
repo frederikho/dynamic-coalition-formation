@@ -40,6 +40,57 @@ function getPentagonPositions(stateNames: string[]): Record<string, { x: number;
   return positionMap;
 }
 
+// Two-circle layout for n=4 case (15 states)
+// Inner circle with 5 states, outer circle with 10 states
+function getTwoCirclePositions(stateNames: string[]): Record<string, { x: number; y: number }> {
+  if (stateNames.length !== 15) return {};
+  const positions: Record<string, { x: number; y: number }> = {};
+
+  // Inner preferred order (n=3 pentagon equivalents) - keep same layout
+  const innerPreferred = ['( )', '(CT)', '(TW)', '(CTW)', '(CW)'];
+
+  // Pick inner states as those not containing 'F' and matching preferred order first
+  const innerStates: string[] = innerPreferred.filter(s => stateNames.includes(s));
+
+  // If fewer than 5, add other states that do not include 'F'
+  const nonFStates = stateNames.filter(s => !s.includes('F') && !innerStates.includes(s));
+  for (const s of nonFStates) {
+    if (innerStates.length >= 5) break;
+    innerStates.push(s);
+  }
+
+  // If still fewer than 5, fill with any remaining states (shouldn't usually happen)
+  for (const s of stateNames) {
+    if (innerStates.length >= 5) break;
+    if (!innerStates.includes(s)) innerStates.push(s);
+  }
+
+  const outerStates = stateNames.filter(s => !innerStates.includes(s)).sort();
+
+  // Try to reuse pentagon positions for inner states (keeps identical layout to n=3)
+  const pent = getPentagonPositions(innerStates);
+  if (Object.keys(pent).length === innerStates.length) {
+    // Use pentagon coordinates
+    innerStates.forEach(state => { positions[state] = pent[state]; });
+  } else {
+    // Fallback: evenly spaced inner circle
+    const innerRadius = 150;
+    innerStates.forEach((state, i) => {
+      const angle = (i / innerStates.length) * 2 * Math.PI - Math.PI / 2;
+      positions[state] = { x: Math.cos(angle) * innerRadius, y: Math.sin(angle) * innerRadius };
+    });
+  }
+
+  // Place outer circle states
+  const outerRadius = 300;
+  outerStates.forEach((state, i) => {
+    const angle = (i / outerStates.length) * 2 * Math.PI - Math.PI / 2;
+    positions[state] = { x: Math.cos(angle) * outerRadius, y: Math.sin(angle) * outerRadius };
+  });
+
+  return positions;
+}
+
 export class GraphRenderer {
   private cy: Core | null = null;
   private container: HTMLElement;
@@ -64,8 +115,13 @@ export class GraphRenderer {
     // Filter edges by probability threshold
     const filteredEdges = graphData.edges.filter(e => e.p >= probThreshold);
 
-    // Get preset positions for 5-state (n=3) case
-    const presetPositions = graphData.nodes.length === 5 ? getPentagonPositions(graphData.nodes.map(n => n.id)) : {};
+    // Get preset positions for specific cases
+    let presetPositions: Record<string, { x: number; y: number }> = {};
+    if (graphData.nodes.length === 5) {
+      presetPositions = getPentagonPositions(graphData.nodes.map(n => n.id));
+    } else if (graphData.nodes.length === 15) {
+      presetPositions = getTwoCirclePositions(graphData.nodes.map(n => n.id));
+    }
     const usePresetPositions = Object.keys(presetPositions).length > 0;
 
     // Convert to Cytoscape format
@@ -188,12 +244,17 @@ export class GraphRenderer {
         tilingPaddingVertical: 10,
         tilingPaddingHorizontal: 10
       },
-      minZoom: 0.3,
+      minZoom: 0.2,
       maxZoom: 3,
       wheelSensitivity: 0.2
     });
 
     this.setupInteractions();
+    
+    // For larger graphs (n=4 with 15 nodes), fit to view with padding
+    if (graphData.nodes.length >= 15) {
+      this.cy.fit(undefined, 50); // Fit all elements with 50px padding
+    }
   }
 
   private getEdgeWidth(probability: number): number {

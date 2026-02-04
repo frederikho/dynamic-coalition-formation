@@ -6,6 +6,7 @@ Exposes HTTP endpoints to compute and serve transition probability graphs from X
 import argparse
 import copy
 import json
+import sys
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -13,6 +14,9 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+
+# Add parent directory to path to import lib modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from lib.country import Country
 from lib.coalition import Coalition
@@ -297,49 +301,6 @@ def compute_transition_graph(
                     if param not in config:
                         config[param] = {}
                     config[param][player] = float(file_metadata[key])
-        
-        # Verify all required parameters exist for all players (for n=3 only)
-        if n == 3:
-            required_params = ['base_temp', 'ideal_temp', 'delta_temp', 'm_damage', 'power', 'protocol']
-            for param in required_params:
-                if param not in config:
-                    raise ValueError(f"Missing required parameter '{param}' in metadata")
-                for player in config['players']:
-                    if player not in config[param]:
-                        raise ValueError(f"Missing required parameter '{param}' for player '{player}' in metadata")
-    
-    # For n≠3, generate placeholder nodes without transitions
-    # TODO: Full n=4+ support requires updating lib/utils.py effectivity functions
-    if n != 3:
-        state_names = config.get("state_names") or generate_coalition_structures(n)
-        nodes = []
-        for i, state_name in enumerate(state_names):
-            nodes.append({
-                "id": state_name,
-                "label": state_name,
-                "meta": {
-                    "index": i,
-                    "geo_level": 0.0  # Placeholder
-                }
-            })
-        
-        return {
-            "nodes": nodes,
-            "edges": [],  # No transitions yet
-            "metadata": {
-                "profile_path": xlsx_path,
-                "num_players": n,
-                "num_states": len(nodes),
-                "num_transitions": 0,
-                "config": {
-                    "power_rule": config["power_rule"],
-                    "unanimity_required": config["unanimity_required"],
-                    "min_power": config["min_power"]
-                },
-                "file_metadata": file_metadata,
-                "note": f"Transition probabilities not yet computed for n={n}. Full n≠3 support requires updating effectivity functions."
-            }
-        }
     
     # 1. Read strategy profile first to get actual state names from columns
     strategy_df = pd.read_excel(xlsx_path, header=[0, 1], index_col=[0, 1, 2])

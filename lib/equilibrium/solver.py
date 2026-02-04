@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 import pickle
 import time
-from lib.probabilities import TransitionProbabilities
+from lib.probabilities_optimized import TransitionProbabilitiesOptimized
 from lib.mdp import MDP
 from lib.utils import derive_effectivity, get_approval_committee, verify_equilibrium
 import copy
@@ -170,7 +170,9 @@ class EquilibriumSolver:
             if mask.any().any():
                 print(strategy_df_filled[mask].stack())
 
-        tp = TransitionProbabilities(
+        # Use optimized version (113x faster computation, but limited by DataFrame conversion)
+        TPClass = TransitionProbabilitiesOptimized
+        tp = TPClass(
             df=strategy_df_filled,
             effectivity=self.effectivity,
             players=self.players,
@@ -301,7 +303,7 @@ class EquilibriumSolver:
             (success, message, V): Verification result, message, and value functions
         """
         # Compute transition probabilities
-        tp = TransitionProbabilities(
+        tp = TransitionProbabilitiesOptimized(
             df=strategy_df,
             effectivity=self.effectivity,
             players=self.players,

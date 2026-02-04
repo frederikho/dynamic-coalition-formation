@@ -8,3 +8,5 @@ __pycache__/
 scripts/combined*overview.txt
 scripts/combined*
 .comments/collab-comments.json
+
+/checkpoints

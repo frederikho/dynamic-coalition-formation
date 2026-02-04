@@ -29,7 +29,7 @@ from lib.utils import (
     get_geoengineering_levels,
     list_members
 )
-from lib.probabilities import TransitionProbabilities
+from lib.probabilities_optimized import TransitionProbabilitiesOptimized as TransitionProbabilities
 from lib.mdp import MDP
 from lib.coalition_structures import generate_coalition_structures, generate_all_coalition_maps
 
@@ -173,7 +173,7 @@ def _get_solver_params(config, user_params=None):
             'tau_p_init': 1,
             'tau_r_init': 1,
             'tau_decay': 0.9,
-            'tau_min': 0.05,
+            'tau_min': 0.01,
             'damping': 0.6,
             'max_inner_iter': 250,
             'max_outer_iter': 500,
