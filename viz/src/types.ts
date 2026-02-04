@@ -35,6 +35,9 @@ export interface GraphData {
       min_power: number | null;
     };
     note?: string;
+    file_metadata?: {
+      [key: string]: any;
+    };
   };
 }
 

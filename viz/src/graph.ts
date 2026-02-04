@@ -7,13 +7,38 @@ cytoscape.use(coseBilkent);
 
 // Preset positions for 5-state case (3-country model)
 // Pentagon layout matching the paper's figure
-const PRESET_POSITIONS_5_STATES: Record<string, { x: number; y: number }> = {
-  '( )': { x: 0, y: -180 },        // Top center
-  '(TC)': { x: 171, y: -55 },      // Upper right
-  '(WT)': { x: 106, y: 145 },      // Lower right
-  '(WTC)': { x: -106, y: 145 },    // Lower left
-  '(WC)': { x: -171, y: -55 }      // Upper left
-};
+// Exact layout: ( ) top, (TC) upper-right, (WT) lower-right, (WTC) lower-left, (WC) upper-left
+function getPentagonPositions(stateNames: string[]): Record<string, { x: number; y: number }> {
+  if (stateNames.length !== 5) return {};
+  
+  // Pentagon coordinates - hardcoded for n=3
+  const positions: Record<string, { x: number; y: number }> = {
+    '( )': { x: 0, y: -180 },        // Top center
+    '(TC)': { x: 171, y: -55 },      // Upper right
+    '(WT)': { x: 106, y: 145 },      // Lower right
+    '(WTC)': { x: -106, y: 145 },    // Lower left
+    '(WC)': { x: -171, y: -55 },     // Upper left
+    
+    // Also support alternative orderings (CT, TW, CTW, CW, etc.)
+    '(CT)': { x: 171, y: -55 },      // Upper right
+    '(TW)': { x: 106, y: 145 },      // Lower right
+    '(CTW)': { x: -106, y: 145 },    // Lower left
+    '(TWC)': { x: -106, y: 145 },    // Lower left
+    '(WCT)': { x: -106, y: 145 },    // Lower left
+    '(CW)': { x: -171, y: -55 },     // Upper left
+  };
+  
+  // Check if all states are in our predefined positions
+  const allStatesKnown = stateNames.every(s => s in positions);
+  if (!allStatesKnown) return {};
+  
+  const positionMap: Record<string, { x: number; y: number }> = {};
+  stateNames.forEach(state => {
+    positionMap[state] = positions[state];
+  });
+  
+  return positionMap;
+}
 
 export class GraphRenderer {
   private cy: Core | null = null;
@@ -39,9 +64,9 @@ export class GraphRenderer {
     // Filter edges by probability threshold
     const filteredEdges = graphData.edges.filter(e => e.p >= probThreshold);
 
-    // Check if we should use preset positions (5 states matching the preset keys)
-    const usePresetPositions = graphData.nodes.length === 5 &&
-      graphData.nodes.every(n => n.id in PRESET_POSITIONS_5_STATES);
+    // Get preset positions for 5-state (n=3) case
+    const presetPositions = graphData.nodes.length === 5 ? getPentagonPositions(graphData.nodes.map(n => n.id)) : {};
+    const usePresetPositions = Object.keys(presetPositions).length > 0;
 
     // Convert to Cytoscape format
     const elements: cytoscape.ElementDefinition[] = [
@@ -57,8 +82,8 @@ export class GraphRenderer {
         };
 
         // Add preset position if available
-        if (usePresetPositions && node.id in PRESET_POSITIONS_5_STATES) {
-          element.position = PRESET_POSITIONS_5_STATES[node.id];
+        if (usePresetPositions && node.id in presetPositions) {
+          element.position = presetPositions[node.id];
         }
 
         return element;

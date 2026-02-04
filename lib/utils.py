@@ -64,13 +64,21 @@ def get_geoengineering_levels(states: List[State]) -> pd.DataFrame:
 
 
 def list_members(state: str) -> List[str]:
-    """ Lists all the member countries of the existing coalition.
+    """ Lists all the member countries of all existing coalitions.
 
-    For instance, list_current_members('(WTC)') returns ['W', 'T', 'C'].
-    For ( ), returns an empty list.
+    For instance:
+        list_members('(WTC)') returns ['W', 'T', 'C']
+        list_members('(CT)(FW)') returns ['C', 'T', 'F', 'W']
+        list_members('( )') returns []
     """
-    no_brackets = list(state[state.find("(")+1:state.find(")")])
-    return [char for char in no_brackets if char != " "]
+    import re
+    # Find all parenthesized groups and extract letters
+    coalitions = re.findall(r'\(([A-Z]*)\)', state)
+    # Flatten and return all members from all coalitions
+    members = []
+    for coalition in coalitions:
+        members.extend(list(coalition))
+    return members
 
 
 def get_approval_committee(effectivity: Dict[tuple, int], players: List[str],

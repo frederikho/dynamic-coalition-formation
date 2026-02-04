@@ -244,13 +244,8 @@ print("Outer iterations:", solver_info['outer_iterations'])
 
 ### Validation on Known Equilibria
 
-The solver has been validated on all three equilibria from the paper:
+The solver has been validated on all three equilibria from the paper by successfully recovering them from random initialization:
 
-```bash
-python3 -m lib.equilibrium.test_solver
-```
-
-This tests:
 1. **Weak governance** scenario
 2. **Power threshold** scenario
 3. **Power threshold without unanimity** scenario
@@ -260,6 +255,16 @@ This tests:
 - ✅ Value functions match exactly (max difference: 0.0)
 - ✅ Transition matrices match exactly (max difference: 0.0)
 - ✅ All equilibrium conditions are satisfied
+
+### Effectivity Rules Validation
+
+The effectivity correspondence implementation can be validated against the strategy tables:
+
+```bash
+python3 test_effectivity.py
+```
+
+This verifies that `heyen_lehtomaa_2021()` in `lib/effectivity.py` correctly implements the game rules.
 
 ### Test Output Example
 

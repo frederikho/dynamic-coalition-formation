@@ -295,3 +295,6 @@ The transition probability matrix P shows how likely the system moves from one s
 - Each row sums to 1 (system must be somewhere next period)
 
 High-probability transitions indicate the likely evolution path. Absorbing states have P[x,x] = 1.
+
+### Notes
+Never use fallbacks. Better fail early than that it seems it works while it actually doesnt. 

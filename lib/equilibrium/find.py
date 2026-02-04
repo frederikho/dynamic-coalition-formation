@@ -9,105 +9,44 @@ import argparse
 import pandas as pd
 import numpy as np
 from pathlib import Path
-import hashlib
-import json
 import time
 from datetime import datetime
+
 from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
 from lib.equilibrium.solver import EquilibriumSolver
-from lib.equilibrium.excel_writer import write_strategy_table_excel
-from lib.utils import (derive_effectivity, get_payoff_matrix,
-                       verify_equilibrium, get_geoengineering_levels)
+from lib.equilibrium.excel_writer import (
+    write_strategy_table_excel,
+    generate_filename,
+    generate_config_hash
+)
+from lib.effectivity import heyen_lehtomaa_2021
+from lib.utils import (
+    derive_effectivity,
+    get_payoff_matrix,
+    verify_equilibrium,
+    get_geoengineering_levels,
+    list_members
+)
 from lib.probabilities import TransitionProbabilities
 from lib.mdp import MDP
-
-
-def generate_config_hash(config, length=6):
-    """
-    Generate a short hash from configuration parameters.
-
-    Args:
-        config: Configuration dictionary
-        length: Length of hash to return (default: 6)
-
-    Returns:
-        Short hash string (e.g., 'a3f2b1')
-    """
-    # Create a sorted JSON string of relevant config parameters
-    # Exclude non-config items like 'experiment_name'
-    hash_params = {k: v for k, v in sorted(config.items())
-                   if k not in ['experiment_name', 'state_names']}
-
-    # Convert to JSON string (with sorted keys for consistency)
-    config_str = json.dumps(hash_params, sort_keys=True, default=str)
-
-    # Generate hash
-    hash_obj = hashlib.md5(config_str.encode())
-    return hash_obj.hexdigest()[:length]
-
-
-def generate_filename(config, description=None, output_dir='./strategy_tables'):
-    """
-    Generate filename from configuration parameters.
-
-    Format: eq_n{n}_{power_rule_abbrev}_{unan/maj}_{description}_{hash}.xlsx
-    Example: eq_n3_power_thresh_unan_RICE50_a3f2b1.xlsx
-
-    Args:
-        config: Configuration dictionary
-        description: Optional custom description/tag
-        output_dir: Output directory
-
-    Returns:
-        Full path to output file
-    """
-    # Number of players
-    n = len(config['players'])
-
-    # Power rule abbreviation
-    power_rule_abbrev = {
-        'power_threshold': 'power_thresh',
-        'weak_governance': 'weak_gov',
-        'weak': 'weak_gov',
-        'threshold': 'power_thresh'
-    }.get(config['power_rule'], config['power_rule'][:12])
-
-    # Unanimity abbreviation
-    unanimity_abbrev = 'unan' if config.get('unanimity_required', True) else 'maj'
-
-    # Generate hash
-    config_hash = generate_config_hash(config)
-
-    # Build filename parts
-    parts = [
-        'eq',
-        f'n{n}',
-        power_rule_abbrev,
-        unanimity_abbrev
-    ]
-
-    # Add optional description
-    if description:
-        # Sanitize description (remove special chars, limit length)
-        clean_desc = ''.join(c for c in description if c.isalnum() or c in '-_')[:20]
-        parts.append(clean_desc)
-
-    # Add hash
-    parts.append(config_hash)
-
-    # Combine into filename
-    filename = '_'.join(parts) + '.xlsx'
-
-    return str(Path(output_dir) / filename)
+from lib.coalition_structures import generate_coalition_structures, generate_all_coalition_maps
 
 
 def setup_experiment(config):
-    """Setup experiment configuration."""
+    """
+    Setup experiment configuration.
 
+    Args:
+        config: Configuration dictionary
+
+    Returns:
+        Dictionary with game setup (players, states, effectivity, payoffs, etc.)
+    """
     # Initialize countries
     all_countries = []
+    country_dict = {}
     for player in config["players"]:
         country = Country(
             name=player,
@@ -118,41 +57,64 @@ def setup_experiment(config):
             power=config["power"][player]
         )
         all_countries.append(country)
+        country_dict[player] = country
 
-    # Initialize states
-    W, T, C = all_countries
-    coalition_map = {
-        '( )': [Coalition([W]), Coalition([T]), Coalition([C])],
-        '(TC)': [Coalition([W]), Coalition([T, C])],
-        '(WC)': [Coalition([T]), Coalition([W, C])],
-        '(WT)': [Coalition([C]), Coalition([W, T])],
-        '(WTC)': [Coalition([W, T, C])]
-    }
+    # Generate coalition structures dynamically based on number of players
+    players = config["players"]
 
-    states = [State(
-        name=name,
-        coalitions=coalition_map[name],
-        all_countries=all_countries,
-        power_rule=config["power_rule"],
-        min_power=config["min_power"]
-    ) for name in config["state_names"]]
+    # Generate state names if not provided
+    if "state_names" not in config or config["state_names"] is None:
+        state_names = generate_coalition_structures(players)
+        config["state_names"] = state_names
+    else:
+        state_names = config["state_names"]
+
+    # Generate coalition maps for all states
+    all_coalition_maps = generate_all_coalition_maps(players)
+
+    # Create State objects for each coalition structure
+    states = []
+    for state_name in state_names:
+        if state_name not in all_coalition_maps:
+            raise ValueError(f"Unknown state: {state_name}")
+
+        # Get the coalition map for this state
+        coalition_player_lists = all_coalition_maps[state_name]
+
+        # Convert player name lists to Coalition objects
+        coalitions = [
+            Coalition([country_dict[player_name] for player_name in player_list])
+            for player_list in coalition_player_lists
+        ]
+
+        state = State(
+            name=state_name,
+            coalitions=coalitions,
+            all_countries=all_countries,
+            power_rule=config["power_rule"],
+            min_power=config.get("min_power", None)
+        )
+        states.append(state)
 
     payoffs = get_payoff_matrix(states=states, columns=config["players"])
     geoengineering = get_geoengineering_levels(states=states)
 
-    # Derive effectivity from template
-    excel_file = "./strategy_tables/initial_strategy_profile.xlsx"
-    template_df = pd.read_excel(excel_file, header=[0, 1], index_col=[0, 1, 2])
-
-    effectivity = derive_effectivity(
-        df=template_df,
-        players=config["players"],
-        states=config["state_names"]
-    )
+    # Derive effectivity from template or generate
+    template_file = config.get("template_file", None)
+    if template_file and Path(template_file).exists():
+        template_df = pd.read_excel(template_file, header=[0, 1], index_col=[0, 1, 2])
+        effectivity = derive_effectivity(
+            df=template_df,
+            players=config["players"],
+            states=state_names
+        )
+    else:
+        # Generate effectivity based on Heyen & Lehtomaa (2021) rules
+        effectivity = heyen_lehtomaa_2021(players, state_names)
 
     return {
         'players': config["players"],
-        'state_names': config["state_names"],
+        'state_names': state_names,
         'effectivity': effectivity,
         'protocol': config["protocol"],
         'payoffs': payoffs,
@@ -160,58 +122,35 @@ def setup_experiment(config):
         'discounting': config["discounting"],
         'unanimity_required': config["unanimity_required"],
         'power_rule': config["power_rule"],
-        'min_power': config["min_power"]
+        'min_power': config.get("min_power", None)
     }
 
 
-def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None):
+def _get_solver_params(config, user_params=None):
     """
-    Find equilibrium for a given configuration.
+    Get solver parameters with scenario-specific defaults.
 
     Args:
         config: Configuration dictionary
-        output_file: Path to save the equilibrium strategy profile (optional)
-        solver_params: Dictionary of solver parameters (optional)
-        verbose: Whether to print progress
-        description: Optional description/tag for filename generation
+        user_params: User-provided solver parameters (optional)
 
     Returns:
-        Dictionary with equilibrium results
+        Dictionary of solver parameters
     """
-    # Track runtime
-    start_time = time.time()
-    start_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if user_params is None:
+        user_params = {}
 
-    if solver_params is None:
-        solver_params = {}
-
-    # Default solver parameters
+    # Default parameters resembling Jere's implementation
     default_params = {
-        'tau_p_init': 1.0,
-        'tau_r_init': 1.0,
-        'tau_decay': 0.95,
-        'tau_min': 0.01,
-        'max_outer_iter': 1000,  # Safety valve - rarely hit with convergence criterion
+        'tau_p_init': 1e-6,
+        'tau_r_init': 1e-6,
+        'tau_decay': 0.6,
+        'tau_min': 1e-8,
+        'max_outer_iter': 400,
         'max_inner_iter': 100,
-        'damping': 0.5,
-        'inner_tol': 1e-6,
-        'outer_tol': None,  # Defaults to 10*inner_tol
-        'consecutive_tol': 2,
-        'tau_margin': 0.01,
-        'project_to_exact': True
-    }
-
-    # overwrite with parameters to resemble Jere's implementation
-    default_params = {
-        'tau_p_init': 1e-6, # if this is small, the softmax ...
-        'tau_r_init': 1e-6, # if this is small, the sigmoid for acceptance becomes step-like
-        'tau_decay': 0.9, # if this is close to 1, the annealing is slow
-        'tau_min': 1e-8, # the temperature that has to be reached for convergence
-        'max_outer_iter': 1000,  # Safety valve - convergence criterion will stop earlier
-        'max_inner_iter': 100,
-        'damping': 1,  # 1 means no damping
+        'damping': 1,
         'inner_tol': 1e-10,
-        'outer_tol': 1e-9,  # If this is None, defaults to 10*inner_tol = 1e-9
+        'outer_tol': 1e-9,
         'consecutive_tol': 1,
         'tau_margin': 0.01,
         'project_to_exact': True
@@ -220,20 +159,262 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     # Special parameters for non-unanimity scenarios (more complex, needs more smoothing)
     if not config['unanimity_required']:
         default_params.update({
-            'tau_p_init': 1.0,      # Start with higher temperature for exploration
-            'tau_r_init': 1.0,      # Smoother sigmoid to avoid oscillations
-            'tau_decay': 0.6,      # Slower annealing
-            'tau_min': 0.01,        # Higher minimum to maintain some smoothness
-            'damping': 0.5,         # Add damping to stabilize updates
-            'max_inner_iter': 100,  # More iterations per temperature
+            'tau_p_init': 1.0,
+            'tau_r_init': 1.0,
+            'tau_decay': 0.95,
+            'tau_min': 0.01,
+            'damping': 0.5,
+            'max_inner_iter': 100,
         })
 
-    default_params.update(solver_params)
+    # Special parameters for n>=4 (larger state space needs more smoothing)
+    if len(config['players']) >= 4:
+        default_params.update({
+            'tau_p_init': 1,
+            'tau_r_init': 1,
+            'tau_decay': 0.9,
+            'tau_min': 0.05,
+            'damping': 0.6,
+            'max_inner_iter': 250,
+            'max_outer_iter': 500,
+            'inner_tol': 1e-8,
+            'outer_tol': 1e-8,
+            'consecutive_tol': 1,
+            'project_to_exact': False
+        })
+
+    # Update with user-provided parameters
+    default_params.update(user_params)
+
+    return default_params
+
+
+def _print_solver_params(params):
+    """Print solver parameters in consistent order."""
+    param_order = ['tau_p_init', 'tau_r_init', 'tau_decay', 'tau_min',
+                  'max_outer_iter', 'max_inner_iter', 'damping',
+                  'inner_tol', 'outer_tol', 'consecutive_tol',
+                  'tau_margin', 'project_to_exact']
+
+    print("Solver parameters:")
+    for key in param_order:
+        if key in params:
+            print(f"  {key}: {params[key]}")
+    print()
+
+
+def _run_solver(solver, params, checkpoint_dir='./checkpoints', load_from_checkpoint=False, config_hash=None):
+    """
+    Run the equilibrium solver with KeyboardInterrupt handling.
+
+    Args:
+        solver: EquilibriumSolver instance
+        params: Solver parameters
+        checkpoint_dir: Directory for checkpoint files
+        load_from_checkpoint: Whether to load from checkpoint
+        config_hash: Configuration hash for checkpoint identification
+
+    Returns:
+        Tuple of (strategy_df, solver_result)
+    """
+    try:
+        return solver.solve(
+            **params,
+            checkpoint_dir=checkpoint_dir,
+            load_from_checkpoint=load_from_checkpoint,
+            config_hash=config_hash
+        )
+    except KeyboardInterrupt:
+        print("\n\n" + "="*80)
+        print("INTERRUPTED BY USER")
+        print("="*80)
+        print("Solver stopped. No output file saved.")
+        import sys
+        sys.exit(0)
+
+
+def _compute_verification(strategy_df, setup):
+    """
+    Compute transition probabilities, MDP, and value functions.
+
+    Args:
+        strategy_df: Strategy DataFrame (filled, no NaN)
+        setup: Setup dictionary from setup_experiment()
+
+    Returns:
+        Tuple of (V, P, P_proposals, P_approvals)
+    """
+    # Compute transition probabilities
+    tp = TransitionProbabilities(
+        df=strategy_df,
+        effectivity=setup['effectivity'],
+        players=setup['players'],
+        states=setup['state_names'],
+        protocol=setup['protocol'],
+        unanimity_required=setup['unanimity_required']
+    )
+    P, P_proposals, P_approvals = tp.get_probabilities()
+
+    # Solve MDP for value functions
+    mdp = MDP(
+        n_states=len(setup['state_names']),
+        transition_probs=P,
+        discounting=setup['discounting']
+    )
+
+    V = pd.DataFrame(index=setup['state_names'], columns=setup['players'])
+    for player in setup['players']:
+        V.loc[:, player] = mdp.solve_value_func(setup['payoffs'].loc[:, player])
+
+    return V, P, P_proposals, P_approvals
+
+
+def _build_metadata(config, setup, solver_params, solver_result,
+                    verification_success, runtime_seconds, start_time, end_time,
+                    description=None):
+    """
+    Build metadata dictionary for Excel file.
+
+    Args:
+        config: Configuration dictionary
+        setup: Setup dictionary
+        solver_params: Solver parameters used
+        solver_result: Result from solver
+        verification_success: Boolean verification result
+        runtime_seconds: Runtime in seconds
+        start_time: Start timestamp string
+        end_time: End timestamp string
+        description: Optional description string
+
+    Returns:
+        Metadata dictionary
+    """
+    metadata = {
+        '--- RUN INFO ---': '',
+        'start_time': start_time,
+        'end_time': end_time,
+        'runtime_seconds': f'{runtime_seconds:.2f}',
+        'runtime_formatted': f'{runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s',
+        'verification_success': verification_success,
+        '': '',
+        '--- GAME CONFIG ---': '',
+        'n_players': len(setup['players']),
+        'players': ', '.join(setup['players']),
+        'n_states': len(setup['state_names']),
+        'states': ', '.join(setup['state_names']),
+        'power_rule': config['power_rule'],
+        'min_power': config.get('min_power', 'N/A'),
+        'unanimity_required': config['unanimity_required'],
+        'discounting': config['discounting'],
+        ' ': '',
+        '--- PLAYER PARAMETERS ---': '',
+    }
+
+    # Add player-specific parameters
+    for player in setup['players']:
+        metadata[f'base_temp_{player}'] = config['base_temp'][player]
+        metadata[f'ideal_temp_{player}'] = config['ideal_temp'][player]
+        metadata[f'delta_temp_{player}'] = config['delta_temp'][player]
+        metadata[f'm_damage_{player}'] = config['m_damage'][player]
+        metadata[f'power_{player}'] = config['power'][player]
+
+    # Add protocol
+    metadata['  '] = ''
+    metadata['--- PROTOCOL ---'] = ''
+    for player in setup['players']:
+        metadata[f'protocol_{player}'] = config['protocol'][player]
+
+    # Add solver info
+    metadata['   '] = ''
+    metadata['--- SOLVER INFO ---'] = ''
+    metadata['converged'] = solver_result.get('converged', 'N/A')
+    metadata['outer_iterations'] = solver_result.get('outer_iterations', 'N/A')
+    metadata['final_tau_p'] = f"{solver_result.get('final_tau_p', 'N/A'):.6f}" if 'final_tau_p' in solver_result else 'N/A'
+    metadata['final_tau_r'] = f"{solver_result.get('final_tau_r', 'N/A'):.6f}" if 'final_tau_r' in solver_result else 'N/A'
+
+    # Add solver parameters used
+    metadata['     '] = ''
+    metadata['--- SOLVER PARAMETERS ---'] = ''
+    param_order = ['tau_p_init', 'tau_r_init', 'tau_decay', 'tau_min',
+                  'max_outer_iter', 'max_inner_iter', 'damping',
+                  'inner_tol', 'outer_tol', 'consecutive_tol',
+                  'tau_margin', 'project_to_exact']
+    for key in param_order:
+        if key in solver_params:
+            metadata[f'solver_{key}'] = solver_params[key]
+
+    # Add config hash for reference
+    metadata['    '] = ''
+    metadata['config_hash'] = generate_config_hash(config, length=10)
+
+    # Add description if provided
+    if description:
+        metadata['custom_description'] = description
+
+    return metadata
+
+
+def _save_to_file(strategy_df, output_file, setup, metadata, verbose=True):
+    """
+    Save strategy profile to Excel file with metadata.
+
+    Args:
+        strategy_df: Strategy DataFrame
+        output_file: Output file path
+        setup: Setup dictionary
+        metadata: Metadata dictionary
+        verbose: Whether to print status
+    """
+    # Ensure directory exists
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write with custom Excel writer to match original format exactly
+    write_strategy_table_excel(
+        strategy_df, output_file, setup['players'],
+        setup['effectivity'], setup['state_names'], metadata=metadata
+    )
+
+    if verbose:
+        print(f"\nEquilibrium strategy saved to: {output_file}")
+        runtime_seconds = float(metadata['runtime_seconds'])
+        print(f"Runtime: {runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s")
+
+
+def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None, load_from_checkpoint=False):
+    """
+    Find equilibrium for a given configuration.
+
+    Args:
+        config: Configuration dictionary
+        output_file: Path to save the equilibrium strategy profile (optional)
+                    Use 'auto' to generate filename automatically
+        solver_params: Dictionary of solver parameters (optional)
+        verbose: Whether to print progress
+        description: Optional description/tag for filename generation
+        load_from_checkpoint: Whether to load from checkpoint if it exists
+
+    Returns:
+        Dictionary with equilibrium results
+    """
+    # Track runtime
+    start_time = time.time()
+    start_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # Setup experiment
     setup = setup_experiment(config)
 
-    # Run equilibrium solver
+    # Generate config hash for checkpoint identification
+    config_hash = generate_config_hash(config, length=10)
+
+    # Get solver parameters
+    solver_params = _get_solver_params(config, solver_params)
+
+    # Print solver parameters
+    if verbose:
+        _print_solver_params(solver_params)
+
+    # Create and run equilibrium solver
     solver = EquilibriumSolver(
         players=setup['players'],
         states=setup['state_names'],
@@ -245,34 +426,22 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         verbose=verbose
     )
 
-    # Solve for equilibrium
-    found_strategy_df, solver_result = solver.solve(**default_params)
+    found_strategy_df, solver_result = _run_solver(
+        solver,
+        solver_params,
+        checkpoint_dir='./checkpoints',
+        load_from_checkpoint=load_from_checkpoint,
+        config_hash=config_hash
+    )
 
     # Fill NaN values for non-committee members
     found_strategy_df_filled = found_strategy_df.copy()
     found_strategy_df_filled.fillna(0., inplace=True)
 
-    # Verify the found equilibrium
-    tp = TransitionProbabilities(
-        df=found_strategy_df_filled,
-        effectivity=setup['effectivity'],
-        players=setup['players'],
-        states=setup['state_names'],
-        protocol=setup['protocol'],
-        unanimity_required=setup['unanimity_required']
-    )
-    P, P_proposals, P_approvals = tp.get_probabilities()
+    # Compute verification
+    V, P, P_proposals, P_approvals = _compute_verification(found_strategy_df_filled, setup)
 
-    mdp = MDP(
-        n_states=len(setup['state_names']),
-        transition_probs=P,
-        discounting=setup['discounting']
-    )
-
-    V = pd.DataFrame(index=setup['state_names'], columns=setup['players'])
-    for player in setup['players']:
-        V.loc[:, player] = mdp.solve_value_func(setup['payoffs'].loc[:, player])
-
+    # Build result dictionary
     result = {
         'experiment_name': config.get('experiment_name', 'equilibrium'),
         'V': V,
@@ -290,6 +459,8 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
 
     # Verify equilibrium
     success, message = verify_equilibrium(result)
+    result['verification_success'] = success
+    result['verification_message'] = message
 
     if verbose:
         print("\n" + "=" * 80)
@@ -314,74 +485,14 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         if output_file == 'auto':
             output_file = generate_filename(config, description=description)
 
-        # Ensure directory exists
-        output_path = Path(output_file)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Build metadata dictionary
-        metadata = {
-            '--- RUN INFO ---': '',
-            'start_time': start_timestamp,
-            'end_time': end_timestamp,
-            'runtime_seconds': f'{runtime_seconds:.2f}',
-            'runtime_formatted': f'{runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s',
-            'verification_success': success,
-            '': '',
-            '--- GAME CONFIG ---': '',
-            'n_players': len(setup['players']),
-            'players': ', '.join(setup['players']),
-            'n_states': len(setup['state_names']),
-            'states': ', '.join(setup['state_names']),
-            'power_rule': config['power_rule'],
-            'min_power': config.get('min_power', 'N/A'),
-            'unanimity_required': config['unanimity_required'],
-            'discounting': config['discounting'],
-            ' ': '',
-            '--- PLAYER PARAMETERS ---': '',
-        }
-
-        # Add player-specific parameters
-        for player in setup['players']:
-            metadata[f'base_temp_{player}'] = config['base_temp'][player]
-            metadata[f'ideal_temp_{player}'] = config['ideal_temp'][player]
-            metadata[f'delta_temp_{player}'] = config['delta_temp'][player]
-            metadata[f'm_damage_{player}'] = config['m_damage'][player]
-            metadata[f'power_{player}'] = config['power'][player]
-
-        # Add protocol
-        metadata['  '] = ''
-        metadata['--- PROTOCOL ---'] = ''
-        for player in setup['players']:
-            metadata[f'protocol_{player}'] = config['protocol'][player]
-
-        # Add solver info
-        metadata['   '] = ''
-        metadata['--- SOLVER INFO ---'] = ''
-        metadata['converged'] = solver_result.get('converged', 'N/A')
-        metadata['outer_iterations'] = solver_result.get('outer_iterations', 'N/A')
-        metadata['final_tau_p'] = f"{solver_result.get('final_tau_p', 'N/A'):.6f}" if 'final_tau_p' in solver_result else 'N/A'
-        metadata['final_tau_r'] = f"{solver_result.get('final_tau_r', 'N/A'):.6f}" if 'final_tau_r' in solver_result else 'N/A'
-
-        # Add config hash for reference
-        metadata['    '] = ''
-        metadata['config_hash'] = generate_config_hash(config, length=10)
-
-        # Add description if provided
-        if description:
-            metadata['custom_description'] = description
-
-        # Write with custom Excel writer to match original format exactly
-        write_strategy_table_excel(
-            found_strategy_df, output_file, setup['players'],
-            setup['effectivity'], setup['state_names'], metadata=metadata
+        # Build metadata
+        metadata = _build_metadata(
+            config, setup, solver_params, solver_result, success,
+            runtime_seconds, start_timestamp, end_timestamp, description
         )
 
-        if verbose:
-            print(f"\nEquilibrium strategy saved to: {output_file}")
-            print(f"Runtime: {runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s")
-
-    result['verification_success'] = success
-    result['verification_message'] = message
+        # Save to file
+        _save_to_file(found_strategy_df, output_file, setup, metadata, verbose)
 
     return result
 
@@ -394,9 +505,16 @@ def main():
     parser.add_argument(
         '--scenario',
         type=str,
-        choices=['weak_governance', 'power_threshold', 'power_threshold_no_unanimity', 'custom'],
+        choices=['weak_governance', 'power_threshold', 'power_threshold_no_unanimity',
+                 'weak_governance_n4', 'power_threshold_n4', 'custom'],
         default='power_threshold',
         help='Predefined scenario to use'
+    )
+    parser.add_argument(
+        '--n-players',
+        type=int,
+        default=None,
+        help='Number of players (overrides scenario default)'
     )
     parser.add_argument(
         '--output',
@@ -427,49 +545,79 @@ def main():
         action='store_true',
         help='Suppress verbose output'
     )
+    parser.add_argument(
+        '--load-from-checkpoint',
+        action='store_true',
+        help='Resume from checkpoint if it exists for this configuration'
+    )
 
     args = parser.parse_args()
 
-    # Setup configuration based on scenario
-    players = ["W", "T", "C"]
-    n_players = len(players)
+    # Determine number of players
+    if args.scenario.endswith('_n4'):
+        default_n_players = 4
+    else:
+        default_n_players = 3
 
-    base_config = dict(
-        base_temp={"W": 21.5, "T": 14.0, "C": 11.5},
-        ideal_temp={player: 13. for player in players},
-        delta_temp={player: 3. for player in players},
-        power={player: 1/n_players for player in players},
-        protocol={player: 1/n_players for player in players},
-        discounting=0.99,
-        players=players,
-        state_names=['( )', '(TC)', '(WC)', '(WT)', '(WTC)']
-    )
+    n_players = args.n_players if args.n_players is not None else default_n_players
+
+    # Setup configuration based on number of players
+    if n_players == 3:
+        players = ["W", "T", "C"]
+        base_config = dict(
+            base_temp={"W": 21.5, "T": 14.0, "C": 11.5},
+            ideal_temp={player: 13. for player in players},
+            delta_temp={player: 3. for player in players},
+            power={player: 1/n_players for player in players},
+            protocol={player: 1/n_players for player in players},
+            discounting=0.99,
+            players=players,
+            state_names=None  # Will be generated automatically
+        )
+    elif n_players == 4:
+        players = ["W", "T", "C", "F"]
+        base_config = dict(
+            base_temp={"W": 21.5, "T": 14.0, "C": 11.5, "F": 9.0},
+            ideal_temp={player: 13. for player in players},
+            delta_temp={player: 3. for player in players},
+            power={player: 1/n_players for player in players},
+            protocol={player: 1/n_players for player in players},
+            discounting=0.99,
+            players=players,
+            state_names=None  # Will be generated automatically
+        )
+    else:
+        raise ValueError(f"Unsupported number of players: {n_players}")
+
+    # Scenario-specific configurations
+    scenario_base = args.scenario.replace('_n4', '')  # Remove n4 suffix for lookup
 
     scenario_configs = {
         'weak_governance': {
-            'experiment_name': 'weak_governance',
+            'experiment_name': f'weak_governance_n{n_players}',
             'm_damage': {player: 1. for player in players},
             'power_rule': 'weak_governance',
             'min_power': None,
             'unanimity_required': True
         },
         'power_threshold': {
-            'experiment_name': 'power_threshold',
+            'experiment_name': f'power_threshold_n{n_players}',
             'm_damage': {player: 1. for player in players},
             'power_rule': 'power_threshold',
-            'min_power': 0.5,
+            'min_power': 0.501,
             'unanimity_required': True
         },
         'power_threshold_no_unanimity': {
-            'experiment_name': 'power_threshold_no_unanimity',
-            'm_damage': {"W": 0.75, "T": 1.25, "C": 1.},
+            'experiment_name': f'power_threshold_no_unanimity_n{n_players}',
+            'm_damage': {player: (0.75 if player == 'W' else 1.25 if player == 'T' else 1.)
+                        for player in players},
             'power_rule': 'power_threshold',
-            'min_power': 0.5,
+            'min_power': 0.501,
             'unanimity_required': False
         }
     }
 
-    config = {**base_config, **scenario_configs[args.scenario]}
+    config = {**base_config, **scenario_configs[scenario_base]}
 
     # Solver parameters: only include when provided on CLI so file defaults remain
     solver_params = {}
@@ -497,7 +645,8 @@ def main():
         output_file=args.output,
         solver_params=solver_params,
         verbose=not args.quiet,
-        description=args.description
+        description=args.description,
+        load_from_checkpoint=args.load_from_checkpoint
     )
 
     if result['verification_success']:

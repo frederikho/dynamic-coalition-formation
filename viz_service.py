@@ -4,6 +4,7 @@ Exposes HTTP endpoints to compute and serve transition probability graphs from X
 """
 
 import argparse
+import copy
 import json
 from pathlib import Path
 from typing import Dict, List, Any
@@ -139,6 +140,105 @@ DEFAULT_CONFIG = {
 }
 
 
+def parse_coalition_structure(state_name: str, all_countries: List[Country]) -> List[Coalition]:
+    """
+    Parse a state name like '(CT)' or '(WTC)' and create the corresponding coalition structure.
+    
+    Args:
+        state_name: Coalition structure notation like '( )', '(CT)', '(WTC)', etc.
+        all_countries: List of all Country objects
+    
+    Returns:
+        List of Coalition objects representing this structure
+    """
+    # Create a mapping from country names to country objects
+    country_map = {c.name: c for c in all_countries}
+    
+    if state_name == '( )':
+        # All singletons
+        return [Coalition([c]) for c in all_countries]
+    
+    # Parse coalitions from the state name
+    # Remove outer spaces and split by ')(' to get individual coalitions
+    coalitions_str = state_name.strip().strip('(').strip(')')
+    
+    if not coalitions_str:
+        # Empty means all singletons
+        return [Coalition([c]) for c in all_countries]
+    
+    # Split by ')(' to find multiple coalitions
+    coalition_parts = []
+    current = ""
+    depth = 0
+    for char in state_name:
+        if char == '(':
+            depth += 1
+            if depth == 1:
+                current = ""
+        elif char == ')':
+            depth -= 1
+            if depth == 0 and current:
+                coalition_parts.append(current)
+                current = ""
+        elif depth == 1:
+            current += char
+    
+    # Build set of countries in coalitions
+    countries_in_coalitions = set()
+    coalitions = []
+    
+    for part in coalition_parts:
+        # Each character is a country name
+        coalition_countries = []
+        for country_name in part:
+            if country_name in country_map:
+                coalition_countries.append(country_map[country_name])
+                countries_in_coalitions.add(country_name)
+        if coalition_countries:
+            coalitions.append(Coalition(coalition_countries))
+    
+    # Add singletons for countries not in any coalition
+    for country in all_countries:
+        if country.name not in countries_in_coalitions:
+            coalitions.append(Coalition([country]))
+    
+    return coalitions
+
+
+def read_metadata_from_xlsx(xlsx_path: str) -> Dict[str, Any]:
+    """
+    Read metadata from the second sheet of an XLSX file.
+    
+    Args:
+        xlsx_path: Path to the XLSX strategy profile
+        
+    Returns:
+        Dict containing metadata extracted from the file
+    """
+    try:
+        # Read the Metadata sheet
+        metadata_df = pd.read_excel(xlsx_path, sheet_name='Metadata')
+        
+        # Convert to a dictionary
+        metadata = {}
+        for _, row in metadata_df.iterrows():
+            param = row.get('Parameter')
+            value = row.get('Value')
+            
+            # Skip section headers and NaN values
+            if pd.isna(param) or pd.isna(value) or str(param).startswith('---'):
+                continue
+                
+            # Clean parameter name and store value
+            param_clean = str(param).strip()
+            metadata[param_clean] = value
+        
+        return metadata
+    except Exception as e:
+        print(f"Warning: Could not read metadata from {xlsx_path}: {e}")
+        return {}
+
+
 def compute_transition_graph(
     xlsx_path: str,
     config: Dict[str, Any] = None,
@@ -146,21 +246,72 @@ def compute_transition_graph(
 ) -> Dict[str, Any]:
     """
     Compute transition graph from an XLSX strategy profile.
+    Now reads metadata from the second sheet of the file to configure computation.
 
     Args:
         xlsx_path: Path to the XLSX strategy profile
-        config: Configuration dict (uses DEFAULT_CONFIG if None)
+        config: Configuration dict (uses DEFAULT_CONFIG if None, overridden by file metadata)
         n: Number of players (2-6)
 
     Returns:
         Dict with 'nodes', 'edges', and 'metadata'
     """
+    # Always use a deep copy to avoid state pollution between requests
     if config is None:
-        config = DEFAULT_CONFIG.copy()
+        config = copy.deepcopy(DEFAULT_CONFIG)
+    else:
+        config = copy.deepcopy(config)
+    
+    # Read metadata from file
+    file_metadata = read_metadata_from_xlsx(xlsx_path)
+    
+    # Override config with file metadata if present
+    if file_metadata:
+        if 'n_players' in file_metadata:
+            n = int(file_metadata['n_players'])
+        if 'players' in file_metadata:
+            # Parse comma-separated player list
+            players_str = str(file_metadata['players']).strip()
+            config['players'] = [p.strip() for p in players_str.split(',')]
+        if 'states' in file_metadata:
+            # Parse comma-separated state list
+            states_str = str(file_metadata['states']).strip()
+            config['state_names'] = [s.strip() for s in states_str.split(',')]
+        if 'power_rule' in file_metadata:
+            config['power_rule'] = str(file_metadata['power_rule'])
+        if 'min_power' in file_metadata and not pd.isna(file_metadata['min_power']):
+            config['min_power'] = float(file_metadata['min_power'])
+        else:
+            config['min_power'] = None
+        if 'unanimity_required' in file_metadata:
+            unanimity_val = file_metadata['unanimity_required']
+            config['unanimity_required'] = unanimity_val if isinstance(unanimity_val, bool) else str(unanimity_val).lower() == 'true'
+        if 'discounting' in file_metadata:
+            config['discounting'] = float(file_metadata['discounting'])
+        
+        # Parse player-specific parameters from metadata
+        for player in config['players']:
+            for param in ['base_temp', 'ideal_temp', 'delta_temp', 'm_damage', 'power', 'protocol']:
+                key = f'{param}_{player}'
+                if key in file_metadata and not pd.isna(file_metadata[key]):
+                    if param not in config:
+                        config[param] = {}
+                    config[param][player] = float(file_metadata[key])
+        
+        # Verify all required parameters exist for all players (for n=3 only)
+        if n == 3:
+            required_params = ['base_temp', 'ideal_temp', 'delta_temp', 'm_damage', 'power', 'protocol']
+            for param in required_params:
+                if param not in config:
+                    raise ValueError(f"Missing required parameter '{param}' in metadata")
+                for player in config['players']:
+                    if player not in config[param]:
+                        raise ValueError(f"Missing required parameter '{param}' for player '{player}' in metadata")
     
     # For n≠3, generate placeholder nodes without transitions
+    # TODO: Full n=4+ support requires updating lib/utils.py effectivity functions
     if n != 3:
-        state_names = generate_coalition_structures(n)
+        state_names = config.get("state_names") or generate_coalition_structures(n)
         nodes = []
         for i, state_name in enumerate(state_names):
             nodes.append({
@@ -185,11 +336,25 @@ def compute_transition_graph(
                     "unanimity_required": config["unanimity_required"],
                     "min_power": config["min_power"]
                 },
-                "note": "Transition probabilities not yet computed for this player count"
+                "file_metadata": file_metadata,
+                "note": f"Transition probabilities not yet computed for n={n}. Full n≠3 support requires updating effectivity functions."
             }
         }
+    
+    # 1. Read strategy profile first to get actual state names from columns
+    strategy_df = pd.read_excel(xlsx_path, header=[0, 1], index_col=[0, 1, 2])
+    
+    # Extract actual state names from the DataFrame columns (second level of MultiIndex)
+    actual_state_names = []
+    for col in strategy_df.columns:
+        state_name = col[1]  # Second level is the state name
+        if state_name not in actual_state_names:
+            actual_state_names.append(state_name)
+    
+    # Use actual state names from file, not from metadata
+    config["state_names"] = actual_state_names
 
-    # 1. Initialize countries
+    # 2. Initialize countries
     all_countries = []
     for player in config["players"]:
         country = Country(
@@ -202,27 +367,20 @@ def compute_transition_graph(
         )
         all_countries.append(country)
 
-    # 2. Initialize coalition structures
-    W, T, C = all_countries
-    coalition_map = {
-        '( )': [Coalition([W]), Coalition([T]), Coalition([C])],
-        '(TC)': [Coalition([W]), Coalition([T, C])],
-        '(WC)': [Coalition([T]), Coalition([W, C])],
-        '(WT)': [Coalition([C]), Coalition([W, T])],
-        '(WTC)': [Coalition([W, T, C])]
-    }
+    # 3. Initialize coalition structures dynamically from state names
+    states = []
+    for state_name in config["state_names"]:
+        coalitions = parse_coalition_structure(state_name, all_countries)
+        state = State(
+            name=state_name,
+            coalitions=coalitions,
+            all_countries=all_countries,
+            power_rule=config["power_rule"],
+            min_power=config["min_power"]
+        )
+        states.append(state)
 
-    states = [State(
-        name=name,
-        coalitions=coalition_map[name],
-        all_countries=all_countries,
-        power_rule=config["power_rule"],
-        min_power=config["min_power"]
-    ) for name in config["state_names"]]
-
-    # 3. Read strategy profile
-    strategy_df = pd.read_excel(xlsx_path, header=[0, 1], index_col=[0, 1, 2])
-
+    # 4. Derive effectivity
     effectivity = derive_effectivity(
         df=strategy_df,
         players=config["players"],
@@ -230,7 +388,7 @@ def compute_transition_graph(
     )
     strategy_df.fillna(0., inplace=True)
 
-    # 4. Compute transition probabilities
+    # 5. Compute transition probabilities
     transition_probabilities = TransitionProbabilities(
         df=strategy_df,
         effectivity=effectivity,
@@ -241,10 +399,10 @@ def compute_transition_graph(
     )
     P, P_proposals, P_approvals = transition_probabilities.get_probabilities()
 
-    # 5. Get geoengineering levels for metadata
+    # 6. Get geoengineering levels for metadata
     geo_levels = {state.name: state.geo_deployment_level for state in states}
 
-    # 6. Convert to graph format
+    # 7. Convert to graph format
     nodes = []
     for i, state_name in enumerate(config["state_names"]):
         nodes.append({
@@ -285,7 +443,8 @@ def compute_transition_graph(
                 "power_rule": config["power_rule"],
                 "unanimity_required": config["unanimity_required"],
                 "min_power": config["min_power"]
-            }
+            },
+            "file_metadata": file_metadata  # Include all file metadata
         }
     }
 
@@ -304,25 +463,15 @@ async def root():
 
 @app.get("/graph")
 async def get_graph(
-    n: int = Query(3, description="Number of players (2-6)"),
-    profile: str = Query(..., description="Path to XLSX strategy profile (relative or absolute)"),
-    power_rule: str = Query("weak_governance", description="Power rule: 'weak_governance' or 'power_threshold'"),
-    min_power: float = Query(None, description="Minimum power threshold (for power_threshold rule)"),
-    unanimity: bool = Query(True, description="Whether unanimity is required for approval")
+    profile: str = Query(..., description="Path to XLSX strategy profile (relative or absolute)")
 ):
     """
     Compute and return transition graph from an XLSX strategy profile.
+    All configuration parameters (n, power_rule, min_power, unanimity) are now read from the file's Metadata sheet.
 
     Recomputes on every request - no caching.
     """
     try:
-        # Validate number of players
-        if n < 2 or n > 6:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Number of players must be between 2 and 6, got {n}"
-            )
-        
         # Resolve path
         profile_path = Path(profile)
 
@@ -339,14 +488,8 @@ async def get_graph(
                 detail=f"Profile not found: {profile_path}"
             )
 
-        # Build config with user parameters
-        config = DEFAULT_CONFIG.copy()
-        config["power_rule"] = power_rule
-        config["min_power"] = min_power if power_rule == "power_threshold" else None
-        config["unanimity_required"] = unanimity
-
-        # Compute graph
-        graph_data = compute_transition_graph(str(profile_path), config, n)
+        # Compute graph (configuration is read from file metadata)
+        graph_data = compute_transition_graph(str(profile_path))
 
         return graph_data
 

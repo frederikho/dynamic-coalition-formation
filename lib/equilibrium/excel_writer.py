@@ -10,6 +10,9 @@ from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import pandas as pd
 import numpy as np
+import hashlib
+import json
+from pathlib import Path
 
 
 # Color scheme (from original files)
@@ -22,6 +25,85 @@ COLORS = {
     'self_acceptance': 'FFE28E4D',      # Orange for player accepting own proposal
     'nan_cell': 'FFD9D9D9',             # Gray for NaN/None cells
 }
+
+
+def generate_config_hash(config, length=6):
+    """
+    Generate a short hash from configuration parameters.
+
+    Args:
+        config: Configuration dictionary
+        length: Length of hash to return (default: 6)
+
+    Returns:
+        Short hash string (e.g., 'a3f2b1')
+    """
+    # Create a sorted JSON string of relevant config parameters
+    # Exclude non-config items like 'experiment_name'
+    hash_params = {k: v for k, v in sorted(config.items())
+                   if k not in ['experiment_name', 'state_names']}
+
+    # Convert to JSON string (with sorted keys for consistency)
+    config_str = json.dumps(hash_params, sort_keys=True, default=str)
+
+    # Generate hash
+    hash_obj = hashlib.md5(config_str.encode())
+    return hash_obj.hexdigest()[:length]
+
+
+def generate_filename(config, description=None, output_dir='./strategy_tables'):
+    """
+    Generate filename from configuration parameters.
+
+    Format: eq_n{n}_{power_rule_abbrev}_{unan/maj}_{description}_{hash}.xlsx
+    Example: eq_n3_power_thresh_unan_RICE50_a3f2b1.xlsx
+
+    Args:
+        config: Configuration dictionary
+        description: Optional custom description/tag
+        output_dir: Output directory
+
+    Returns:
+        Full path to output file
+    """
+    # Number of players
+    n = len(config['players'])
+
+    # Power rule abbreviation
+    power_rule_abbrev = {
+        'power_threshold': 'power_thresh',
+        'weak_governance': 'weak_gov',
+        'weak': 'weak_gov',
+        'threshold': 'power_thresh'
+    }.get(config['power_rule'], config['power_rule'][:12])
+
+    # Unanimity abbreviation
+    unanimity_abbrev = 'unan' if config.get('unanimity_required', True) else 'maj'
+
+    # Generate hash
+    config_hash = generate_config_hash(config)
+
+    # Build filename parts
+    parts = [
+        'eq',
+        f'n{n}',
+        power_rule_abbrev,
+        unanimity_abbrev
+    ]
+
+    # Add optional description
+    if description:
+        # Sanitize description (remove special chars, limit length)
+        clean_desc = ''.join(c for c in description if c.isalnum() or c in '-_')[:20]
+        parts.append(clean_desc)
+
+    # Add hash
+    parts.append(config_hash)
+
+    # Combine into filename
+    filename = '_'.join(parts) + '.xlsx'
+
+    return str(Path(output_dir) / filename)
 
 
 def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: list,

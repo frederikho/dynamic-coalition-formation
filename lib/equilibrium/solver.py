@@ -8,6 +8,10 @@ from random initialization.
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple, Optional
+from datetime import datetime
+from pathlib import Path
+import pickle
+import time
 from lib.probabilities import TransitionProbabilities
 from lib.mdp import MDP
 from lib.utils import derive_effectivity, get_approval_committee, verify_equilibrium
@@ -125,6 +129,9 @@ class EquilibriumSolver:
 
         # Create DataFrame (initialize with NaN)
         df = pd.DataFrame(np.nan, index=index, columns=columns)
+
+        # Sort both index and columns to improve performance and avoid warnings
+        df = df.sort_index(axis=0).sort_index(axis=1)
 
         # Fill in proposal probabilities
         for proposer in self.players:
@@ -387,6 +394,47 @@ class EquilibriumSolver:
                     else:
                         self.p_proposals[key] = 0.0
 
+    def _save_checkpoint(self, checkpoint_path: str, outer_iter: int, tau_p: float, tau_r: float, config_hash: str):
+        """Save current solver state to checkpoint file."""
+        checkpoint = {
+            'outer_iter': outer_iter,
+            'tau_p': tau_p,
+            'tau_r': tau_r,
+            'p_proposals': self.p_proposals.copy(),
+            'r_acceptances': self.r_acceptances.copy(),
+            'config_hash': config_hash,
+            'timestamp': datetime.now().isoformat()
+        }
+
+        # Ensure directory exists
+        Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
+
+        with open(checkpoint_path, 'wb') as f:
+            pickle.dump(checkpoint, f)
+
+        if self.verbose:
+            print(f"  Checkpoint saved: {checkpoint_path}")
+
+    def _load_checkpoint(self, checkpoint_path: str) -> Optional[Dict]:
+        """Load solver state from checkpoint file."""
+        if not Path(checkpoint_path).exists():
+            return None
+
+        try:
+            with open(checkpoint_path, 'rb') as f:
+                checkpoint = pickle.load(f)
+
+            if self.verbose:
+                print(f"Loaded checkpoint from iteration {checkpoint['outer_iter']}")
+                print(f"  Checkpoint created: {checkpoint['timestamp']}")
+                print(f"  Resuming from tau_p={checkpoint['tau_p']:.4f}, tau_r={checkpoint['tau_r']:.4f}")
+
+            return checkpoint
+        except Exception as e:
+            if self.verbose:
+                print(f"Warning: Could not load checkpoint: {e}")
+            return None
+
     def solve(self,
               tau_p_init: float = 1.0,
               tau_r_init: float = 1.0,
@@ -399,7 +447,10 @@ class EquilibriumSolver:
               outer_tol: Optional[float] = None,
               consecutive_tol: int = 2,
               tau_margin: float = 0.01,
-              project_to_exact: bool = True) -> Tuple[pd.DataFrame, Dict]:
+              project_to_exact: bool = True,
+              checkpoint_dir: str = './checkpoints',
+              load_from_checkpoint: bool = False,
+              config_hash: str = None) -> Tuple[pd.DataFrame, Dict]:
         """
         Solve for equilibrium strategy profile using smoothed fixed-point iteration.
 
@@ -416,6 +467,9 @@ class EquilibriumSolver:
             consecutive_tol: Number of consecutive converged outer iterations required
             tau_margin: Margin for checking if tau is near tau_min (default 0.01 = 1%)
             project_to_exact: Whether to project to exact equilibrium at end
+            checkpoint_dir: Directory to save checkpoints (default: './checkpoints')
+            load_from_checkpoint: Whether to load from checkpoint if exists
+            config_hash: Hash of configuration for checkpoint filename
 
         Returns:
             strategy_df: Equilibrium strategy DataFrame
@@ -434,14 +488,49 @@ class EquilibriumSolver:
         # Track convergence history for consecutive check
         recent_max_changes = []
 
+        # Checkpoint setup
+        checkpoint_path = None
+        if config_hash:
+            checkpoint_path = str(Path(checkpoint_dir) / f"checkpoint_{config_hash}.pkl")
+
+            # Try to load from checkpoint
+            if load_from_checkpoint:
+                checkpoint = self._load_checkpoint(checkpoint_path)
+                if checkpoint:
+                    # Restore state
+                    outer_iter = checkpoint['outer_iter'] + 1  # Resume from next iteration
+                    tau_p = checkpoint['tau_p']
+                    tau_r = checkpoint['tau_r']
+                    self.p_proposals = checkpoint['p_proposals']
+                    self.r_acceptances = checkpoint['r_acceptances']
+
+                    if self.verbose:
+                        print(f"Resuming from outer iteration {outer_iter}")
+                else:
+                    if self.verbose:
+                        print("No checkpoint found, starting fresh")
+
         if self.verbose:
             print("Starting equilibrium solver...")
             print(f"Initial tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
             print(f"Outer tolerance: {outer_tol:.2e}, consecutive required: {consecutive_tol}")
+            if checkpoint_path:
+                print(f"Checkpoints will be saved to: {checkpoint_path}")
+
+        # Timing statistics
+        timing_stats = {
+            'create_df': [],
+            'compute_transitions': [],
+            'solve_values': [],
+            'update_acceptances': [],
+            'update_proposals': [],
+            'damping': []
+        }
 
         while outer_iter < max_outer_iter:
             if self.verbose:
-                print(f"\nOuter iteration {outer_iter + 1}/{max_outer_iter}")
+                timestamp = datetime.now().strftime('%H:%M:%S')
+                print(f"\nOuter iteration {outer_iter + 1}/{max_outer_iter} [{timestamp}]")
                 print(f"  tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
 
             # Inner fixed-point iteration
@@ -452,29 +541,41 @@ class EquilibriumSolver:
                 old_acceptances = self.r_acceptances.copy()
 
                 # 1. Create strategy DataFrame
+                t0 = time.time()
                 strategy_df = self._create_strategy_dataframe()
+                timing_stats['create_df'].append(time.time() - t0)
 
                 # 2. Compute transition probabilities
+                t0 = time.time()
                 P, P_proposals, P_approvals = self._compute_transition_probabilities(
                     strategy_df
                 )
+                timing_stats['compute_transitions'].append(time.time() - t0)
 
                 # 3. Solve value functions
+                t0 = time.time()
                 V = self._solve_value_functions(P)
+                timing_stats['solve_values'].append(time.time() - t0)
 
                 # 4. Update acceptances (smoothed)
+                t0 = time.time()
                 new_acceptances = self._update_acceptances(V, tau_r)
+                timing_stats['update_acceptances'].append(time.time() - t0)
 
                 # 5. Update proposals (smoothed)
+                t0 = time.time()
                 new_proposals = self._update_proposals(V, P_approvals, tau_p)
+                timing_stats['update_proposals'].append(time.time() - t0)
 
                 # 6. Apply damping
+                t0 = time.time()
                 self.r_acceptances = self._apply_damping(
                     old_acceptances, new_acceptances, damping
                 )
                 self.p_proposals = self._apply_damping(
                     old_proposals, new_proposals, damping
                 )
+                timing_stats['damping'].append(time.time() - t0)
 
                 # Check convergence
                 proposal_change = np.max([
@@ -502,6 +603,10 @@ class EquilibriumSolver:
 
             if self.verbose:
                 print(f"  Outer iteration max_change: {max_change:.6e}")
+
+            # Save checkpoint after each outer iteration
+            if checkpoint_path and config_hash:
+                self._save_checkpoint(checkpoint_path, outer_iter, tau_p, tau_r, config_hash)
 
             # Check if strategies have stabilized
             consecutive_converged = (len(recent_max_changes) >= consecutive_tol and
@@ -618,9 +723,22 @@ class EquilibriumSolver:
             'final_max_change': max_change,
             'outer_tol': outer_tol,
             'recent_max_changes': recent_max_changes.copy(),
+            'timing_stats': timing_stats,
         }
 
         if self.verbose:
             print("\nSolver complete!")
+            print("\n" + "="*80)
+            print("TIMING ANALYSIS")
+            print("="*80)
+            for op_name, timings in timing_stats.items():
+                if timings:
+                    total_time = sum(timings)
+                    avg_time = total_time / len(timings)
+                    print(f"{op_name:25s}: {total_time:8.3f}s total, {avg_time*1000:7.3f}ms avg ({len(timings)} calls)")
+
+            total_measured = sum(sum(times) for times in timing_stats.values())
+            print(f"{'TOTAL MEASURED':25s}: {total_measured:8.3f}s")
+            print("="*80)
 
         return final_strategy_df, result

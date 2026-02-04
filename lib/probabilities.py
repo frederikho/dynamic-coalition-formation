@@ -135,7 +135,7 @@ class TransitionProbabilities:
                     # The probability of a transition being approved equals
                     # the probability that all approval committee members
                     # approve unanimously.
-                    elif 1 <= len(approvers) <= 2:
+                    elif len(approvers) >= 1:
                         probs = self.read_approval_probs(approvers, *indx)
                         p_approved = np.prod(probs)
                         # print(*indx, approvers, probs.values, p_approved)

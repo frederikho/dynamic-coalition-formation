@@ -11,20 +11,10 @@ export async function fetchProfiles(): Promise<ProfilesResponse> {
 }
 
 export async function fetchGraph(params: {
-  numPlayers: number;
   profile: string;
-  powerRule: string;
-  minPower: number | null;
-  unanimity: boolean;
 }): Promise<GraphData> {
   const url = new URL(`${API_BASE}/graph`);
-  url.searchParams.set('n', params.numPlayers.toString());
   url.searchParams.set('profile', params.profile);
-  url.searchParams.set('power_rule', params.powerRule);
-  if (params.minPower !== null) {
-    url.searchParams.set('min_power', params.minPower.toString());
-  }
-  url.searchParams.set('unanimity', params.unanimity.toString());
 
   const response = await fetch(url.toString());
   if (!response.ok) {
