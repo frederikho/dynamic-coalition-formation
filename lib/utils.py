@@ -83,7 +83,7 @@ def list_members(state: str) -> List[str]:
 
 def list_coalitions(state: str) -> List[List[str]]:
     """Lists all non-singleton coalitions in a state as lists of members.
-    
+
     For instance:
         list_coalitions('(WTC)') returns [['W', 'T', 'C']]
         list_coalitions('(CT)(FW)') returns [['C', 'T'], ['F', 'W']]
@@ -94,6 +94,30 @@ def list_coalitions(state: str) -> List[List[str]]:
     # Find all parenthesized groups with at least 2 letters
     coalitions = re.findall(r'\(([A-Z]{2,})\)', state)
     return [list(coal) for coal in coalitions]
+
+
+def get_player_coalition(player: str, state: str) -> List[str]:
+    """Returns the coalition that a player belongs to in a given state.
+
+    Returns a sorted list of all members in the player's coalition,
+    or [player] if the player is a singleton.
+
+    For instance:
+        get_player_coalition('C', '(CF)(TW)') returns ['C', 'F']
+        get_player_coalition('C', '(CFTW)') returns ['C', 'F', 'T', 'W']
+        get_player_coalition('C', '( )') returns ['C']
+        get_player_coalition('W', '(CF)') returns ['W']
+    """
+    import re
+    # Find all parenthesized groups
+    coalitions = re.findall(r'\(([A-Z]*)\)', state)
+
+    for coalition in coalitions:
+        if player in coalition:
+            return sorted(list(coalition))
+
+    # Player is a singleton
+    return [player]
 
 
 def get_approval_committee(effectivity: Dict[tuple, int], players: List[str],
@@ -196,21 +220,26 @@ def is_unilateral_breakout(proposer: str, current_state: str,
         next_state: Proposed next coalition structure. E.g., '(WC)'.
         n_players: Total number of players in the game.
 
-    For instance: 
+    For instance:
         'T' proposing '(WTC)' -> '(WC)' returns True (n=3).
         'C' proposing '(CFTW)' -> '(FTW)' returns True (n=4).
         'C' proposing '(CFT)' -> '(FT)' returns False (n=4, not grand coalition).
-    
+
     A unilateral breakout occurs when:
-    1. Proposer leaves the grand coalition (all n players -> n-1 players), OR
+    1. Proposer leaves the TRUE grand coalition (single coalition with all n players), OR
     2. Proposer leaves a 2-player coalition to all singletons
     """
 
     current_members = list_members(current_state)
     next_members = list_members(next_state)
 
-    # Breakout from grand coalition (all players -> all but proposer)
-    if len(current_members) == n_players and len(next_members) == n_players - 1:
+    # Breakout from TRUE grand coalition (not just full partition)
+    # Must check that current state is a single coalition containing all players
+    current_coalitions = list_coalitions(current_state)
+    is_grand_coalition = (len(current_coalitions) == 1 and
+                         len(current_coalitions[0]) == n_players)
+
+    if is_grand_coalition and len(next_members) == n_players - 1:
         if proposer in current_members and proposer not in next_members:
             return True
 
@@ -218,7 +247,7 @@ def is_unilateral_breakout(proposer: str, current_state: str,
     elif len(current_members) == 2 and len(next_members) == 0:
         if proposer in current_members:
             return True
-    
+
     return False
 
 

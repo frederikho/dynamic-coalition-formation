@@ -19,8 +19,9 @@ const selectedGeoLevelSpan = document.getElementById('selected-geo-level') as HT
 const outgoingTransitionsDiv = document.getElementById('outgoing-transitions') as HTMLDivElement;
 const incomingTransitionsDiv = document.getElementById('incoming-transitions') as HTMLDivElement;
 const graphContainer = document.getElementById('graph-container') as HTMLDivElement;
-const colorByAbsorbingCheckbox = document.getElementById('color-by-absorbing') as HTMLInputElement;
+const nodeColoringRadios = document.querySelectorAll('input[name="node-coloring"]') as NodeListOf<HTMLInputElement>;
 const absorbingLegendDiv = document.getElementById('absorbing-legend') as HTMLDivElement;
+const resultIndicatorDiv = document.getElementById('result-indicator') as HTMLDivElement;
 
 // State
 let currentGraphData: GraphData | null = null;
@@ -39,6 +40,12 @@ function initRenderer() {
 function getFilterMode(): 'absolute' | 'cumulative' {
   const selected = Array.from(filterModeRadios).find(radio => radio.checked);
   return (selected?.value as 'absolute' | 'cumulative') || 'absolute';
+}
+
+// Get selected node coloring mode
+function getNodeColoringMode(): 'none' | 'absorbing' | 'geoengineering' {
+  const selected = Array.from(nodeColoringRadios).find(radio => radio.checked);
+  return (selected?.value as 'none' | 'absorbing' | 'geoengineering') || 'none';
 }
 
 // Update tooltip based on filter mode
@@ -111,13 +118,17 @@ async function loadGraph() {
     initRenderer();
     const threshold = parseFloat(probThresholdInput.value) || 0;
     const filterMode = getFilterMode();
-    renderer!.render(graphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox?.checked ?? false, filterMode });
+    const coloringMode = getNodeColoringMode();
+    renderer!.render(graphData, threshold, { coloringMode, filterMode });
 
     // Update metadata display
     updateMetadata(graphData);
 
-    // Update absorbing legend
-    updateAbsorbingLegend(graphData, colorByAbsorbingCheckbox?.checked ?? false);
+    // Update result indicator
+    updateResultIndicator(graphData);
+
+    // Update legend
+    updateLegend(graphData, coloringMode);
 
     // Show appropriate status message
     if (graphData.edges.length === 0) {
@@ -137,62 +148,177 @@ async function loadGraph() {
   }
 }
 
-function updateAbsorbingLegend(data: GraphData, enabled: boolean) {
+function updateLegend(data: GraphData, coloringMode: 'none' | 'absorbing' | 'geoengineering') {
   if (!absorbingLegendDiv) return;
-  if (!enabled) {
+
+  if (coloringMode === 'none') {
     absorbingLegendDiv.innerHTML = '';
     return;
   }
 
-  // Compute absorbing sets from graph structure
-  const nodeToAbsorbing = computeAbsorbingSets(data);
-  const absorbingSetIds = new Set<number>();
-  nodeToAbsorbing.forEach(setId => {
-    if (setId !== null) absorbingSetIds.add(setId);
-  });
+  if (coloringMode === 'absorbing') {
+    // Compute absorbing sets from graph structure
+    const nodeToAbsorbing = computeAbsorbingSets(data);
+    const absorbingSetIds = new Set<number>();
+    nodeToAbsorbing.forEach(setId => {
+      if (setId !== null) absorbingSetIds.add(setId);
+    });
 
-  if (absorbingSetIds.size === 0) {
-    absorbingLegendDiv.innerHTML = '<div style="color:#999; padding:6px">No absorbing sets found</div>';
-    return;
+    if (absorbingSetIds.size === 0) {
+      absorbingLegendDiv.innerHTML = '<div style="color:#999; padding:6px">No absorbing sets found</div>';
+      return;
+    }
+
+    // Build set membership for display
+    const setMembers = new Map<number, string[]>();
+    nodeToAbsorbing.forEach((setId, nodeId) => {
+      if (setId !== null) {
+        if (!setMembers.has(setId)) {
+          setMembers.set(setId, []);
+        }
+        setMembers.get(setId)!.push(nodeId);
+      }
+    });
+
+    const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
+    const sortedIds = Array.from(absorbingSetIds).sort((a, b) => a - b);
+    const items = sortedIds.map((setId, i) => {
+      const color = palette[i % palette.length];
+      const members = setMembers.get(setId) || [];
+      const label = members.length === 1 ? members[0] : `Set ${setId + 1} (${members.length} states)`;
+      return `<div class="absorbing-legend-item" data-set-id="${setId}" style="display:flex;align-items:center;gap:8px;margin:4px 0;cursor:default"><span style="width:16px;height:12px;background:${color};display:inline-block;border-radius:2px"></span><span>${label}</span></div>`;
+    });
+    absorbingLegendDiv.innerHTML = `<div style="font-weight:600;margin-bottom:6px">Absorbing sets</div>` + items.join('');
+
+    // Attach hover listeners to legend items to highlight corresponding nodes
+    const legendItems = Array.from(absorbingLegendDiv.querySelectorAll('.absorbing-legend-item')) as HTMLDivElement[];
+    legendItems.forEach(el => {
+      el.addEventListener('mouseover', () => {
+        const sid = el.getAttribute('data-set-id');
+        if (!sid) return;
+        const setId = parseInt(sid, 10);
+        const members = setMembers.get(setId) || [];
+        // Highlight nodes and their edges via renderer
+        if (renderer) renderer.highlightNodes(members);
+      });
+      el.addEventListener('mouseout', () => {
+        if (renderer) renderer.clearHighlights();
+      });
+    });
+  } else if (coloringMode === 'geoengineering') {
+    // Find min/max G values for the scale
+    const geoLevels = data.nodes.map(n => n.meta?.geo_level || 0);
+    const minG = Math.min(...geoLevels);
+    const maxG = Math.max(...geoLevels);
+
+    // Create gradient legend
+    absorbingLegendDiv.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Geoengineering Level (G)</div>
+      <div style="margin:8px 0">
+        <div style="width:100%;height:20px;background:linear-gradient(to right, #e0f2fe, #0369a1);border:1px solid #ccc;border-radius:3px"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#666">
+        <span>${minG.toFixed(1)}°C</span>
+        <span>${maxG.toFixed(1)}°C</span>
+      </div>
+      <div style="font-size:11px;color:#999;margin-top:4px">Light = Low cooling | Dark = High cooling</div>
+    `;
+  }
+}
+
+// State for result indicator expansion
+let resultIndicatorExpanded = false;
+
+// Update result indicator
+function updateResultIndicator(data: GraphData) {
+  const expectedG = data.metadata.expected_geo_level;
+  const pi = data.metadata.stationary_distribution;
+  const mixingTime = data.metadata.mixing_time;
+
+  if (expectedG !== null && expectedG !== undefined) {
+    renderResultIndicator(expectedG, pi, mixingTime, resultIndicatorExpanded);
+    resultIndicatorDiv.style.display = 'block';
+  } else {
+    resultIndicatorDiv.style.display = 'none';
+  }
+}
+
+function renderResultIndicator(expectedG: number, pi: any, mixingTime: number | null, expanded: boolean) {
+  const expandIcon = expanded ? '▼' : '▶';
+
+  let html = `
+    <div class="result-summary">
+      <div>
+        <div><strong>E<sub>π</sub>[G]:</strong> ${expectedG.toFixed(2)}°C</div>
+        ${mixingTime !== null && mixingTime >= 0 ? `
+          <div style="font-size:12px;color:#64748b;margin-top:2px">Mixing time: ${mixingTime} steps</div>
+        ` : ''}
+      </div>
+      <span class="expand-icon">${expandIcon}</span>
+    </div>
+  `;
+
+  if (expanded && pi && currentGraphData) {
+    // Collect all unique G levels from nodes
+    const allGLevels = new Set<number>();
+    const gToProb = new Map<number, number>();
+
+    for (const node of currentGraphData.nodes) {
+      const state = node.id;
+      const gLevel = node.meta?.geo_level || 0;
+      allGLevels.add(gLevel);
+
+      const prob = (pi as Record<string, number>)[state] || 0;
+      const currentProb = gToProb.get(gLevel) || 0;
+      gToProb.set(gLevel, currentProb + prob);
+    }
+
+    // Sort G levels
+    const sortedGLevels = Array.from(allGLevels).sort((a, b) => a - b);
+    const minG = Math.min(...sortedGLevels);
+    const maxG = Math.max(...sortedGLevels);
+    const rangeG = maxG - minG || 1;
+    const maxProb = Math.max(...Array.from(gToProb.values()));
+
+    // Create bar chart with continuous axis
+    const bars = sortedGLevels.map(g => {
+      const prob = gToProb.get(g) || 0;
+      const percentage = (prob * 100).toFixed(1);
+      const leftPercent = ((g - minG) / rangeG * 100);
+      const heightPercent = maxProb > 0 ? (prob / maxProb * 100) : 0;
+
+      return `
+        <div class="g-bar" style="left: ${leftPercent}%; height: ${heightPercent}%;">
+          ${prob > 0 ? `<div class="g-bar-value">${percentage}%</div>` : ''}
+        </div>
+        <div class="g-bar-label" style="left: ${leftPercent}%;">${g.toFixed(1)}°C</div>
+      `;
+    }).join('');
+
+    html += `
+      <div class="result-details">
+        <div style="font-weight:600;margin-bottom:8px">Distribution P(G)</div>
+        <div class="g-chart">
+          <div class="g-chart-bars">
+            ${bars}
+          </div>
+          <div class="g-axis-label">Geoengineering Level (°C)</div>
+        </div>
+      </div>
+    `;
   }
 
-  // Build set membership for display
-  const setMembers = new Map<number, string[]>();
-  nodeToAbsorbing.forEach((setId, nodeId) => {
-    if (setId !== null) {
-      if (!setMembers.has(setId)) {
-        setMembers.set(setId, []);
-      }
-      setMembers.get(setId)!.push(nodeId);
-    }
-  });
-
-  const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
-  const sortedIds = Array.from(absorbingSetIds).sort((a, b) => a - b);
-  const items = sortedIds.map((setId, i) => {
-    const color = palette[i % palette.length];
-    const members = setMembers.get(setId) || [];
-    const label = members.length === 1 ? members[0] : `Set ${setId + 1} (${members.length} states)`;
-    return `<div class="absorbing-legend-item" data-set-id="${setId}" style="display:flex;align-items:center;gap:8px;margin:4px 0;cursor:default"><span style="width:16px;height:12px;background:${color};display:inline-block;border-radius:2px"></span><span>${label}</span></div>`;
-  });
-  absorbingLegendDiv.innerHTML = `<div style="font-weight:600;margin-bottom:6px">Absorbing sets</div>` + items.join('');
-
-  // Attach hover listeners to legend items to highlight corresponding nodes
-  const legendItems = Array.from(absorbingLegendDiv.querySelectorAll('.absorbing-legend-item')) as HTMLDivElement[];
-  legendItems.forEach(el => {
-    el.addEventListener('mouseover', () => {
-      const sid = el.getAttribute('data-set-id');
-      if (!sid) return;
-      const setId = parseInt(sid, 10);
-      const members = setMembers.get(setId) || [];
-      // Highlight nodes and their edges via renderer
-      if (renderer) renderer.highlightNodes(members);
-    });
-    el.addEventListener('mouseout', () => {
-      if (renderer) renderer.clearHighlights();
-    });
-  });
+  resultIndicatorDiv.innerHTML = html;
+  resultIndicatorDiv.className = expanded ? 'expanded' : '';
 }
+
+// Toggle result indicator expansion
+resultIndicatorDiv.addEventListener('click', () => {
+  resultIndicatorExpanded = !resultIndicatorExpanded;
+  if (currentGraphData) {
+    updateResultIndicator(currentGraphData);
+  }
+});
 
 // Update metadata display
 function updateMetadata(data: GraphData) {
@@ -291,9 +417,10 @@ probThresholdInput.addEventListener('change', () => {
   if (currentGraphData && renderer) {
     const threshold = parseFloat(probThresholdInput.value) || 0;
     const filterMode = getFilterMode();
+    const coloringMode = getNodeColoringMode();
     initRenderer();
-    renderer.render(currentGraphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox?.checked ?? false, filterMode });
-    updateAbsorbingLegend(currentGraphData, colorByAbsorbingCheckbox?.checked ?? false);
+    renderer.render(currentGraphData, threshold, { coloringMode, filterMode });
+    updateLegend(currentGraphData, coloringMode);
   }
 });
 
@@ -302,17 +429,19 @@ profileSelect.addEventListener('change', async () => {
   await loadGraph();
 });
 
-if (colorByAbsorbingCheckbox) {
-  colorByAbsorbingCheckbox.addEventListener('change', async () => {
+// Node coloring mode change
+nodeColoringRadios.forEach(radio => {
+  radio.addEventListener('change', () => {
     if (currentGraphData && renderer) {
       const threshold = parseFloat(probThresholdInput.value) || 0;
       const filterMode = getFilterMode();
+      const coloringMode = getNodeColoringMode();
       initRenderer();
-      renderer.render(currentGraphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox.checked, filterMode });
-      updateAbsorbingLegend(currentGraphData, colorByAbsorbingCheckbox.checked);
+      renderer.render(currentGraphData, threshold, { coloringMode, filterMode });
+      updateLegend(currentGraphData, coloringMode);
     }
   });
-}
+});
 
 // Filter mode change
 filterModeRadios.forEach(radio => {
@@ -321,9 +450,10 @@ filterModeRadios.forEach(radio => {
     if (currentGraphData && renderer) {
       const threshold = parseFloat(probThresholdInput.value) || 0;
       const filterMode = getFilterMode();
+      const coloringMode = getNodeColoringMode();
       initRenderer();
-      renderer.render(currentGraphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox?.checked ?? false, filterMode });
-      updateAbsorbingLegend(currentGraphData, colorByAbsorbingCheckbox?.checked ?? false);
+      renderer.render(currentGraphData, threshold, { coloringMode, filterMode });
+      updateLegend(currentGraphData, coloringMode);
     }
   });
 });

@@ -5,7 +5,7 @@ Effectivity determines which players must approve a proposed transition
 from one coalition structure to another.
 """
 
-from lib.utils import list_members
+from lib.utils import list_members, list_coalitions, get_player_coalition
 
 
 def heyen_lehtomaa_2021(players: list, states: list) -> dict:
@@ -66,7 +66,11 @@ def heyen_lehtomaa_2021(players: list, states: list) -> dict:
                             continue
 
                     # Rule 3: From grand coalition to smaller coalition
-                    if len(current_members) == len(players) and next_state != '( )':
+                    # Grand coalition = single coalition containing all players (not full partition)
+                    current_coalitions = list_coalitions(current_state)
+                    is_grand_coalition = (len(current_coalitions) == 1 and
+                                         len(current_coalitions[0]) == len(players))
+                    if is_grand_coalition and next_state != '( )':
                         # Two sub-cases:
                         # 3a. Proposer NOT in resulting coalition: only proposer approves (unilateral exit)
                         if proposer not in next_members:
@@ -93,10 +97,12 @@ def heyen_lehtomaa_2021(players: list, states: list) -> dict:
                     # Leaving: was in coalition, now not
                     leaving = was_in_coalition and not is_in_coalition
 
-                    # Switching: in both, but different coalitions
-                    # If in both lists but the coalition composition changed, they switched
+                    # Switching: Check if player's specific coalition changed
+                    # (not just whether the global member list changed)
+                    current_coalition = get_player_coalition(responder, current_state)
+                    next_coalition = get_player_coalition(responder, next_state)
                     switching = (was_in_coalition and is_in_coalition and
-                                current_members != next_members)
+                                current_coalition != next_coalition)
 
                     # Responder must approve if their membership changed
                     if joining or leaving or switching:

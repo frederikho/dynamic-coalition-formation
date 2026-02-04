@@ -360,7 +360,7 @@ def _build_metadata(config, setup, solver_params, solver_result,
     return metadata
 
 
-def _save_to_file(strategy_df, output_file, setup, metadata, verbose=True, logger=None):
+def _save_to_file(strategy_df, output_file, setup, metadata, V=None, verbose=True, logger=None):
     """
     Save strategy profile to Excel file with metadata.
 
@@ -369,6 +369,7 @@ def _save_to_file(strategy_df, output_file, setup, metadata, verbose=True, logge
         output_file: Output file path
         setup: Setup dictionary
         metadata: Metadata dictionary
+        V: Value functions DataFrame (optional)
         verbose: Whether to print status
         logger: Logger instance
     """
@@ -379,7 +380,8 @@ def _save_to_file(strategy_df, output_file, setup, metadata, verbose=True, logge
     # Write with custom Excel writer to match original format exactly
     write_strategy_table_excel(
         strategy_df, output_file, setup['players'],
-        setup['effectivity'], setup['state_names'], metadata=metadata
+        setup['effectivity'], setup['state_names'], metadata=metadata,
+        value_functions=V, geo_levels=setup['geoengineering']
     )
 
     if verbose and logger:
@@ -533,8 +535,8 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
             random_seed=solver.random_seed
         )
 
-        # Save to file
-        _save_to_file(found_strategy_df, output_file, setup, metadata, verbose, logger)
+        # Save to file with value functions and geo levels
+        _save_to_file(found_strategy_df, output_file, setup, metadata, V, verbose, logger)
 
     return result
 

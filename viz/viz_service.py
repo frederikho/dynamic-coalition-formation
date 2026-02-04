@@ -6,14 +6,24 @@ Exposes HTTP endpoints to compute and serve transition probability graphs from X
 import argparse
 import copy
 import json
+import logging
 import sys
+import traceback
 from pathlib import Path
 from typing import Dict, List, Any
 
 import pandas as pd
+import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path to import lib modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -257,6 +267,81 @@ def read_metadata_from_xlsx(xlsx_path: str) -> Dict[str, Any]:
         return {}
 
 
+def compute_mixing_time(P: pd.DataFrame, pi: np.ndarray, epsilon: float = 0.01) -> int:
+    """
+    Compute the mixing time of a Markov chain.
+
+    Mixing time is the smallest t such that ||P^t - π|| < ε
+    where π is the stationary distribution repeated for each row.
+
+    Args:
+        P: Transition probability matrix
+        pi: Stationary distribution
+        epsilon: Threshold for convergence (default: 0.01)
+
+    Returns:
+        Mixing time (number of steps)
+    """
+    n = len(P)
+    P_array = P.values
+
+    # Target: each row should be close to pi
+    target = np.tile(pi, (n, 1))
+
+    P_t = P_array.copy()
+    for t in range(1, 10000):  # Max 10000 iterations
+        # Compute total variation distance
+        dist = np.max(np.abs(P_t - target))
+
+        if dist < epsilon:
+            return t
+
+        P_t = P_t @ P_array
+
+    return -1  # Did not converge
+
+
+def compute_stationary_distribution(P: pd.DataFrame) -> np.ndarray:
+    """
+    Compute the stationary distribution of a Markov chain.
+
+    Solves: π = π * P subject to Σπ_i = 1
+
+    Args:
+        P: Transition probability matrix (DataFrame)
+
+    Returns:
+        Stationary distribution as numpy array
+    """
+    n = len(P)
+    P_array = P.values
+
+    # Solve (P^T - I)π = 0 with constraint Σπ = 1
+    # This is equivalent to finding the left eigenvector for eigenvalue 1
+    A = P_array.T - np.eye(n)
+
+    # Replace last equation with normalization constraint Σπ = 1
+    A[-1, :] = np.ones(n)
+    b = np.zeros(n)
+    b[-1] = 1.0
+
+    try:
+        pi = np.linalg.solve(A, b)
+        # Ensure non-negative and normalized (numerical errors)
+        pi = np.maximum(pi, 0)
+        pi = pi / pi.sum()
+        return pi
+    except np.linalg.LinAlgError:
+        # If singular, use eigenvalue method
+        eigenvalues, eigenvectors = np.linalg.eig(P_array.T)
+        # Find eigenvector for eigenvalue closest to 1
+        idx = np.argmin(np.abs(eigenvalues - 1.0))
+        pi = np.real(eigenvectors[:, idx])
+        pi = np.abs(pi)  # Ensure non-negative
+        pi = pi / pi.sum()  # Normalize
+        return pi
+
+
 def compute_transition_graph(
     xlsx_path: str,
     config: Dict[str, Any] = None,
@@ -279,7 +364,7 @@ def compute_transition_graph(
         config = copy.deepcopy(DEFAULT_CONFIG)
     else:
         config = copy.deepcopy(config)
-    
+
     # Read metadata from file
     file_metadata = read_metadata_from_xlsx(xlsx_path)
     
@@ -318,29 +403,34 @@ def compute_transition_graph(
     
     # 1. Read strategy profile first to get actual state names from columns
     strategy_df = pd.read_excel(xlsx_path, header=[0, 1], index_col=[0, 1, 2])
-    
+
     # Extract actual state names from the DataFrame columns (second level of MultiIndex)
     actual_state_names = []
     for col in strategy_df.columns:
         state_name = col[1]  # Second level is the state name
         if state_name not in actual_state_names:
             actual_state_names.append(state_name)
-    
+
     # Use actual state names from file, not from metadata
     config["state_names"] = actual_state_names
 
     # 2. Initialize countries
     all_countries = []
     for player in config["players"]:
-        country = Country(
-            name=player,
-            base_temp=config["base_temp"][player],
-            delta_temp=config["delta_temp"][player],
-            ideal_temp=config["ideal_temp"][player],
-            m_damage=config["m_damage"][player],
-            power=config["power"][player]
-        )
-        all_countries.append(country)
+        try:
+            country = Country(
+                name=player,
+                base_temp=config["base_temp"][player],
+                delta_temp=config["delta_temp"][player],
+                ideal_temp=config["ideal_temp"][player],
+                m_damage=config["m_damage"][player],
+                power=config["power"][player]
+            )
+            all_countries.append(country)
+        except KeyError as e:
+            logger.error(f"Missing config parameter for player {player}: {e}")
+            logger.error(f"Available config keys: {list(config.keys())}")
+            raise
 
     # 3. Initialize coalition structures dynamically from state names
     states = []
@@ -356,23 +446,34 @@ def compute_transition_graph(
         states.append(state)
 
     # 4. Derive effectivity
-    effectivity = derive_effectivity(
-        df=strategy_df,
-        players=config["players"],
-        states=config["state_names"]
-    )
+    try:
+        effectivity = derive_effectivity(
+            df=strategy_df,
+            players=config["players"],
+            states=config["state_names"]
+        )
+    except Exception as e:
+        logger.error(f"Error deriving effectivity: {e}")
+        logger.error(traceback.format_exc())
+        raise
+
     strategy_df.fillna(0., inplace=True)
 
     # 5. Compute transition probabilities
-    transition_probabilities = TransitionProbabilities(
-        df=strategy_df,
-        effectivity=effectivity,
-        players=config["players"],
-        states=config["state_names"],
-        protocol=config["protocol"],
-        unanimity_required=config["unanimity_required"]
-    )
-    P, P_proposals, P_approvals = transition_probabilities.get_probabilities()
+    try:
+        transition_probabilities = TransitionProbabilities(
+            df=strategy_df,
+            effectivity=effectivity,
+            players=config["players"],
+            states=config["state_names"],
+            protocol=config["protocol"],
+            unanimity_required=config["unanimity_required"]
+        )
+        P, P_proposals, P_approvals = transition_probabilities.get_probabilities()
+    except Exception as e:
+        logger.error(f"Error computing transition probabilities: {e}")
+        logger.error(traceback.format_exc())
+        raise
 
     # 6. Get geoengineering levels for metadata
     geo_levels = {state.name: state.geo_deployment_level for state in states}
@@ -406,6 +507,24 @@ def compute_transition_graph(
                 })
                 edge_id += 1
 
+    # 8. Compute stationary distribution, mixing time, and expected geoengineering level
+    try:
+        pi = compute_stationary_distribution(P)
+        # E_π[G] = Σ π_i * G_i
+        G_values = np.array([geo_levels[state_name] for state_name in config["state_names"]])
+        expected_G = float(np.dot(pi, G_values))
+
+        # Compute mixing time
+        mixing_time = compute_mixing_time(P, pi)
+
+        # Create stationary distribution dict
+        pi_dict = {state_name: float(pi[i]) for i, state_name in enumerate(config["state_names"])}
+    except Exception as e:
+        print(f"Warning: Could not compute stationary distribution: {e}")
+        expected_G = None
+        mixing_time = None
+        pi_dict = None
+
     return {
         "nodes": nodes,
         "edges": edges,
@@ -414,6 +533,9 @@ def compute_transition_graph(
             "num_players": len(config["players"]),
             "num_states": len(nodes),
             "num_transitions": len(edges),
+            "expected_geo_level": expected_G,
+            "stationary_distribution": pi_dict,
+            "mixing_time": mixing_time,
             "config": {
                 "power_rule": config["power_rule"],
                 "unanimity_required": config["unanimity_required"],
@@ -458,6 +580,7 @@ async def get_graph(
                     profile_path = Path("strategy_tables") / profile_path
 
         if not profile_path.exists():
+            logger.error(f"Profile not found: {profile_path}")
             raise HTTPException(
                 status_code=404,
                 detail=f"Profile not found: {profile_path}"
@@ -468,10 +591,14 @@ async def get_graph(
 
         return graph_data
 
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error computing graph for {profile}: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail=f"Error computing graph: {str(e)}"
+            detail=f"Error computing graph: {str(e)}\n\n{traceback.format_exc()}"
         )
 
 

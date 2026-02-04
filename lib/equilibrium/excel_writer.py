@@ -107,7 +107,8 @@ def generate_filename(config, description=None, output_dir='./strategy_tables'):
 
 
 def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: list,
-                              effectivity: dict = None, states: list = None, metadata: dict = None):
+                              effectivity: dict = None, states: list = None, metadata: dict = None,
+                              value_functions: pd.DataFrame = None, geo_levels: dict = None):
     """
     Write a strategy DataFrame to Excel with exact formatting matching original files.
 
@@ -120,6 +121,8 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
         effectivity: Effectivity correspondence dict (optional)
         states: List of state names (optional, inferred from df if not provided)
         metadata: Dictionary of configuration parameters to save in metadata sheet (optional)
+        value_functions: DataFrame with states as index and players as columns (optional)
+        geo_levels: Dictionary mapping state names to geoengineering levels (optional)
     """
     # Create new workbook
     wb = Workbook()
@@ -416,6 +419,105 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                     bottom=border_kwargs.get('bottom', existing_border.bottom)
                 )
                 cell.border = final_border
+
+    # Add Results sheet if value functions or geo levels are provided
+    if value_functions is not None or geo_levels is not None:
+        ws_results = wb.create_sheet(title="Results")
+
+        # Convert geo_levels to dict if it's a DataFrame
+        geo_dict = None
+        if geo_levels is not None:
+            if isinstance(geo_levels, pd.DataFrame):
+                geo_dict = geo_levels['G'].to_dict()
+            else:
+                geo_dict = geo_levels
+
+        # Set column widths
+        ws_results.column_dimensions['A'].width = 12
+        num_cols = 1 + len(players) + (1 if geo_dict else 0)
+        for i in range(1, num_cols):
+            col_letter = get_column_letter(1 + i)
+            ws_results.column_dimensions[col_letter].width = 12
+
+        # Title
+        ws_results.cell(row=1, column=1, value="Value Functions and Geoengineering Levels")
+        ws_results.cell(row=1, column=1).font = Font(name='Calibri', bold=True, size=12)
+        ws_results.cell(row=1, column=1).fill = PatternFill(
+            start_color='FF4D9CC9', end_color='FF4D9CC9', fill_type='solid'
+        )
+        # Merge title across all columns
+        ws_results.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_cols)
+
+        # Headers
+        current_row = 2
+        ws_results.cell(row=current_row, column=1, value="State")
+        ws_results.cell(row=current_row, column=1).font = Font(name='Calibri', bold=True, size=10)
+        ws_results.cell(row=current_row, column=1).fill = PatternFill(
+            start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+        )
+
+        col_idx = 2
+        # Player columns
+        if value_functions is not None:
+            for player in players:
+                ws_results.cell(row=current_row, column=col_idx, value=player)
+                ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', bold=True, size=10)
+                ws_results.cell(row=current_row, column=col_idx).fill = PatternFill(
+                    start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+                )
+                ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
+                col_idx += 1
+
+        # G column
+        if geo_dict is not None:
+            ws_results.cell(row=current_row, column=col_idx, value="G (°C cooling)")
+            ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', bold=True, size=10)
+            ws_results.cell(row=current_row, column=col_idx).fill = PatternFill(
+                start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+            )
+            ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
+
+        # Data rows
+        current_row = 3
+        for state in states:
+            col_idx = 1
+
+            # State name
+            ws_results.cell(row=current_row, column=col_idx, value=state)
+            ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', size=10)
+            ws_results.cell(row=current_row, column=col_idx).fill = PatternFill(
+                start_color='FFEEBF99', end_color='FFEEBF99', fill_type='solid'
+            )
+            col_idx += 1
+
+            # Value function columns
+            if value_functions is not None:
+                for player in players:
+                    val = value_functions.loc[state, player]
+                    ws_results.cell(row=current_row, column=col_idx, value=float(val))
+                    ws_results.cell(row=current_row, column=col_idx).number_format = '0.000000'
+                    ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', size=10)
+                    ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='right', vertical='center')
+                    col_idx += 1
+
+            # G column
+            if geo_dict is not None:
+                val = geo_dict[state]
+                ws_results.cell(row=current_row, column=col_idx, value=float(val))
+                ws_results.cell(row=current_row, column=col_idx).number_format = '0.000000'
+                ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', size=10)
+                ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='right', vertical='center')
+
+            current_row += 1
+
+        # Add borders to entire table
+        table_end_row = current_row - 1
+        for r in range(1, table_end_row + 1):
+            for c in range(1, num_cols + 1):
+                ws_results.cell(row=r, column=c).border = Border(
+                    left=thin_border, right=thin_border,
+                    top=thin_border, bottom=thin_border
+                )
 
     # Add metadata sheet if metadata is provided
     if metadata is not None:

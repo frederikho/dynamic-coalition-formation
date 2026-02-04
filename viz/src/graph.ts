@@ -106,7 +106,7 @@ export class GraphRenderer {
     this.onNodeSelect = callback;
   }
 
-  render(graphData: GraphData, probThreshold: number = 0.001, options?: { colorByAbsorbing?: boolean; filterMode?: 'absolute' | 'cumulative' }) {
+  render(graphData: GraphData, probThreshold: number = 0.001, options?: { coloringMode?: 'none' | 'absorbing' | 'geoengineering'; filterMode?: 'absolute' | 'cumulative' }) {
     // Destroy existing instance
     if (this.cy) {
       this.cy.destroy();
@@ -114,6 +114,7 @@ export class GraphRenderer {
     }
 
     const filterMode = options?.filterMode || 'absolute';
+    const coloringMode = options?.coloringMode || 'none';
 
     // Filter edges by probability threshold
     let filteredEdges: typeof graphData.edges;
@@ -164,29 +165,39 @@ export class GraphRenderer {
     }
     const usePresetPositions = Object.keys(presetPositions).length > 0;
 
-    // Prepare coloring by absorbing set if requested
-    const colorByAbsorbing = options?.colorByAbsorbing ?? false;
+    // Prepare coloring based on mode
     const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
 
-    // Compute absorbing sets from transition structure using filtered edges
-    const nodeToAbsorbing = colorByAbsorbing ? computeAbsorbingSets(graphData, filteredEdges) : new Map<string, number | null>();
+    // Compute absorbing sets if needed
+    const nodeToAbsorbing = coloringMode === 'absorbing' ? computeAbsorbingSets(graphData, filteredEdges) : new Map<string, number | null>();
     const absorbingSetIds = new Set<number>();
-    if (colorByAbsorbing) {
+    if (coloringMode === 'absorbing') {
       nodeToAbsorbing.forEach(setId => {
         if (setId !== null) absorbingSetIds.add(setId);
       });
+    }
+
+    // Compute G level range for geoengineering coloring
+    let minG = 0, maxG = 1;
+    if (coloringMode === 'geoengineering') {
+      const geoLevels = graphData.nodes.map(n => n.meta?.geo_level || 0);
+      minG = Math.min(...geoLevels);
+      maxG = Math.max(...geoLevels);
     }
 
     // Convert to Cytoscape format
     const elements: cytoscape.ElementDefinition[] = [
       // Nodes
       ...graphData.nodes.map(node => {
+        const geoLevel = node.meta?.geo_level || 0;
+        const label = `${node.label}\nG=${geoLevel.toFixed(1)}`;
+
         const element: cytoscape.ElementDefinition = {
           group: 'nodes' as const,
           data: {
             id: node.id,
-            label: node.label,
-            geo_level: node.meta?.geo_level || 0
+            label: label,
+            geo_level: geoLevel
           }
         };
 
@@ -195,9 +206,10 @@ export class GraphRenderer {
           element.position = presetPositions[node.id];
         }
 
-        // Assign color data
-        let color = '#cbd5e1';
-        if (colorByAbsorbing) {
+        // Assign color based on coloring mode
+        let color = '#cbd5e1'; // Default gray
+
+        if (coloringMode === 'absorbing') {
           const setId = nodeToAbsorbing.get(node.id) ?? null;
           if (setId !== null) {
             // Sort set IDs to get consistent coloring
@@ -205,7 +217,20 @@ export class GraphRenderer {
             const idx = sortedIds.indexOf(setId);
             color = palette[idx % palette.length];
           }
+        } else if (coloringMode === 'geoengineering') {
+          // Blue gradient based on G level
+          const geoLevel = node.meta?.geo_level || 0;
+          const range = maxG - minG || 1;
+          const normalized = (geoLevel - minG) / range;
+
+          // Interpolate from light blue (#e0f2fe) to dark blue (#0369a1)
+          // Light blue for low G, dark blue for high G
+          const r = Math.round(224 - normalized * (224 - 3));
+          const g = Math.round(242 - normalized * (242 - 105));
+          const b = Math.round(254 - normalized * (254 - 161));
+          color = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
         }
+
         (element.data as any).color = color;
 
         return element;
@@ -238,11 +263,13 @@ export class GraphRenderer {
             'color': '#1e293b',
             'text-valign': 'center',
             'text-halign': 'center',
-            'font-size': '14px',
+            'font-size': '12px',
             'font-weight': 'normal',
-            'width': 60,
-            'height': 60,
-            'text-outline-width': 0
+            'width': 70,
+            'height': 70,
+            'text-outline-width': 0,
+            'text-wrap': 'wrap',
+            'text-max-width': '65px'
           }
         },
         {

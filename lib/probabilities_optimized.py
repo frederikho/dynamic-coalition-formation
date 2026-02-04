@@ -314,9 +314,11 @@ class TransitionProbabilitiesOptimized:
         return (self.P, self.P_proposals, self.P_approvals)
 
     def empty_approval_committee_warning(self, indx: tuple):
-        """Issue warning for empty approval committee."""
-        msg = f"Empty approval committee for {indx[0]}: {indx[1]} -> {indx[2]}"
-        warnings.warn(msg)
+        """Raise critical error for empty approval committee."""
+        msg = (f"CRITICAL: Empty approval committee for {indx[0]}: {indx[1]} -> {indx[2]}. "
+               f"This indicates a bug in the effectivity rules. "
+               f"All non-status-quo transitions must have at least one approver.")
+        raise RuntimeError(msg)
 
     def safety_checks(self):
         """Check that all computed values are valid probabilities."""

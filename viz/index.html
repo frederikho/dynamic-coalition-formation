@@ -40,6 +40,109 @@
       background: #fafafa;
     }
 
+    #result-indicator {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 12px 16px;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      font-size: 15px;
+      color: #334155;
+      z-index: 1000;
+      backdrop-filter: blur(4px);
+      cursor: pointer;
+      transition: all 0.2s;
+      max-width: 300px;
+    }
+
+    #result-indicator:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    #result-indicator strong {
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    #result-indicator sub {
+      font-size: 0.75em;
+    }
+
+    #result-indicator.expanded {
+      max-width: 400px;
+      min-width: 320px;
+    }
+
+    .result-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .expand-icon {
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .result-details {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 13px;
+    }
+
+    .g-chart {
+      margin-top: 12px;
+      padding: 8px;
+    }
+
+    .g-chart-bars {
+      position: relative;
+      height: 120px;
+      margin-bottom: 20px;
+      border-left: 1px solid #cbd5e1;
+      border-bottom: 1px solid #cbd5e1;
+    }
+
+    .g-bar {
+      position: absolute;
+      bottom: 0;
+      width: 12px;
+      background: #475569;
+      border-radius: 2px 2px 0 0;
+      transform: translateX(-50%);
+    }
+
+    .g-bar-label {
+      position: absolute;
+      bottom: -20px;
+      font-size: 10px;
+      color: #64748b;
+      white-space: nowrap;
+      transform: translateX(-50%) rotate(-45deg);
+      transform-origin: center top;
+    }
+
+    .g-bar-value {
+      position: absolute;
+      top: -18px;
+      font-size: 10px;
+      color: #1e293b;
+      font-weight: 500;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+
+    .g-axis-label {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 30px;
+      text-align: center;
+    }
+
     h1 {
       font-size: 18px;
       font-weight: 600;
@@ -302,7 +405,7 @@
     }
 
     .collapsible-content.active {
-      max-height: 200px;
+      max-height: 400px;
       padding: 12px;
       padding-top: 16px;
     }
@@ -353,9 +456,18 @@
       <button type="button" class="collapsible">Visualisation Options</button>
       <div class="collapsible-content">
         <div class="control-group" style="margin-bottom:12px;">
+          <label>Node Coloring</label>
           <label class="checkbox-group">
-            <input type="checkbox" id="color-by-absorbing">
-            Color nodes by absorbing set
+            <input type="radio" name="node-coloring" value="none" checked>
+            Default
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="absorbing">
+            By absorbing set
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="geoengineering">
+            By geoengineering level (G)
           </label>
         </div>
         <div class="control-group" style="margin-bottom:12px;">
@@ -408,6 +520,7 @@
     </div>
 
     <div id="graph-container"></div>
+    <div id="result-indicator" style="display: none;"></div>
   </div>
 
   <script>
