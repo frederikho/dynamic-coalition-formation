@@ -12,6 +12,7 @@ from pathlib import Path
 import time
 from datetime import datetime
 
+from lib.logging import get_logger
 from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
@@ -189,21 +190,21 @@ def _get_solver_params(config, user_params=None):
     return default_params
 
 
-def _print_solver_params(params):
+def _print_solver_params(params, logger):
     """Print solver parameters in consistent order."""
     param_order = ['tau_p_init', 'tau_r_init', 'tau_decay', 'tau_min',
                   'max_outer_iter', 'max_inner_iter', 'damping',
                   'inner_tol', 'outer_tol', 'consecutive_tol',
                   'tau_margin', 'project_to_exact']
 
-    print("Solver parameters:")
+    logger.info("Solver parameters:")
     for key in param_order:
         if key in params:
-            print(f"  {key}: {params[key]}")
-    print()
+            logger.info(f"  {key}: {params[key]}")
+    logger.info("")
 
 
-def _run_solver(solver, params, checkpoint_dir='./checkpoints', load_from_checkpoint=False, config_hash=None):
+def _run_solver(solver, params, checkpoint_dir='./checkpoints', load_from_checkpoint=False, config_hash=None, logger=None):
     """
     Run the equilibrium solver with KeyboardInterrupt handling.
 
@@ -213,6 +214,7 @@ def _run_solver(solver, params, checkpoint_dir='./checkpoints', load_from_checkp
         checkpoint_dir: Directory for checkpoint files
         load_from_checkpoint: Whether to load from checkpoint
         config_hash: Configuration hash for checkpoint identification
+        logger: Logger instance
 
     Returns:
         Tuple of (strategy_df, solver_result)
@@ -225,10 +227,11 @@ def _run_solver(solver, params, checkpoint_dir='./checkpoints', load_from_checkp
             config_hash=config_hash
         )
     except KeyboardInterrupt:
-        print("\n\n" + "="*80)
-        print("INTERRUPTED BY USER")
-        print("="*80)
-        print("Solver stopped. No output file saved.")
+        if logger:
+            logger.warning("\n\n" + "="*80)
+            logger.warning("INTERRUPTED BY USER")
+            logger.warning("="*80)
+            logger.warning("Solver stopped. No output file saved.")
         import sys
         sys.exit(0)
 
@@ -354,7 +357,7 @@ def _build_metadata(config, setup, solver_params, solver_result,
     return metadata
 
 
-def _save_to_file(strategy_df, output_file, setup, metadata, verbose=True):
+def _save_to_file(strategy_df, output_file, setup, metadata, verbose=True, logger=None):
     """
     Save strategy profile to Excel file with metadata.
 
@@ -364,6 +367,7 @@ def _save_to_file(strategy_df, output_file, setup, metadata, verbose=True):
         setup: Setup dictionary
         metadata: Metadata dictionary
         verbose: Whether to print status
+        logger: Logger instance
     """
     # Ensure directory exists
     output_path = Path(output_file)
@@ -375,13 +379,13 @@ def _save_to_file(strategy_df, output_file, setup, metadata, verbose=True):
         setup['effectivity'], setup['state_names'], metadata=metadata
     )
 
-    if verbose:
-        print(f"\nEquilibrium strategy saved to: {output_file}")
+    if verbose and logger:
+        logger.info(f"\nEquilibrium strategy saved to: {output_file}")
         runtime_seconds = float(metadata['runtime_seconds'])
-        print(f"Runtime: {runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s")
+        logger.info(f"Runtime: {runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s")
 
 
-def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None, load_from_checkpoint=False):
+def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None, load_from_checkpoint=False, logger=None):
     """
     Find equilibrium for a given configuration.
 
@@ -393,10 +397,17 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         verbose: Whether to print progress
         description: Optional description/tag for filename generation
         load_from_checkpoint: Whether to load from checkpoint if it exists
+        logger: Logger instance (optional, will be created if not provided)
 
     Returns:
         Dictionary with equilibrium results
     """
+    # Setup logger if not provided
+    if logger is None:
+        scenario_name = config.get('experiment_name', 'equilibrium')
+        log_file = Path('./logs') / f"{scenario_name}.log"
+        logger = get_logger(log_file=log_file)
+
     # Track runtime
     start_time = time.time()
     start_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -412,7 +423,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
 
     # Print solver parameters
     if verbose:
-        _print_solver_params(solver_params)
+        _print_solver_params(solver_params, logger)
 
     # Create and run equilibrium solver
     solver = EquilibriumSolver(
@@ -431,7 +442,8 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         solver_params,
         checkpoint_dir='./checkpoints',
         load_from_checkpoint=load_from_checkpoint,
-        config_hash=config_hash
+        config_hash=config_hash,
+        logger=logger
     )
 
     # Fill NaN values for non-committee members
@@ -463,16 +475,16 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     result['verification_message'] = message
 
     if verbose:
-        print("\n" + "=" * 80)
-        print("EQUILIBRIUM VERIFICATION")
-        print("=" * 80)
-        print(f"Status: {message}")
-        print("\nValue functions:")
-        print(V)
-        print("\nTransition probabilities:")
-        print(P)
-        print("\nGeoengineering levels:")
-        print(setup['geoengineering'])
+        logger.info("\n" + "=" * 80)
+        logger.info("EQUILIBRIUM VERIFICATION")
+        logger.info("=" * 80)
+        logger.info(f"Status: {message}")
+        logger.info("\nValue functions:")
+        logger.info(f"\n{V}")
+        logger.info("\nTransition probabilities:")
+        logger.info(f"\n{P}")
+        logger.info("\nGeoengineering levels:")
+        logger.info(f"\n{setup['geoengineering']}")
 
     # Calculate runtime
     end_time = time.time()
@@ -492,13 +504,16 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         )
 
         # Save to file
-        _save_to_file(found_strategy_df, output_file, setup, metadata, verbose)
+        _save_to_file(found_strategy_df, output_file, setup, metadata, verbose, logger)
 
     return result
 
 
 def main():
     """Command-line interface for finding equilibria."""
+    # Setup logger early so it's available for all output
+    logger = None
+
     parser = argparse.ArgumentParser(
         description='Find equilibrium strategy profiles for coalition formation games'
     )
@@ -619,6 +634,10 @@ def main():
 
     config = {**base_config, **scenario_configs[scenario_base]}
 
+    # Setup logger with scenario-specific log file
+    log_file = Path('./logs') / f"{config['experiment_name']}.log"
+    logger = get_logger(log_file=log_file)
+
     # Solver parameters: only include when provided on CLI so file defaults remain
     solver_params = {}
     if args.max_outer_iter is not None:
@@ -626,18 +645,18 @@ def main():
     if args.max_inner_iter is not None:
         solver_params['max_inner_iter'] = args.max_inner_iter
 
-    print("=" * 80)
-    print(f"FINDING EQUILIBRIUM FOR: {args.scenario}")
-    print("=" * 80)
-    print(f"Configuration:")
-    print(f"  Power rule: {config['power_rule']}")
-    print(f"  Minimum power: {config.get('min_power', 'N/A')}")
-    print(f"  Unanimity required: {config['unanimity_required']}")
-    print(f"  Damage parameters: {config['m_damage']}")
-    print(f"  Discounting: {config['discounting']}")
+    logger.info("=" * 80)
+    logger.info(f"FINDING EQUILIBRIUM FOR: {args.scenario}")
+    logger.info("=" * 80)
+    logger.info(f"Configuration:")
+    logger.info(f"  Power rule: {config['power_rule']}")
+    logger.info(f"  Minimum power: {config.get('min_power', 'N/A')}")
+    logger.info(f"  Unanimity required: {config['unanimity_required']}")
+    logger.info(f"  Damage parameters: {config['m_damage']}")
+    logger.info(f"  Discounting: {config['discounting']}")
     if args.description:
-        print(f"  Description: {args.description}")
-    print()
+        logger.info(f"  Description: {args.description}")
+    logger.info("")
 
     # Find equilibrium
     result = find_equilibrium(
@@ -646,18 +665,19 @@ def main():
         solver_params=solver_params,
         verbose=not args.quiet,
         description=args.description,
-        load_from_checkpoint=args.load_from_checkpoint
+        load_from_checkpoint=args.load_from_checkpoint,
+        logger=logger
     )
 
     if result['verification_success']:
-        print("\n" + "=" * 80)
-        print("SUCCESS: Found valid equilibrium!")
-        print("=" * 80)
+        logger.info("\n" + "=" * 80)
+        logger.success("SUCCESS: Found valid equilibrium!")
+        logger.info("=" * 80)
     else:
-        print("\n" + "=" * 80)
-        print("WARNING: Equilibrium verification failed!")
-        print(result['verification_message'])
-        print("=" * 80)
+        logger.warning("\n" + "=" * 80)
+        logger.warning("WARNING: Equilibrium verification failed!")
+        logger.warning(result['verification_message'])
+        logger.warning("=" * 80)
 
 
 if __name__ == "__main__":
