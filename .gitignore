@@ -10,3 +10,4 @@ scripts/combined*
 .comments/collab-comments.json
 
 /checkpoints
+/logs

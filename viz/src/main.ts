@@ -1,6 +1,7 @@
 import { GraphRenderer } from './graph';
 import { fetchProfiles, fetchGraph } from './api';
 import type { GraphData } from './types';
+import { computeAbsorbingSets } from './absorbing';
 
 // UI Elements
 const profileSelect = document.getElementById('profile-select') as HTMLSelectElement;
@@ -15,6 +16,8 @@ const selectedGeoLevelSpan = document.getElementById('selected-geo-level') as HT
 const outgoingTransitionsDiv = document.getElementById('outgoing-transitions') as HTMLDivElement;
 const incomingTransitionsDiv = document.getElementById('incoming-transitions') as HTMLDivElement;
 const graphContainer = document.getElementById('graph-container') as HTMLDivElement;
+const colorByAbsorbingCheckbox = document.getElementById('color-by-absorbing') as HTMLInputElement;
+const absorbingLegendDiv = document.getElementById('absorbing-legend') as HTMLDivElement;
 
 // State
 let currentGraphData: GraphData | null = null;
@@ -88,10 +91,13 @@ async function loadGraph() {
     // Render graph
     initRenderer();
     const threshold = parseFloat(probThresholdInput.value) || 0;
-    renderer!.render(graphData, threshold);
+    renderer!.render(graphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox?.checked ?? false });
 
     // Update metadata display
     updateMetadata(graphData);
+
+    // Update absorbing legend
+    updateAbsorbingLegend(graphData, colorByAbsorbingCheckbox?.checked ?? false);
 
     // Show appropriate status message
     if (graphData.edges.length === 0) {
@@ -105,6 +111,63 @@ async function loadGraph() {
   } finally {
     refreshBtn.disabled = false;
   }
+}
+
+function updateAbsorbingLegend(data: GraphData, enabled: boolean) {
+  if (!absorbingLegendDiv) return;
+  if (!enabled) {
+    absorbingLegendDiv.innerHTML = '';
+    return;
+  }
+
+  // Compute absorbing sets from graph structure
+  const nodeToAbsorbing = computeAbsorbingSets(data);
+  const absorbingSetIds = new Set<number>();
+  nodeToAbsorbing.forEach(setId => {
+    if (setId !== null) absorbingSetIds.add(setId);
+  });
+
+  if (absorbingSetIds.size === 0) {
+    absorbingLegendDiv.innerHTML = '<div style="color:#999; padding:6px">No absorbing sets found</div>';
+    return;
+  }
+
+  // Build set membership for display
+  const setMembers = new Map<number, string[]>();
+  nodeToAbsorbing.forEach((setId, nodeId) => {
+    if (setId !== null) {
+      if (!setMembers.has(setId)) {
+        setMembers.set(setId, []);
+      }
+      setMembers.get(setId)!.push(nodeId);
+    }
+  });
+
+  const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
+  const sortedIds = Array.from(absorbingSetIds).sort((a, b) => a - b);
+  const items = sortedIds.map((setId, i) => {
+    const color = palette[i % palette.length];
+    const members = setMembers.get(setId) || [];
+    const label = members.length === 1 ? members[0] : `Set ${setId + 1} (${members.length} states)`;
+    return `<div class="absorbing-legend-item" data-set-id="${setId}" style="display:flex;align-items:center;gap:8px;margin:4px 0;cursor:default"><span style="width:16px;height:12px;background:${color};display:inline-block;border-radius:2px"></span><span>${label}</span></div>`;
+  });
+  absorbingLegendDiv.innerHTML = `<div style="font-weight:600;margin-bottom:6px">Absorbing sets</div>` + items.join('');
+
+  // Attach hover listeners to legend items to highlight corresponding nodes
+  const legendItems = Array.from(absorbingLegendDiv.querySelectorAll('.absorbing-legend-item')) as HTMLDivElement[];
+  legendItems.forEach(el => {
+    el.addEventListener('mouseover', () => {
+      const sid = el.getAttribute('data-set-id');
+      if (!sid) return;
+      const setId = parseInt(sid, 10);
+      const members = setMembers.get(setId) || [];
+      // Highlight nodes and their edges via renderer
+      if (renderer) renderer.highlightNodes(members);
+    });
+    el.addEventListener('mouseout', () => {
+      if (renderer) renderer.clearHighlights();
+    });
+  });
 }
 
 // Update metadata display
@@ -177,7 +240,8 @@ probThresholdInput.addEventListener('change', () => {
   if (currentGraphData && renderer) {
     const threshold = parseFloat(probThresholdInput.value) || 0;
     initRenderer();
-    renderer.render(currentGraphData, threshold);
+    renderer.render(currentGraphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox?.checked ?? false });
+    updateAbsorbingLegend(currentGraphData, colorByAbsorbingCheckbox?.checked ?? false);
   }
 });
 
@@ -185,6 +249,17 @@ probThresholdInput.addEventListener('change', () => {
 profileSelect.addEventListener('change', async () => {
   await loadGraph();
 });
+
+if (colorByAbsorbingCheckbox) {
+  colorByAbsorbingCheckbox.addEventListener('change', async () => {
+    if (currentGraphData && renderer) {
+      const threshold = parseFloat(probThresholdInput.value) || 0;
+      initRenderer();
+      renderer.render(currentGraphData, threshold, { colorByAbsorbing: colorByAbsorbingCheckbox.checked });
+      updateAbsorbingLegend(currentGraphData, colorByAbsorbingCheckbox.checked);
+    }
+  });
+}
 
 // Initialize
 async function init() {

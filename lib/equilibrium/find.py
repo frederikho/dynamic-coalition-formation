@@ -274,7 +274,7 @@ def _compute_verification(strategy_df, setup):
 
 def _build_metadata(config, setup, solver_params, solver_result,
                     verification_success, runtime_seconds, start_time, end_time,
-                    description=None):
+                    description=None, random_seed=None):
     """
     Build metadata dictionary for Excel file.
 
@@ -288,6 +288,7 @@ def _build_metadata(config, setup, solver_params, solver_result,
         start_time: Start timestamp string
         end_time: End timestamp string
         description: Optional description string
+        random_seed: Random seed used for initialization
 
     Returns:
         Metadata dictionary
@@ -334,6 +335,8 @@ def _build_metadata(config, setup, solver_params, solver_result,
     metadata['outer_iterations'] = solver_result.get('outer_iterations', 'N/A')
     metadata['final_tau_p'] = f"{solver_result.get('final_tau_p', 'N/A'):.6f}" if 'final_tau_p' in solver_result else 'N/A'
     metadata['final_tau_r'] = f"{solver_result.get('final_tau_r', 'N/A'):.6f}" if 'final_tau_r' in solver_result else 'N/A'
+    if random_seed is not None:
+        metadata['random_seed'] = random_seed
 
     # Add solver parameters used
     metadata['     '] = ''
@@ -385,7 +388,7 @@ def _save_to_file(strategy_df, output_file, setup, metadata, verbose=True, logge
         logger.info(f"Runtime: {runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s")
 
 
-def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None, load_from_checkpoint=False, logger=None):
+def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None, load_from_checkpoint=False, random_seed=None, logger=None):
     """
     Find equilibrium for a given configuration.
 
@@ -397,6 +400,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         verbose: Whether to print progress
         description: Optional description/tag for filename generation
         load_from_checkpoint: Whether to load from checkpoint if it exists
+        random_seed: Random seed for initialization (if None, generates one)
         logger: Logger instance (optional, will be created if not provided)
 
     Returns:
@@ -418,6 +422,24 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     # Generate config hash for checkpoint identification
     config_hash = generate_config_hash(config, length=10)
 
+    # Check if checkpoint exists and inform user
+    checkpoint_dir = './checkpoints'
+    checkpoint_path = Path(checkpoint_dir) / f"checkpoint_{config_hash}.pkl"
+    checkpoint_exists = checkpoint_path.exists()
+
+    if verbose and checkpoint_exists:
+        if load_from_checkpoint:
+            logger.info(f"Found existing checkpoint: {checkpoint_path}")
+            logger.info("Will resume from checkpoint. Use --fresh to start from scratch.")
+            logger.info("")
+        else:
+            logger.info(f"Found existing checkpoint: {checkpoint_path}")
+            logger.info("Starting fresh (--fresh flag used). Checkpoint will be overwritten.")
+            logger.info("")
+    elif verbose and not checkpoint_exists and load_from_checkpoint:
+        logger.info("No existing checkpoint found. Starting fresh.")
+        logger.info("")
+
     # Get solver parameters
     solver_params = _get_solver_params(config, solver_params)
 
@@ -434,8 +456,14 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         payoffs=setup['payoffs'],
         discounting=setup['discounting'],
         unanimity_required=setup['unanimity_required'],
-        verbose=verbose
+        verbose=verbose,
+        random_seed=random_seed,
+        logger=logger
     )
+
+    if verbose:
+        logger.info(f"Random seed for initialization: {solver.random_seed}")
+        logger.info("")
 
     found_strategy_df, solver_result = _run_solver(
         solver,
@@ -466,7 +494,8 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         'state_names': setup['state_names'],
         'effectivity': setup['effectivity'],
         'strategy_df': found_strategy_df_filled,
-        'solver_result': solver_result
+        'solver_result': solver_result,
+        'random_seed': solver.random_seed
     }
 
     # Verify equilibrium
@@ -500,7 +529,8 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         # Build metadata
         metadata = _build_metadata(
             config, setup, solver_params, solver_result, success,
-            runtime_seconds, start_timestamp, end_timestamp, description
+            runtime_seconds, start_timestamp, end_timestamp, description,
+            random_seed=solver.random_seed
         )
 
         # Save to file
@@ -561,12 +591,21 @@ def main():
         help='Suppress verbose output'
     )
     parser.add_argument(
-        '--load-from-checkpoint',
+        '--seed',
+        type=int,
+        default=None,
+        help='Random seed for strategy initialization (if not provided, generates randomly)'
+    )
+    parser.add_argument(
+        '--fresh',
         action='store_true',
-        help='Resume from checkpoint if it exists for this configuration'
+        help='Force starting from scratch, ignoring any existing checkpoints (default: auto-resume from checkpoint if exists)'
     )
 
     args = parser.parse_args()
+
+    # By default, load from checkpoint unless --fresh is specified
+    load_from_checkpoint = not args.fresh
 
     # Determine number of players
     if args.scenario.endswith('_n4'):
@@ -665,7 +704,8 @@ def main():
         solver_params=solver_params,
         verbose=not args.quiet,
         description=args.description,
-        load_from_checkpoint=args.load_from_checkpoint,
+        load_from_checkpoint=load_from_checkpoint,
+        random_seed=args.seed,
         logger=logger
     )
 

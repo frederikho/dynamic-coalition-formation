@@ -324,8 +324,14 @@
         </select>
       </div>
 
-      <button type="button" class="collapsible">Advanced Settings</button>
+      <button type="button" class="collapsible">Visualisation Options</button>
       <div class="collapsible-content">
+        <div class="control-group" style="margin-bottom:12px;">
+          <label class="checkbox-group">
+            <input type="checkbox" id="color-by-absorbing">
+            Color nodes by absorbing set
+          </label>
+        </div>
         <div class="control-group">
           <div class="label-with-info">
             <label for="prob-threshold">Probability Threshold</label>
@@ -344,6 +350,7 @@
       </div>
 
       <div id="metadata"></div>
+      <div id="absorbing-legend" style="font-size:12px; color:#666; margin-top:8px;"></div>
 
       <div id="node-details" style="display: none;">
         <h2>Selected State: <span id="selected-state-name"></span></h2>

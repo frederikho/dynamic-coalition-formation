@@ -1,6 +1,7 @@
 import cytoscape, { Core, NodeSingular } from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import type { GraphData } from './types';
+import { computeAbsorbingSets } from './absorbing';
 
 // Register layout algorithm
 cytoscape.use(coseBilkent);
@@ -105,7 +106,7 @@ export class GraphRenderer {
     this.onNodeSelect = callback;
   }
 
-  render(graphData: GraphData, probThreshold: number = 0.001) {
+  render(graphData: GraphData, probThreshold: number = 0.001, options?: { colorByAbsorbing?: boolean }) {
     // Destroy existing instance
     if (this.cy) {
       this.cy.destroy();
@@ -124,6 +125,19 @@ export class GraphRenderer {
     }
     const usePresetPositions = Object.keys(presetPositions).length > 0;
 
+    // Prepare coloring by absorbing set if requested
+    const colorByAbsorbing = options?.colorByAbsorbing ?? false;
+    const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
+    
+    // Compute absorbing sets from transition structure
+    const nodeToAbsorbing = colorByAbsorbing ? computeAbsorbingSets(graphData) : new Map<string, number | null>();
+    const absorbingSetIds = new Set<number>();
+    if (colorByAbsorbing) {
+      nodeToAbsorbing.forEach(setId => {
+        if (setId !== null) absorbingSetIds.add(setId);
+      });
+    }
+
     // Convert to Cytoscape format
     const elements: cytoscape.ElementDefinition[] = [
       // Nodes
@@ -141,6 +155,19 @@ export class GraphRenderer {
         if (usePresetPositions && node.id in presetPositions) {
           element.position = presetPositions[node.id];
         }
+
+        // Assign color data
+        let color = '#cbd5e1';
+        if (colorByAbsorbing) {
+          const setId = nodeToAbsorbing.get(node.id) ?? null;
+          if (setId !== null) {
+            // Sort set IDs to get consistent coloring
+            const sortedIds = Array.from(absorbingSetIds).sort((a, b) => a - b);
+            const idx = sortedIds.indexOf(setId);
+            color = palette[idx % palette.length];
+          }
+        }
+        (element.data as any).color = color;
 
         return element;
       }),
@@ -167,7 +194,7 @@ export class GraphRenderer {
         {
           selector: 'node',
           style: {
-            'background-color': '#cbd5e1',
+            'background-color': 'data(color)',
             'label': 'data(label)',
             'color': '#1e293b',
             'text-valign': 'center',
@@ -221,6 +248,12 @@ export class GraphRenderer {
             'opacity': 1
           }
         },
+          {
+            selector: '.highlighted-node',
+            style: {
+              'opacity': 1
+            }
+          },
         {
           selector: '.dimmed',
           style: {
@@ -298,6 +331,29 @@ export class GraphRenderer {
     this.cy.on('mouseout', 'node', () => {
       this.cy?.elements().removeClass('highlighted dimmed');
     });
+  }
+
+  // Highlight a set of nodes and their connected edges; dim everything else
+  highlightNodes(nodeIds: string[]) {
+    if (!this.cy) return;
+    // Clear previous
+    this.cy.elements().removeClass('highlighted dimmed highlighted-node');
+
+    const nodes = this.cy.nodes().filter((n) => nodeIds.includes(n.id()));
+    if (nodes.length === 0) return;
+
+    nodes.addClass('highlighted-node');
+
+    const connectedEdges = nodes.connectedEdges();
+    connectedEdges.addClass('highlighted');
+
+    // Dim everything else
+    this.cy.elements().not(nodes).not(connectedEdges).addClass('dimmed');
+  }
+
+  clearHighlights() {
+    if (!this.cy) return;
+    this.cy.elements().removeClass('highlighted dimmed highlighted-node');
   }
 
   private selectNode(nodeId: string) {

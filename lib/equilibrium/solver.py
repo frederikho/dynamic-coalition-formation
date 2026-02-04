@@ -60,7 +60,9 @@ class EquilibriumSolver:
                  payoffs: pd.DataFrame,
                  discounting: float,
                  unanimity_required: bool,
-                 verbose: bool = True):
+                 verbose: bool = True,
+                 random_seed: Optional[int] = None,
+                 logger=None):
         """
         Args:
             players: List of player names
@@ -71,6 +73,8 @@ class EquilibriumSolver:
             discounting: Discount factor (delta)
             unanimity_required: Whether unanimous approval is required
             verbose: Whether to print progress
+            random_seed: Random seed for initialization (if None, generates one)
+            logger: Logger instance (if None, uses print statements)
         """
         self.players = players
         self.states = states
@@ -80,23 +84,47 @@ class EquilibriumSolver:
         self.discounting = discounting
         self.unanimity_required = unanimity_required
         self.verbose = verbose
+        self.logger = logger
+
+        # Set random seed (generate if not provided)
+        if random_seed is None:
+            random_seed = np.random.randint(0, 2**31)
+        self.random_seed = random_seed
 
         # Initialize strategy tables
         self.p_proposals = {}  # Proposal probabilities
         self.r_acceptances = {}  # Acceptance probabilities
         self._initialize_strategies()
 
+    def _log(self, message, level='info'):
+        """Log message using logger if available, otherwise print."""
+        if self.logger:
+            if level == 'info':
+                self.logger.info(message)
+            elif level == 'warning':
+                self.logger.warning(message)
+            elif level == 'error':
+                self.logger.error(message)
+        else:
+            print(message)
+
     def _initialize_strategies(self):
-        """Initialize proposal and acceptance probabilities uniformly."""
-        # Initialize proposal probabilities uniformly over feasible states
+        """Initialize proposal and acceptance probabilities randomly with uniform distribution."""
+        # Set random seed for reproducibility
+        rng = np.random.RandomState(self.random_seed)
+
+        # Initialize proposal probabilities: random values that sum to 1 for each (proposer, current_state)
         for proposer in self.players:
             for current_state in self.states:
-                # Uniform distribution over all next states
-                for next_state in self.states:
-                    key = (proposer, current_state, next_state)
-                    self.p_proposals[key] = 1.0 / len(self.states)
+                # Generate random values and normalize to sum to 1
+                random_values = rng.uniform(0, 1, len(self.states))
+                normalized = random_values / random_values.sum()
 
-        # Initialize acceptance probabilities to 0.5 for all committee members
+                for idx, next_state in enumerate(self.states):
+                    key = (proposer, current_state, next_state)
+                    self.p_proposals[key] = normalized[idx]
+
+        # Initialize acceptance probabilities: random uniform [0,1] for all committee members
         for proposer in self.players:
             for current_state in self.states:
                 for next_state in self.states:
@@ -106,7 +134,7 @@ class EquilibriumSolver:
                     )
                     for approver in committee:
                         key = (proposer, current_state, next_state, approver)
-                        self.r_acceptances[key] = 0.5
+                        self.r_acceptances[key] = rng.uniform(0, 1)
 
     def _create_strategy_dataframe(self) -> pd.DataFrame:
         """Create a strategy DataFrame from current proposal and acceptance probabilities."""
@@ -165,10 +193,10 @@ class EquilibriumSolver:
 
         # Check for invalid probability values
         if (strategy_df_filled < -1e-10).any().any() or (strategy_df_filled > 1.0 + 1e-10).any().any():
-            print("WARNING: Strategy DataFrame contains values outside [0,1]:")
+            self._log("WARNING: Strategy DataFrame contains values outside [0,1]:", level='warning')
             mask = (strategy_df_filled < -1e-10) | (strategy_df_filled > 1.0 + 1e-10)
             if mask.any().any():
-                print(strategy_df_filled[mask].stack())
+                self._log(str(strategy_df_filled[mask].stack()), level='warning')
 
         # Use optimized version (113x faster computation, but limited by DataFrame conversion)
         TPClass = TransitionProbabilitiesOptimized
@@ -405,6 +433,7 @@ class EquilibriumSolver:
             'p_proposals': self.p_proposals.copy(),
             'r_acceptances': self.r_acceptances.copy(),
             'config_hash': config_hash,
+            'random_seed': self.random_seed,
             'timestamp': datetime.now().isoformat()
         }
 
@@ -415,7 +444,7 @@ class EquilibriumSolver:
             pickle.dump(checkpoint, f)
 
         if self.verbose:
-            print(f"  Checkpoint saved: {checkpoint_path}")
+            self._log(f"  Checkpoint saved: {checkpoint_path}")
 
     def _load_checkpoint(self, checkpoint_path: str) -> Optional[Dict]:
         """Load solver state from checkpoint file."""
@@ -427,14 +456,14 @@ class EquilibriumSolver:
                 checkpoint = pickle.load(f)
 
             if self.verbose:
-                print(f"Loaded checkpoint from iteration {checkpoint['outer_iter']}")
-                print(f"  Checkpoint created: {checkpoint['timestamp']}")
-                print(f"  Resuming from tau_p={checkpoint['tau_p']:.4f}, tau_r={checkpoint['tau_r']:.4f}")
+                self._log(f"Loaded checkpoint from iteration {checkpoint['outer_iter']}")
+                self._log(f"  Checkpoint created: {checkpoint['timestamp']}")
+                self._log(f"  Resuming from tau_p={checkpoint['tau_p']:.4f}, tau_r={checkpoint['tau_r']:.4f}")
 
             return checkpoint
         except Exception as e:
             if self.verbose:
-                print(f"Warning: Could not load checkpoint: {e}")
+                self._log(f"Warning: Could not load checkpoint: {e}", level='warning')
             return None
 
     def solve(self,
@@ -505,19 +534,22 @@ class EquilibriumSolver:
                     tau_r = checkpoint['tau_r']
                     self.p_proposals = checkpoint['p_proposals']
                     self.r_acceptances = checkpoint['r_acceptances']
+                    # Restore random seed (for completeness, even though it doesn't affect resumed state)
+                    if 'random_seed' in checkpoint:
+                        self.random_seed = checkpoint['random_seed']
 
                     if self.verbose:
-                        print(f"Resuming from outer iteration {outer_iter}")
+                        self._log(f"Resuming from outer iteration {outer_iter}")
                 else:
                     if self.verbose:
-                        print("No checkpoint found, starting fresh")
+                        self._log("No checkpoint found, starting fresh")
 
         if self.verbose:
-            print("Starting equilibrium solver...")
-            print(f"Initial tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
-            print(f"Outer tolerance: {outer_tol:.2e}, consecutive required: {consecutive_tol}")
+            self._log("Starting equilibrium solver...")
+            self._log(f"Initial tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
+            self._log(f"Outer tolerance: {outer_tol:.2e}, consecutive required: {consecutive_tol}")
             if checkpoint_path:
-                print(f"Checkpoints will be saved to: {checkpoint_path}")
+                self._log(f"Checkpoints will be saved to: {checkpoint_path}")
 
         # Timing statistics
         timing_stats = {
@@ -532,8 +564,8 @@ class EquilibriumSolver:
         while outer_iter < max_outer_iter:
             if self.verbose:
                 timestamp = datetime.now().strftime('%H:%M:%S')
-                print(f"\nOuter iteration {outer_iter + 1}/{max_outer_iter} [{timestamp}]")
-                print(f"  tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
+                self._log(f"\nOuter iteration {outer_iter + 1}/{max_outer_iter} [{timestamp}]")
+                self._log(f"  tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
 
             # Inner fixed-point iteration
             max_change = float('inf')  # Track final max_change from inner loop
@@ -591,11 +623,11 @@ class EquilibriumSolver:
                 max_change = max(proposal_change, acceptance_change)
 
                 if inner_iter % 10 == 0 and self.verbose:
-                    print(f"    Inner iter {inner_iter}: max_change={max_change:.6f}")
+                    self._log(f"    Inner iter {inner_iter}: max_change={max_change:.6f}")
 
                 if max_change < inner_tol:
                     if self.verbose:
-                        print(f"    Converged after {inner_iter + 1} iterations")
+                        self._log(f"    Converged after {inner_iter + 1} iterations")
                     break
 
             # Track this outer iteration's convergence
@@ -604,7 +636,7 @@ class EquilibriumSolver:
                 recent_max_changes.pop(0)  # Keep only last consecutive_tol changes
 
             if self.verbose:
-                print(f"  Outer iteration max_change: {max_change:.6e}")
+                self._log(f"  Outer iteration max_change: {max_change:.6e}")
 
             # Save checkpoint after each outer iteration
             if checkpoint_path and config_hash:
@@ -617,7 +649,7 @@ class EquilibriumSolver:
             # Early termination: if strategies are stable, try projection and verification
             if consecutive_converged:
                 if self.verbose:
-                    print(f"\n  Strategies stable for {consecutive_tol} iterations, attempting early verification...")
+                    self._log(f"\n  Strategies stable for {consecutive_tol} iterations, attempting early verification...")
 
                 # Save current strategies
                 old_proposals = self.p_proposals.copy()
@@ -643,11 +675,11 @@ class EquilibriumSolver:
                     # Found valid equilibrium - stop early!
                     converged = True
                     if self.verbose:
-                        print(f"  ✓ Equilibrium verification PASSED")
-                        print(f"\n  Early termination (equilibrium found):")
-                        print(f"    - Strategies stable for {consecutive_tol} iterations")
-                        print(f"    - Projected equilibrium verified")
-                        print(f"    - tau_p={tau_p:.4e}, tau_r={tau_r:.4e} (not yet at tau_min={tau_min:.4e})")
+                        self._log(f"  ✓ Equilibrium verification PASSED")
+                        self._log(f"\n  Early termination (equilibrium found):")
+                        self._log(f"    - Strategies stable for {consecutive_tol} iterations")
+                        self._log(f"    - Projected equilibrium verified")
+                        self._log(f"    - tau_p={tau_p:.4e}, tau_r={tau_r:.4e} (not yet at tau_min={tau_min:.4e})")
                     # Keep the projected strategies (already in self.p_proposals, self.r_acceptances)
                     break
                 else:
@@ -655,8 +687,8 @@ class EquilibriumSolver:
                     self.p_proposals = old_proposals
                     self.r_acceptances = old_acceptances
                     if self.verbose:
-                        print(f"  ✗ Equilibrium verification failed: {message}")
-                        print(f"  Continuing annealing...")
+                        self._log(f"  ✗ Equilibrium verification failed: {message}")
+                        self._log(f"  Continuing annealing...")
 
             # Check regular convergence criterion (temperature + stability)
             tau_near_min = (tau_p <= tau_min * (1 + tau_margin) and
@@ -665,10 +697,10 @@ class EquilibriumSolver:
             if tau_near_min and consecutive_converged:
                 converged = True
                 if self.verbose:
-                    print(f"\n  Convergence criterion met (annealing complete):")
-                    print(f"    - tau_p={tau_p:.4e} <= {tau_min * (1 + tau_margin):.4e}")
-                    print(f"    - tau_r={tau_r:.4e} <= {tau_min * (1 + tau_margin):.4e}")
-                    print(f"    - Last {consecutive_tol} max_changes < {outer_tol:.2e}")
+                    self._log(f"\n  Convergence criterion met (annealing complete):")
+                    self._log(f"    - tau_p={tau_p:.4e} <= {tau_min * (1 + tau_margin):.4e}")
+                    self._log(f"    - tau_r={tau_r:.4e} <= {tau_min * (1 + tau_margin):.4e}")
+                    self._log(f"    - Last {consecutive_tol} max_changes < {outer_tol:.2e}")
                 break
 
             # Decay temperatures
@@ -691,17 +723,17 @@ class EquilibriumSolver:
 
         if self.verbose:
             if early_stop_via_verification:
-                print(f"\nStopped early after {outer_iter + 1} outer iterations (equilibrium verified)")
+                self._log(f"\nStopped early after {outer_iter + 1} outer iterations (equilibrium verified)")
             elif converged:
-                print(f"\nAnnealing converged after {outer_iter + 1} outer iterations")
+                self._log(f"\nAnnealing converged after {outer_iter + 1} outer iterations")
             else:
-                print(f"\nAnnealing stopped at max_outer_iter={max_outer_iter} (safety valve)")
-                print(f"  Final max_change: {max_change:.6e} (outer_tol: {outer_tol:.2e})")
+                self._log(f"\nAnnealing stopped at max_outer_iter={max_outer_iter} (safety valve)")
+                self._log(f"  Final max_change: {max_change:.6e} (outer_tol: {outer_tol:.2e})")
 
         # Final projection to exact equilibrium (unless we already did it via early stopping)
         if project_to_exact and not early_stop_via_verification:
             if self.verbose:
-                print("\nProjecting to exact equilibrium...")
+                self._log("\nProjecting to exact equilibrium...")
 
             # Recompute value functions one more time
             strategy_df = self._create_strategy_dataframe()
@@ -711,7 +743,7 @@ class EquilibriumSolver:
             # Project to exact equilibrium
             self._project_to_exact_equilibrium(V)
         elif early_stop_via_verification and self.verbose:
-            print("\nSkipping final projection (already projected and verified)")
+            self._log("\nSkipping final projection (already projected and verified)")
 
         # Final strategy DataFrame
         final_strategy_df = self._create_strategy_dataframe()
@@ -729,18 +761,18 @@ class EquilibriumSolver:
         }
 
         if self.verbose:
-            print("\nSolver complete!")
-            print("\n" + "="*80)
-            print("TIMING ANALYSIS")
-            print("="*80)
+            self._log("\nSolver complete!")
+            self._log("\n" + "="*80)
+            self._log("TIMING ANALYSIS")
+            self._log("="*80)
             for op_name, timings in timing_stats.items():
                 if timings:
                     total_time = sum(timings)
                     avg_time = total_time / len(timings)
-                    print(f"{op_name:25s}: {total_time:8.3f}s total, {avg_time*1000:7.3f}ms avg ({len(timings)} calls)")
+                    self._log(f"{op_name:25s}: {total_time:8.3f}s total, {avg_time*1000:7.3f}ms avg ({len(timings)} calls)")
 
             total_measured = sum(sum(times) for times in timing_stats.values())
-            print(f"{'TOTAL MEASURED':25s}: {total_measured:8.3f}s")
-            print("="*80)
+            self._log(f"{'TOTAL MEASURED':25s}: {total_measured:8.3f}s")
+            self._log("="*80)
 
         return final_strategy_df, result
