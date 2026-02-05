@@ -63,6 +63,55 @@ def get_geoengineering_levels(states: List[State]) -> pd.DataFrame:
     return pd.DataFrame.from_dict(G, orient='index', columns=["G"])
 
 
+def get_deploying_coalitions(states: List[State]) -> Dict[str, str]:
+    """
+    Returns which coalition deploys geoengineering in each state.
+
+    Arguments:
+        states: A list of State instances (all states considered in the game).
+
+    Returns:
+        Dictionary mapping state names to deploying coalition names.
+        For example:
+        - "( )" -> "W" (singleton W deploys)
+        - "(CF)" -> "(CF)" (coalition CF deploys)
+        - "(CT)(FW)" -> "(CT)" (coalition CT deploys, FW doesn't)
+    """
+    assert all(isinstance(state, State) for state in states)
+
+    # Standard player order: H, W, T, C, F (and A, B, D, E, G if needed)
+    standard_order = ['H', 'W', 'T', 'C', 'F', 'A', 'B', 'D', 'E', 'G']
+
+    def sort_by_standard_order(names):
+        """Sort player names by standard order."""
+        return sorted(names, key=lambda x: standard_order.index(x) if x in standard_order else 999)
+
+    deployers = {}
+    for state in states:
+        # If G=0, no one actually deploys
+        if state.geo_deployment_level == 0:
+            deployer_name = "None"
+        else:
+            # Get the strongest coalition that deploys
+            strongest = state.strongest_coalition
+
+            # Get member names
+            member_names = [country.name for country in strongest.members]
+
+            # Format as coalition name using standard order
+            if len(member_names) == 0:
+                deployer_name = "( )"
+            elif len(member_names) == 1:
+                deployer_name = member_names[0]
+            else:
+                sorted_names = sort_by_standard_order(member_names)
+                deployer_name = f"({''.join(sorted_names)})"
+
+        deployers[state.name] = deployer_name
+
+    return deployers
+
+
 def list_members(state: str) -> List[str]:
     """ Lists all the member countries of all existing coalitions.
 

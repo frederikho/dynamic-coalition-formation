@@ -400,14 +400,15 @@
     .collapsible-content {
       max-height: 0;
       overflow: hidden;
-      transition: max-height 0.2s ease-out;
+      transition: max-height 0.3s ease-out;
       padding: 0 12px;
     }
 
     .collapsible-content.active {
-      max-height: 400px;
+      /* max-height set dynamically by JavaScript */
       padding: 12px;
       padding-top: 16px;
+      overflow: visible;
     }
 
     .download-xlsx-btn {
@@ -434,6 +435,20 @@
       background: #9ca3af;
       cursor: not-allowed;
       opacity: 0.6;
+    }
+
+    /* Highlight animation for changed metadata fields */
+    .changed-field {
+      animation: highlight-blink 5s ease-in-out;
+    }
+
+    @keyframes highlight-blink {
+      0%, 100% {
+        background-color: transparent;
+      }
+      50% {
+        background-color: #fef08a;
+      }
     }
   </style>
 </head>
@@ -469,6 +484,13 @@
             <input type="radio" name="node-coloring" value="geoengineering">
             By geoengineering level (G)
           </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="deployer">
+            By deploying coalition
+          </label>
+
+          <!-- Legend for absorbing sets and geoengineering -->
+          <div id="absorbing-legend" style="font-size:12px; color:#666; margin-top:12px; padding:8px; background:#f8fafc; border-radius:4px;"></div>
         </div>
         <div class="control-group" style="margin-bottom:12px;">
           <label>Filter Mode</label>
@@ -505,13 +527,9 @@
       </div>
 
       <div id="metadata"></div>
-      <div id="absorbing-legend" style="font-size:12px; color:#666; margin-top:8px;"></div>
 
       <div id="node-details" style="display: none;">
         <h2>Selected State: <span id="selected-state-name"></span></h2>
-        <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
-          Geo Level: <span id="selected-geo-level"></span>
-        </div>
         <h3 style="font-size: 13px; font-weight: 600; margin: 12px 0 6px;">Outgoing Transitions</h3>
         <div id="outgoing-transitions" class="transition-list"></div>
         <h3 style="font-size: 13px; font-weight: 600; margin: 12px 0 6px;">Incoming Transitions</h3>
@@ -524,15 +542,36 @@
   </div>
 
   <script>
-    // Handle collapsible sections
+    // Handle collapsible sections with dynamic height
     document.addEventListener('DOMContentLoaded', () => {
       const collapsibles = document.querySelectorAll('.collapsible');
       collapsibles.forEach(coll => {
         coll.addEventListener('click', function() {
           this.classList.toggle('active');
           const content = this.nextElementSibling;
-          content.classList.toggle('active');
+
+          if (content.classList.contains('active')) {
+            // Closing: set to 0
+            content.style.maxHeight = '0px';
+            content.classList.remove('active');
+          } else {
+            // Opening: set to scrollHeight (actual content height)
+            content.classList.add('active');
+            content.style.maxHeight = content.scrollHeight + 'px';
+          }
         });
+      });
+
+      // Recalculate heights when content changes (e.g., legend appears)
+      const observer = new MutationObserver(() => {
+        document.querySelectorAll('.collapsible-content.active').forEach(content => {
+          content.style.maxHeight = content.scrollHeight + 'px';
+        });
+      });
+
+      // Observe changes in collapsible content
+      document.querySelectorAll('.collapsible-content').forEach(content => {
+        observer.observe(content, { childList: true, subtree: true, characterData: true });
       });
     });
   </script>

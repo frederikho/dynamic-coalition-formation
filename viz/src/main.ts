@@ -15,7 +15,6 @@ const statusDiv = document.getElementById('status') as HTMLDivElement;
 const metadataDiv = document.getElementById('metadata') as HTMLDivElement;
 const nodeDetailsDiv = document.getElementById('node-details') as HTMLDivElement;
 const selectedStateNameSpan = document.getElementById('selected-state-name') as HTMLSpanElement;
-const selectedGeoLevelSpan = document.getElementById('selected-geo-level') as HTMLSpanElement;
 const outgoingTransitionsDiv = document.getElementById('outgoing-transitions') as HTMLDivElement;
 const incomingTransitionsDiv = document.getElementById('incoming-transitions') as HTMLDivElement;
 const graphContainer = document.getElementById('graph-container') as HTMLDivElement;
@@ -26,6 +25,7 @@ const resultIndicatorDiv = document.getElementById('result-indicator') as HTMLDi
 // State
 let currentGraphData: GraphData | null = null;
 let renderer: GraphRenderer | null = null;
+let previousMetadata: any = null;
 
 // Initialize graph renderer
 function initRenderer() {
@@ -43,9 +43,9 @@ function getFilterMode(): 'absolute' | 'cumulative' {
 }
 
 // Get selected node coloring mode
-function getNodeColoringMode(): 'none' | 'absorbing' | 'geoengineering' {
+function getNodeColoringMode(): 'none' | 'absorbing' | 'geoengineering' | 'deployer' {
   const selected = Array.from(nodeColoringRadios).find(radio => radio.checked);
-  return (selected?.value as 'none' | 'absorbing' | 'geoengineering') || 'none';
+  return (selected?.value as 'none' | 'absorbing' | 'geoengineering' | 'deployer') || 'none';
 }
 
 // Update tooltip based on filter mode
@@ -148,7 +148,7 @@ async function loadGraph() {
   }
 }
 
-function updateLegend(data: GraphData, coloringMode: 'none' | 'absorbing' | 'geoengineering') {
+function updateLegend(data: GraphData, coloringMode: 'none' | 'absorbing' | 'geoengineering' | 'deployer') {
   if (!absorbingLegendDiv) return;
 
   if (coloringMode === 'none') {
@@ -156,7 +156,30 @@ function updateLegend(data: GraphData, coloringMode: 'none' | 'absorbing' | 'geo
     return;
   }
 
-  if (coloringMode === 'absorbing') {
+  if (coloringMode === 'deployer') {
+    // Get unique deploying coalitions
+    const deployerSet = new Set<string>();
+    data.nodes.forEach(node => {
+      const deployer = node.meta?.deploying_coalition;
+      if (deployer) deployerSet.add(deployer);
+    });
+
+    const deployers = Array.from(deployerSet).sort();
+    const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
+
+    const items = deployers.map((deployer, i) => {
+      const color = palette[i % palette.length];
+      // Count states with this deployer
+      const count = data.nodes.filter(n => n.meta?.deploying_coalition === deployer).length;
+      return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:${color};display:inline-block;border-radius:2px"></span><span>${deployer} (${count} state${count !== 1 ? 's' : ''})</span></div>`;
+    }).join('');
+
+    absorbingLegendDiv.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Deploying Coalition</div>
+      ${items}
+      <div style="font-size:11px;color:#999;margin-top:8px">Border = State has exactly one coalition which deploys</div>
+    `;
+  } else if (coloringMode === 'absorbing') {
     // Compute absorbing sets from graph structure
     const nodeToAbsorbing = computeAbsorbingSets(data);
     const absorbingSetIds = new Set<number>();
@@ -246,13 +269,30 @@ function updateResultIndicator(data: GraphData) {
 function renderResultIndicator(expectedG: number, pi: any, mixingTime: number | null, expanded: boolean) {
   const expandIcon = expanded ? '▼' : '▶';
 
+  // Format mixing time display with info icon
+  let mixingTimeDisplay = '';
+  if (mixingTime !== null) {
+    const timeValue = mixingTime >= 0 ? `${mixingTime} steps` : `>10,000 steps`;
+    const tooltipText = mixingTime >= 0
+      ? `Mixing time: smallest t such that ||P^t - π|| < ε (ε=0.01). This chain converges in ${mixingTime} steps.`
+      : `Mixing time: smallest t such that ||P^t - π|| < ε (ε=0.01). This chain requires >10,000 steps (slow mixing).`;
+
+    mixingTimeDisplay = `
+      <div style="font-size:12px;color:#64748b;margin-top:2px;display:flex;align-items:center;gap:4px;">
+        <span>Mixing time: ${timeValue}</span>
+        <span class="info-icon" style="font-size:10px;cursor:help;">
+          i
+          <span class="tooltip" style="width:280px;white-space:normal;text-align:left;">${tooltipText}</span>
+        </span>
+      </div>
+    `;
+  }
+
   let html = `
     <div class="result-summary">
       <div>
         <div><strong>E<sub>π</sub>[G]:</strong> ${expectedG.toFixed(2)}°C</div>
-        ${mixingTime !== null && mixingTime >= 0 ? `
-          <div style="font-size:12px;color:#64748b;margin-top:2px">Mixing time: ${mixingTime} steps</div>
-        ` : ''}
+        ${mixingTimeDisplay}
       </div>
       <span class="expand-icon">${expandIcon}</span>
     </div>
@@ -331,22 +371,177 @@ function updateMetadata(data: GraphData) {
     return !!val;
   };
 
+  // Track changes from previous metadata
+  const changedFields = new Set<string>();
+  if (previousMetadata) {
+    const prevMeta = previousMetadata.file_metadata || {};
+    const prevConfig = previousMetadata.config || {};
+    const currConfig = data.metadata.config;
+
+    // Check basic fields
+    if (prevMeta.power_rule !== fileMetadata.power_rule) changedFields.add('power_rule');
+    if (prevMeta.min_power !== fileMetadata.min_power) changedFields.add('min_power');
+    if (prevConfig.unanimity_required !== currConfig.unanimity_required) changedFields.add('unanimity');
+    if (prevMeta.discounting !== fileMetadata.discounting) changedFields.add('discounting');
+    if (prevMeta.players !== fileMetadata.players) changedFields.add('players');
+    if (previousMetadata.scenario_name !== data.metadata.scenario_name) changedFields.add('scenario');
+
+    // Check player parameters
+    const players = typeof fileMetadata.players === 'string' ? fileMetadata.players.split(',').map(p => p.trim()) : [];
+    const paramNames = ['base_temp', 'ideal_temp', 'delta_temp', 'm_damage', 'power', 'protocol'];
+
+    for (const param of paramNames) {
+      for (const player of players) {
+        const key = `${param}_${player}`;
+        if (prevMeta[key] !== fileMetadata[key]) {
+          changedFields.add(`player_${param}_${player}`);
+        }
+      }
+    }
+  }
+
+  // Store current metadata for next comparison
+  previousMetadata = {
+    file_metadata: { ...fileMetadata },
+    config: { ...data.metadata.config },
+    scenario_name: data.metadata.scenario_name,
+    scenario_description: data.metadata.scenario_description
+  };
+
   // Determine unanimity value - prefer config over file_metadata as it's already parsed correctly
   const unanimityValue = data.metadata.config.unanimity_required;
 
+  // Scenario info (if available)
+  const scenarioName = data.metadata.scenario_name || fileMetadata.scenario_name;
+  const scenarioDescription = data.metadata.scenario_description || fileMetadata.scenario_description;
+
+  // Helper to add highlight class if field changed
+  const highlight = (fieldName: string): string => {
+    return changedFields.has(fieldName) ? ' class="changed-field"' : '';
+  };
+
+  let scenarioSection = '';
+  if (scenarioName) {
+    scenarioSection = `
+      <div style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 4px;"${highlight('scenario')}>
+        <div><strong>Scenario:</strong> ${scenarioName}</div>
+        ${scenarioDescription ? `<div style="font-size: 12px; color: #64748b; margin-top: 4px;">${scenarioDescription}</div>` : ''}
+      </div>
+    `;
+  }
+
+  // Extract player-specific parameters
+  const playersStr = fileMetadata.players || data.metadata.num_players || 'N/A';
+  const players = typeof playersStr === 'string' ? playersStr.split(',').map(p => p.trim()) : [];
+
+  let playerParamsSection = '';
+  if (players.length > 0) {
+    const paramNames = ['base_temp', 'ideal_temp', 'delta_temp', 'm_damage', 'power', 'protocol'];
+    const paramLabels: Record<string, string> = {
+      'base_temp': 'Base Temp',
+      'ideal_temp': 'Ideal Temp',
+      'delta_temp': 'ΔTemp',
+      'm_damage': 'Damage Coeff',
+      'power': 'Power',
+      'protocol': 'Protocol'
+    };
+
+    // Check if any player parameters exist
+    const hasPlayerParams = paramNames.some(param =>
+      players.some(player => fileMetadata[`${param}_${player}`] !== undefined)
+    );
+
+    if (hasPlayerParams) {
+      // Create table header
+      let tableHTML = `
+        <div style="margin-top: 12px; padding: 8px; background: #f8fafc; border-radius: 4px;">
+          <div style="font-weight: 600; margin-bottom: 8px;">PLAYER PARAMETERS</div>
+          <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: 1px solid #cbd5e1;">
+                <th style="text-align: left; padding: 4px; font-weight: 600;">Param</th>
+                ${players.map(p => `<th style="text-align: right; padding: 4px; font-weight: 600;">${p}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      // Helper to format numbers nicely
+      const formatValue = (val: any): string => {
+        if (val === undefined || isNaN(val)) return '—';
+        const num = typeof val === 'number' ? val : parseFloat(val);
+
+        // Check for common fractions
+        if (Math.abs(num - 1/3) < 0.0001) return '0.333';
+        if (Math.abs(num - 2/3) < 0.0001) return '0.667';
+        if (Math.abs(num - 1/4) < 0.0001) return '0.25';
+        if (Math.abs(num - 3/4) < 0.0001) return '0.75';
+        if (Math.abs(num - 1/5) < 0.0001) return '0.2';
+        if (Math.abs(num - 2/5) < 0.0001) return '0.4';
+        if (Math.abs(num - 3/5) < 0.0001) return '0.6';
+        if (Math.abs(num - 4/5) < 0.0001) return '0.8';
+
+        // Round to appropriate precision
+        if (Math.abs(num) >= 10) return num.toFixed(1);
+        if (Math.abs(num) >= 1) return num.toFixed(2);
+        return num.toFixed(3);
+      };
+
+      // Add rows for each parameter
+      paramNames.forEach(param => {
+        const values = players.map(player => {
+          const key = `${param}_${player}`;
+          return formatValue(fileMetadata[key]);
+        });
+
+        // Only show row if at least one value exists
+        if (values.some(v => v !== '—')) {
+          tableHTML += `
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+              <td style="padding: 4px;">${paramLabels[param] || param}</td>
+              ${players.map(player => {
+                const val = formatValue(fileMetadata[`${param}_${player}`]);
+                const changed = changedFields.has(`player_${param}_${player}`) ? ' class="changed-field"' : '';
+                return `<td style="text-align: right; padding: 4px;"${changed}>${val}</td>`;
+              }).join('')}
+            </tr>
+          `;
+        }
+      });
+
+      tableHTML += `
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      playerParamsSection = tableHTML;
+    }
+  }
+
   metadataDiv.innerHTML = `
+    ${scenarioSection}
     <div><strong>Profile:</strong> ${data.metadata.profile_path.split('/').pop()}</div>
-    <div><strong>Players:</strong> ${fileMetadata.players || data.metadata.num_players || 'N/A'}</div>
+    <div${highlight('players')}><strong>Players:</strong> ${playersStr}</div>
     <div><strong>States:</strong> ${data.metadata.num_states}</div>
     <div><strong>Transitions:</strong> ${data.metadata.num_transitions}</div>
-    <div><strong>Power Rule:</strong> ${fileMetadata.power_rule || data.metadata.config.power_rule}</div>
-    ${fileMetadata.min_power ? `<div><strong>Min Power:</strong> ${fileMetadata.min_power}</div>` : ''}
-    <div><strong>Unanimity:</strong> ${unanimityValue ? 'Yes' : 'No'}</div>
-    ${fileMetadata.discounting ? `<div><strong>Discounting:</strong> ${fileMetadata.discounting}</div>` : ''}
+    <div${highlight('power_rule')}><strong>Power Rule:</strong> ${fileMetadata.power_rule || data.metadata.config.power_rule}</div>
+    ${fileMetadata.min_power ? `<div${highlight('min_power')}><strong>Min Power:</strong> ${fileMetadata.min_power}</div>` : ''}
+    <div${highlight('unanimity')}><strong>Unanimity:</strong> ${unanimityValue ? 'Yes' : 'No'}</div>
+    ${fileMetadata.discounting ? `<div${highlight('discounting')}><strong>Discounting:</strong> ${fileMetadata.discounting}</div>` : ''}
     ${fileMetadata.converged !== undefined ? `<div><strong>Converged:</strong> ${fileMetadata.converged ? 'Yes' : 'No'}</div>` : ''}
     ${fileMetadata.outer_iterations ? `<div><strong>Iterations:</strong> ${fileMetadata.outer_iterations}</div>` : ''}
     ${fileMetadata.config_hash ? `<div style="font-size: 11px; color: #888;"><strong>Hash:</strong> ${fileMetadata.config_hash}</div>` : ''}
+    ${playerParamsSection}
   `;
+
+  // Trigger animation by adding and removing class after a delay
+  setTimeout(() => {
+    const changedElements = metadataDiv.querySelectorAll('.changed-field');
+    changedElements.forEach(el => {
+      el.classList.remove('changed-field');
+    });
+  }, 5000);
 }
 
 // Handle node selection
@@ -359,8 +554,23 @@ function handleNodeSelect(nodeId: string | null) {
   const nodeData = renderer.getNodeData(nodeId);
   if (!nodeData) return;
 
-  selectedStateNameSpan.textContent = nodeData.label;
-  selectedGeoLevelSpan.textContent = nodeData.meta?.geo_level?.toFixed(2) ?? 'N/A';
+  // Normalize state name for display
+  const normalizeStateName = (window as any).normalizeStateName;
+  const normalizedStateName = normalizeStateName ? normalizeStateName(nodeId) : nodeId;
+
+  // Display state name with deploying coalition info if available
+  const deployingCoalition = nodeData.data?.deploying_coalition;
+  const geoLevel = nodeData.data?.geo_level;
+  if (deployingCoalition !== undefined && geoLevel !== undefined) {
+    selectedStateNameSpan.innerHTML = `
+      ${normalizedStateName}
+      <div style="font-size:11px;color:#64748b;margin-top:4px;">
+        Deployed by: <strong>${deployingCoalition}</strong> (G = ${geoLevel.toFixed(3)}°C)
+      </div>
+    `;
+  } else {
+    selectedStateNameSpan.textContent = normalizedStateName;
+  }
 
   // Outgoing transitions
   const outgoing = renderer.getOutgoingEdges(nodeId);
@@ -418,7 +628,7 @@ probThresholdInput.addEventListener('change', () => {
     const threshold = parseFloat(probThresholdInput.value) || 0;
     const filterMode = getFilterMode();
     const coloringMode = getNodeColoringMode();
-    initRenderer();
+    // Don't call initRenderer() - positions will be preserved
     renderer.render(currentGraphData, threshold, { coloringMode, filterMode });
     updateLegend(currentGraphData, coloringMode);
   }
@@ -436,7 +646,7 @@ nodeColoringRadios.forEach(radio => {
       const threshold = parseFloat(probThresholdInput.value) || 0;
       const filterMode = getFilterMode();
       const coloringMode = getNodeColoringMode();
-      initRenderer();
+      // Don't call initRenderer() - positions will be preserved
       renderer.render(currentGraphData, threshold, { coloringMode, filterMode });
       updateLegend(currentGraphData, coloringMode);
     }
@@ -451,7 +661,7 @@ filterModeRadios.forEach(radio => {
       const threshold = parseFloat(probThresholdInput.value) || 0;
       const filterMode = getFilterMode();
       const coloringMode = getNodeColoringMode();
-      initRenderer();
+      // Don't call initRenderer() - positions will be preserved
       renderer.render(currentGraphData, threshold, { coloringMode, filterMode });
       updateLegend(currentGraphData, coloringMode);
     }

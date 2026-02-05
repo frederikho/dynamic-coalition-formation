@@ -39,9 +39,10 @@ def generate_config_hash(config, length=6):
         Short hash string (e.g., 'a3f2b1')
     """
     # Create a sorted JSON string of relevant config parameters
-    # Exclude non-config items like 'experiment_name'
+    # Exclude non-config items like 'experiment_name', 'state_names', 
+    # 'scenario_name', and 'scenario_description' (editable metadata)
     hash_params = {k: v for k, v in sorted(config.items())
-                   if k not in ['experiment_name', 'state_names']}
+                   if k not in ['experiment_name', 'state_names', 'scenario_name', 'scenario_description']}
 
     # Convert to JSON string (with sorted keys for consistency)
     config_str = json.dumps(hash_params, sort_keys=True, default=str)
@@ -108,7 +109,8 @@ def generate_filename(config, description=None, output_dir='./strategy_tables'):
 
 def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: list,
                               effectivity: dict = None, states: list = None, metadata: dict = None,
-                              value_functions: pd.DataFrame = None, geo_levels: dict = None):
+                              value_functions: pd.DataFrame = None, geo_levels: dict = None,
+                              deploying_coalitions: dict = None):
     """
     Write a strategy DataFrame to Excel with exact formatting matching original files.
 
@@ -123,6 +125,7 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
         metadata: Dictionary of configuration parameters to save in metadata sheet (optional)
         value_functions: DataFrame with states as index and players as columns (optional)
         geo_levels: Dictionary mapping state names to geoengineering levels (optional)
+        deploying_coalitions: Dictionary mapping state names to deploying coalition names (optional)
     """
     # Create new workbook
     wb = Workbook()
@@ -434,7 +437,7 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
 
         # Set column widths
         ws_results.column_dimensions['A'].width = 12
-        num_cols = 1 + len(players) + (1 if geo_dict else 0)
+        num_cols = 1 + len(players) + (1 if geo_dict else 0) + (1 if deploying_coalitions else 0)
         for i in range(1, num_cols):
             col_letter = get_column_letter(1 + i)
             ws_results.column_dimensions[col_letter].width = 12
@@ -476,6 +479,16 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                 start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
             )
             ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
+            col_idx += 1
+
+        # Deployed by column
+        if deploying_coalitions is not None:
+            ws_results.cell(row=current_row, column=col_idx, value="Deployed by")
+            ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', bold=True, size=10)
+            ws_results.cell(row=current_row, column=col_idx).fill = PatternFill(
+                start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+            )
+            ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
 
         # Data rows
         current_row = 3
@@ -507,6 +520,14 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                 ws_results.cell(row=current_row, column=col_idx).number_format = '0.000000'
                 ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', size=10)
                 ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='right', vertical='center')
+                col_idx += 1
+
+            # Deployed by column
+            if deploying_coalitions is not None:
+                deployer = deploying_coalitions.get(state, '')
+                ws_results.cell(row=current_row, column=col_idx, value=deployer)
+                ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', size=10)
+                ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
 
             current_row += 1
 

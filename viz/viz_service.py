@@ -475,8 +475,36 @@ def compute_transition_graph(
         logger.error(traceback.format_exc())
         raise
 
-    # 6. Get geoengineering levels for metadata
+    # 6. Get geoengineering levels and deploying coalitions for metadata
     geo_levels = {state.name: state.geo_deployment_level for state in states}
+
+    # Standard player order: H, W, T, C, F (and A, B, D, E, G if needed)
+    standard_order = ['H', 'W', 'T', 'C', 'F', 'A', 'B', 'D', 'E', 'G']
+
+    def sort_by_standard_order(names):
+        """Sort player names by standard order."""
+        return sorted(names, key=lambda x: standard_order.index(x) if x in standard_order else 999)
+
+    # Get deploying coalition for each state
+    deploying_coalitions = {}
+    for state in states:
+        # If G=0, no one actually deploys
+        if state.geo_deployment_level == 0:
+            deployer_name = "None"
+        else:
+            strongest = state.strongest_coalition
+            member_names = [country.name for country in strongest.members]
+
+            # Format as coalition name using standard order
+            if len(member_names) == 0:
+                deployer_name = "( )"
+            elif len(member_names) == 1:
+                deployer_name = member_names[0]
+            else:
+                sorted_names = sort_by_standard_order(member_names)
+                deployer_name = f"({''.join(sorted_names)})"
+
+        deploying_coalitions[state.name] = deployer_name
 
     # 7. Convert to graph format
     nodes = []
@@ -486,7 +514,8 @@ def compute_transition_graph(
             "label": state_name,
             "meta": {
                 "index": i,
-                "geo_level": geo_levels[state_name]
+                "geo_level": geo_levels[state_name],
+                "deploying_coalition": deploying_coalitions[state_name]
             }
         })
 
@@ -536,6 +565,8 @@ def compute_transition_graph(
             "expected_geo_level": expected_G,
             "stationary_distribution": pi_dict,
             "mixing_time": mixing_time,
+            "scenario_name": file_metadata.get("scenario_name"),
+            "scenario_description": file_metadata.get("scenario_description"),
             "config": {
                 "power_rule": config["power_rule"],
                 "unanimity_required": config["unanimity_required"],

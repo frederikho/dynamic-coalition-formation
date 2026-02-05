@@ -6,6 +6,37 @@ import { computeAbsorbingSets } from './absorbing';
 // Register layout algorithm
 cytoscape.use(coseBilkent);
 
+// Standard player order for normalization
+const STANDARD_ORDER = ['H', 'W', 'T', 'C', 'F', 'A', 'B', 'D', 'E', 'G'];
+
+function normalizeStateName(stateName: string): string {
+  /**
+   * Normalize state name to use standard player order (H, W, T, C, F, ...).
+   * E.g., "(CTW)" -> "(WTC)", "(CF)(TW)" -> "(CF)(TW)"
+   */
+  if (stateName === '( )') return stateName;
+
+  // Extract all coalitions from the state name
+  const coalitionMatches = stateName.match(/\([A-Z]+\)/g);
+  if (!coalitionMatches) return stateName;
+
+  // Normalize each coalition
+  const normalizedCoalitions = coalitionMatches.map(coalition => {
+    const members = coalition.slice(1, -1).split(''); // Remove parens and split
+    const sorted = members.sort((a, b) => {
+      const indexA = STANDARD_ORDER.indexOf(a);
+      const indexB = STANDARD_ORDER.indexOf(b);
+      return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+    });
+    return `(${sorted.join('')})`;
+  });
+
+  return normalizedCoalitions.join('');
+}
+
+// Export for use in other modules
+(window as any).normalizeStateName = normalizeStateName;
+
 // Preset positions for 5-state case (3-country model)
 // Pentagon layout matching the paper's figure
 // Exact layout: ( ) top, (TC) upper-right, (WT) lower-right, (WTC) lower-left, (WC) upper-left
@@ -97,6 +128,7 @@ export class GraphRenderer {
   private container: HTMLElement;
   private selectedNode: string | null = null;
   private onNodeSelect: ((nodeId: string | null) => void) | null = null;
+  private savedPositions: Record<string, { x: number; y: number }> = {};
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -106,9 +138,19 @@ export class GraphRenderer {
     this.onNodeSelect = callback;
   }
 
-  render(graphData: GraphData, probThreshold: number = 0.001, options?: { coloringMode?: 'none' | 'absorbing' | 'geoengineering'; filterMode?: 'absolute' | 'cumulative' }) {
-    // Destroy existing instance
+  private saveCurrentPositions() {
+    if (!this.cy) return;
+    this.savedPositions = {};
+    this.cy.nodes().forEach(node => {
+      const pos = node.position();
+      this.savedPositions[node.id()] = { x: pos.x, y: pos.y };
+    });
+  }
+
+  render(graphData: GraphData, probThreshold: number = 0.001, options?: { coloringMode?: 'none' | 'absorbing' | 'geoengineering' | 'deployer'; filterMode?: 'absolute' | 'cumulative' }) {
+    // Save current positions before destroying
     if (this.cy) {
+      this.saveCurrentPositions();
       this.cy.destroy();
       this.cy = null;
     }
@@ -163,7 +205,17 @@ export class GraphRenderer {
     } else if (graphData.nodes.length === 15) {
       presetPositions = getTwoCirclePositions(graphData.nodes.map(n => n.id));
     }
-    const usePresetPositions = Object.keys(presetPositions).length > 0;
+
+    // Prefer saved positions over preset positions
+    const finalPositions: Record<string, { x: number; y: number }> = {};
+    for (const nodeId of graphData.nodes.map(n => n.id)) {
+      if (this.savedPositions[nodeId]) {
+        finalPositions[nodeId] = this.savedPositions[nodeId];
+      } else if (presetPositions[nodeId]) {
+        finalPositions[nodeId] = presetPositions[nodeId];
+      }
+    }
+    const usePresetPositions = Object.keys(finalPositions).length > 0;
 
     // Prepare coloring based on mode
     const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
@@ -185,25 +237,49 @@ export class GraphRenderer {
       maxG = Math.max(...geoLevels);
     }
 
+    // Get unique deployers for deployer coloring
+    const deployerToColor = new Map<string, string>();
+    if (coloringMode === 'deployer') {
+      const uniqueDeployers = Array.from(new Set(
+        graphData.nodes.map(n => n.meta?.deploying_coalition).filter(d => d !== undefined)
+      )).sort() as string[];
+      uniqueDeployers.forEach((deployer, i) => {
+        deployerToColor.set(deployer, palette[i % palette.length]);
+      });
+    }
+
     // Convert to Cytoscape format
     const elements: cytoscape.ElementDefinition[] = [
       // Nodes
       ...graphData.nodes.map(node => {
         const geoLevel = node.meta?.geo_level || 0;
-        const label = `${node.label}\nG=${geoLevel.toFixed(1)}`;
+        const deployingCoalition = node.meta?.deploying_coalition || '';
+        const normalizedLabel = normalizeStateName(node.label);
+        const label = `${normalizedLabel}\nG=${geoLevel.toFixed(2)}`;
+
+        // Border should only appear when the state has exactly one coalition (the deployer)
+        // Count coalitions in state name: "(CF)" has 1, "(CF)(TW)" has 2, "( )" has 0
+        const coalitionCount = (node.id.match(/\([A-Z]+\)/g) || []).length;
+
+        // Border if: G > 0, has exactly one coalition, and it matches the deployer
+        // Compare normalized versions to handle different orderings
+        const normalizedState = normalizeStateName(node.id);
+        const hasDeploymentBorder = geoLevel > 0 && coalitionCount === 1 && normalizedState === deployingCoalition;
 
         const element: cytoscape.ElementDefinition = {
           group: 'nodes' as const,
           data: {
             id: node.id,
             label: label,
-            geo_level: geoLevel
+            geo_level: geoLevel,
+            deploying_coalition: deployingCoalition,
+            has_deployment: hasDeploymentBorder
           }
         };
 
-        // Add preset position if available
-        if (usePresetPositions && node.id in presetPositions) {
-          element.position = presetPositions[node.id];
+        // Add preset position if available (prefers saved positions)
+        if (usePresetPositions && node.id in finalPositions) {
+          element.position = finalPositions[node.id];
         }
 
         // Assign color based on coloring mode
@@ -229,6 +305,12 @@ export class GraphRenderer {
           const g = Math.round(242 - normalized * (242 - 105));
           const b = Math.round(254 - normalized * (254 - 161));
           color = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        } else if (coloringMode === 'deployer') {
+          // Color by deploying coalition
+          const deployer = node.meta?.deploying_coalition;
+          if (deployer && deployerToColor.has(deployer)) {
+            color = deployerToColor.get(deployer)!;
+          }
         }
 
         (element.data as any).color = color;
@@ -269,7 +351,18 @@ export class GraphRenderer {
             'height': 70,
             'text-outline-width': 0,
             'text-wrap': 'wrap',
-            'text-max-width': '65px'
+            'text-max-width': '65px',
+            'border-width': 0,
+            'border-color': '#1e293b'
+          }
+        },
+        {
+          selector: 'node[has_deployment]',
+          style: {
+            'border-width': function(ele: any) {
+              return ele.data('has_deployment') ? 3 : 0;
+            },
+            'border-color': '#1e293b'
           }
         },
         {
@@ -490,8 +583,13 @@ export class GraphRenderer {
     if (node.length === 0) return undefined;
     return {
       label: node.data('label'),
+      data: {
+        geo_level: node.data('geo_level'),
+        deploying_coalition: node.data('deploying_coalition')
+      },
       meta: {
-        geo_level: node.data('geo_level')
+        geo_level: node.data('geo_level'),
+        deploying_coalition: node.data('deploying_coalition')
       }
     };
   }

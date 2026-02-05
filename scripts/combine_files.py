@@ -17,10 +17,32 @@ def main():
     lib_dir = os.path.join(repo_root, "lib")
     out_path = os.path.join(os.path.dirname(__file__), "combined_lib_overview.txt")
 
+    # Files to ignore (repository-relative paths). Add more entries here as needed.
+    # Example: "lib/probabilities.py"
+    IGNORE_FILES = {
+        "lib/probabilities.py",
+        "lib/__init__.py",
+        "lib/equilibrium/__init__.py",
+        "lib/equilibrium/excel_styling.py",
+        "lib/equilibrium/excel_writer.py",
+        "lib/equilibrium/scenarios.py",
+        "lib/errors.py",
+        "lib/logging.py",
+        
+    }
+
     # Collect Python files recursively under lib/, excluding __pycache__ directories.
     py_pattern = os.path.join(lib_dir, "**", "*.py")
     py_files = sorted(glob.glob(py_pattern, recursive=True))
     py_files = [fp for fp in py_files if "__pycache__" not in fp.split(os.sep)]
+
+    # Normalize and filter repository-relative ignore paths
+    ignore_rel = {os.path.normpath(p) for p in IGNORE_FILES}
+    def is_ignored(fp):
+        rel = os.path.relpath(fp, repo_root)
+        return os.path.normpath(rel) in ignore_rel
+
+    py_files = [fp for fp in py_files if not is_ignored(fp)]
 
     with open(out_path, "w", encoding="utf-8") as out:
         out.write("Combined overview of lib/**/*.py\n")
@@ -29,8 +51,9 @@ def main():
         # Add tree output at the top
         out.write("----- REPOSITORY TREE -----\n\n")
         try:
+            # Exclude the `viz` directory from the repository tree output
             result = subprocess.run(
-                ["tree", repo_root],
+                ["tree", "-I", "viz", repo_root],
                 capture_output=True,
                 text=True,
                 check=True

@@ -17,6 +17,7 @@ from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
 from lib.equilibrium.solver import EquilibriumSolver
+from lib.equilibrium.scenarios import get_scenario, list_scenarios
 from lib.equilibrium.excel_writer import (
     write_strategy_table_excel,
     generate_filename,
@@ -28,6 +29,7 @@ from lib.utils import (
     get_payoff_matrix,
     verify_equilibrium,
     get_geoengineering_levels,
+    get_deploying_coalitions,
     list_members
 )
 from lib.probabilities_optimized import TransitionProbabilitiesOptimized as TransitionProbabilities
@@ -99,6 +101,7 @@ def setup_experiment(config):
 
     payoffs = get_payoff_matrix(states=states, columns=config["players"])
     geoengineering = get_geoengineering_levels(states=states)
+    deploying_coalitions = get_deploying_coalitions(states=states)
 
     # Derive effectivity from template or generate
     template_file = config.get("template_file", None)
@@ -120,6 +123,7 @@ def setup_experiment(config):
         'protocol': config["protocol"],
         'payoffs': payoffs,
         'geoengineering': geoengineering,
+        'deploying_coalitions': deploying_coalitions,
         'discounting': config["discounting"],
         'unanimity_required': config["unanimity_required"],
         'power_rule': config["power_rule"],
@@ -141,6 +145,21 @@ def _get_solver_params(config, user_params=None):
     if user_params is None:
         user_params = {}
 
+    # Explanation parameters:
+    
+    # 'tau_p_init': if this is small, the softmax ...
+    # 'tau_r_init':  # if this is small, the sigmoid for acceptance becomes step-like
+    # 'tau_decay':  # if this is close to 1, the annealing is slow
+    # 'tau_min':  # the temperature that has to be reached for convergence
+    # 'max_outer_iter': # Safety valve - convergence criterion will stop earlier
+    # 'max_inner_iter':        
+    # 'damping': 1 means no damping
+    # 'inner_tol': ,
+    # 'outer_tol':   # If this is None, defaults to 10*inner_tol = 1e-9
+    # 'consecutive_tol':        
+    # 'tau_margin': ,
+    # 'project_to_exact': should always be True actually
+        
     # Default parameters resembling Jere's implementation
     default_params = {
         'tau_p_init': 1e-6,
@@ -181,8 +200,22 @@ def _get_solver_params(config, user_params=None):
             'inner_tol': 1e-8,
             'outer_tol': 1e-8,
             'consecutive_tol': 1,
-            'project_to_exact': False
         })
+
+    # overwrite
+    if len(config['players']) >= 4:
+        default_params.update({
+            'tau_p_init': 1,
+            'tau_r_init': 1,
+            'tau_decay': 0.95,
+            'tau_min': 0.01,
+            'damping': 0.5,
+            'max_inner_iter': 400,
+            'max_outer_iter': 1000,
+            'inner_tol': 1e-4,
+            'outer_tol': 1e-4,
+            'consecutive_tol': 1,
+        })        
 
     # Update with user-provided parameters
     default_params.update(user_params)
@@ -301,6 +334,10 @@ def _build_metadata(config, setup, solver_params, solver_result,
         'runtime_formatted': f'{runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s',
         'verification_success': verification_success,
         '': '',
+        '--- SCENARIO INFO ---': '',
+        'scenario_name': config.get('scenario_name', config.get('experiment_name', 'N/A')),
+        'scenario_description': config.get('scenario_description', description or ''),
+        ' ': '',
         '--- GAME CONFIG ---': '',
         'n_players': len(setup['players']),
         'players': ', '.join(setup['players']),
@@ -310,7 +347,7 @@ def _build_metadata(config, setup, solver_params, solver_result,
         'min_power': config.get('min_power', 'N/A'),
         'unanimity_required': config['unanimity_required'],
         'discounting': config['discounting'],
-        ' ': '',
+        '  ': '',
         '--- PLAYER PARAMETERS ---': '',
     }
 
@@ -381,7 +418,8 @@ def _save_to_file(strategy_df, output_file, setup, metadata, V=None, verbose=Tru
     write_strategy_table_excel(
         strategy_df, output_file, setup['players'],
         setup['effectivity'], setup['state_names'], metadata=metadata,
-        value_functions=V, geo_levels=setup['geoengineering']
+        value_functions=V, geo_levels=setup['geoengineering'],
+        deploying_coalitions=setup.get('deploying_coalitions', None)
     )
 
     if verbose and logger:
@@ -546,22 +584,39 @@ def main():
     # Setup logger early so it's available for all output
     logger = None
 
+    # Get available scenarios
+    available_scenarios = list_scenarios()
+    
     parser = argparse.ArgumentParser(
-        description='Find equilibrium strategy profiles for coalition formation games'
+        description='Find equilibrium strategy profiles for coalition formation games',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+Examples:
+  # Find equilibrium for weak governance scenario (3 players)
+  python -m lib.equilibrium.find weak_governance_n3
+
+  # Find equilibrium for power threshold with 4 players
+  python -m lib.equilibrium.find power_threshold_n4
+
+  # With custom output file
+  python -m lib.equilibrium.find power_threshold_n3 -o my_results.xlsx
+
+  # Start fresh (ignore existing checkpoint)
+  python -m lib.equilibrium.find weak_governance_n3 --fresh
+
+Available scenarios (use --list-scenarios to see all):
+  {', '.join(available_scenarios[:10])}...
+        """
     )
     parser.add_argument(
-        '--scenario',
-        type=str,
-        choices=['weak_governance', 'power_threshold', 'power_threshold_no_unanimity',
-                 'weak_governance_n4', 'power_threshold_n4', 'custom'],
-        default='power_threshold',
-        help='Predefined scenario to use'
+        'scenario',
+        nargs='?',
+        help='Scenario to run (see --list-scenarios for options)'
     )
     parser.add_argument(
-        '--n-players',
-        type=int,
-        default=None,
-        help='Number of players (overrides scenario default)'
+        '--list-scenarios',
+        action='store_true',
+        help='List all available scenarios and exit'
     )
     parser.add_argument(
         '--output',
@@ -606,74 +661,32 @@ def main():
 
     args = parser.parse_args()
 
+    # Handle --list-scenarios flag
+    if args.list_scenarios:
+        print("Available scenarios:")
+        print("\n3-player scenarios:")
+        for name in list_scenarios(filter_players=3):
+            print(f"  - {name}")
+        print("\n4-player scenarios:")
+        for name in list_scenarios(filter_players=4):
+            print(f"  - {name}")
+        print("\n5-player scenarios:")
+        for name in list_scenarios(filter_players=5):
+            print(f"  - {name}")
+        return
+
+    # Require scenario if not listing
+    if not args.scenario:
+        parser.error("scenario is required (use --list-scenarios to see available options)")
+
     # By default, load from checkpoint unless --fresh is specified
     load_from_checkpoint = not args.fresh
 
-    # Determine number of players
-    if args.scenario.endswith('_n4'):
-        default_n_players = 4
-    else:
-        default_n_players = 3
-
-    n_players = args.n_players if args.n_players is not None else default_n_players
-
-    # Setup configuration based on number of players
-    if n_players == 3:
-        players = ["W", "T", "C"]
-        base_config = dict(
-            base_temp={"W": 21.5, "T": 14.0, "C": 11.5},
-            ideal_temp={player: 13. for player in players},
-            delta_temp={player: 3. for player in players},
-            power={player: 1/n_players for player in players},
-            protocol={player: 1/n_players for player in players},
-            discounting=0.99,
-            players=players,
-            state_names=None  # Will be generated automatically
-        )
-    elif n_players == 4:
-        players = ["W", "T", "C", "F"]
-        base_config = dict(
-            base_temp={"W": 21.5, "T": 14.0, "C": 11.5, "F": 9.0},
-            ideal_temp={player: 13. for player in players},
-            delta_temp={player: 3. for player in players},
-            power={player: 1/n_players for player in players},
-            protocol={player: 1/n_players for player in players},
-            discounting=0.99,
-            players=players,
-            state_names=None  # Will be generated automatically
-        )
-    else:
-        raise ValueError(f"Unsupported number of players: {n_players}")
-
-    # Scenario-specific configurations
-    scenario_base = args.scenario.replace('_n4', '')  # Remove n4 suffix for lookup
-
-    scenario_configs = {
-        'weak_governance': {
-            'experiment_name': f'weak_governance_n{n_players}',
-            'm_damage': {player: 1. for player in players},
-            'power_rule': 'weak_governance',
-            'min_power': None,
-            'unanimity_required': True
-        },
-        'power_threshold': {
-            'experiment_name': f'power_threshold_n{n_players}',
-            'm_damage': {player: 1. for player in players},
-            'power_rule': 'power_threshold',
-            'min_power': 0.501,
-            'unanimity_required': True
-        },
-        'power_threshold_no_unanimity': {
-            'experiment_name': f'power_threshold_no_unanimity_n{n_players}',
-            'm_damage': {player: (0.75 if player == 'W' else 1.25 if player == 'T' else 1.)
-                        for player in players},
-            'power_rule': 'power_threshold',
-            'min_power': 0.501,
-            'unanimity_required': False
-        }
-    }
-
-    config = {**base_config, **scenario_configs[scenario_base]}
+    # Get scenario configuration
+    try:
+        config = get_scenario(args.scenario)
+    except KeyError as e:
+        parser.error(str(e))
 
     # Setup logger with scenario-specific log file
     log_file = Path('./logs') / f"{config['experiment_name']}.log"

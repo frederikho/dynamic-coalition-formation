@@ -4,3 +4,4 @@ pytest
 openpyxl
 fastapi
 uvicorn
+rich

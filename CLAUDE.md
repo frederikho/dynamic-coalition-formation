@@ -297,4 +297,6 @@ The transition probability matrix P shows how likely the system moves from one s
 High-probability transitions indicate the likely evolution path. Absorbing states have P[x,x] = 1.
 
 ### Notes
-Never use fallbacks. Better fail early than that it seems it works while it actually doesnt. 
+- Never use fallbacks. Better fail early than that it seems it works while it actually doesnt. 
+- Never use git commands, that's entirely controlled by the user. 
+- I am running /viz using npm run dev, so no rebuild is necessary after changes, is done automatically. When do you changes to the viz/viz_service.py, you will need to restart though. 
