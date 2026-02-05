@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "cd .. && bash build_static.sh",
-    "build": "vite build",
+    "build": "vite build && cd ../docs && echo 'Copying .nojekyll...' && touch .nojekyll",
     "preview": "vite preview"
   },
   "dependencies": {

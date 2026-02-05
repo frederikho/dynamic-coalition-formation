@@ -11,3 +11,5 @@ scripts/combined*
 
 /checkpoints
 /logs
+
+# Note: /docs is committed (GitHub Pages deploys from this folder)

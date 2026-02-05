@@ -11,7 +11,8 @@ export default defineConfig({
     allowedHosts: ['.ngrok-free.app']
   },
   build: {
-    outDir: 'dist',
+    outDir: '../docs',  // Build to /docs for GitHub Pages "Deploy from a branch"
+    emptyOutDir: true,
     sourcemap: true
   }
 })
