@@ -1,0 +1,130 @@
+{
+  "profiles": [
+    {
+      "name": "eq_n3_power_thresh_maj_2265a6",
+      "filename": "eq_n3_power_thresh_maj_2265a6.json",
+      "path": "strategy_tables/eq_n3_power_thresh_maj_2265a6.xlsx",
+      "num_states": 5,
+      "num_transitions": 10,
+      "scenario_name": null,
+      "scenario_description": null
+    },
+    {
+      "name": "eq_n3_power_thresh_unan_649999",
+      "filename": "eq_n3_power_thresh_unan_649999.json",
+      "path": "strategy_tables/eq_n3_power_thresh_unan_649999.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": null,
+      "scenario_description": null
+    },
+    {
+      "name": "eq_n3_weak_gov_unan_974d28",
+      "filename": "eq_n3_weak_gov_unan_974d28.json",
+      "path": "strategy_tables/eq_n3_weak_gov_unan_974d28.xlsx",
+      "num_states": 5,
+      "num_transitions": 10,
+      "scenario_name": null,
+      "scenario_description": null
+    },
+    {
+      "name": "eq_n3_weak_gov_unan_a74e45",
+      "filename": "eq_n3_weak_gov_unan_a74e45.json",
+      "path": "strategy_tables/eq_n3_weak_gov_unan_a74e45.xlsx",
+      "num_states": 5,
+      "num_transitions": 10,
+      "scenario_name": null,
+      "scenario_description": null
+    },
+    {
+      "name": "eq_n4_power_thresh_unan_061508",
+      "filename": "eq_n4_power_thresh_unan_061508.json",
+      "path": "strategy_tables/eq_n4_power_thresh_unan_061508.xlsx",
+      "num_states": 15,
+      "num_transitions": 41,
+      "scenario_name": "moderate_discounting_n4",
+      "scenario_description": "Moderate time preference (\u03b4=0.97) balancing near and long-term considerations."
+    },
+    {
+      "name": "eq_n4_power_thresh_unan_3c2861",
+      "filename": "eq_n4_power_thresh_unan_3c2861.json",
+      "path": "strategy_tables/eq_n4_power_thresh_unan_3c2861.xlsx",
+      "num_states": 15,
+      "num_transitions": 65,
+      "scenario_name": "power_threshold_n4",
+      "scenario_description": "4-player power threshold governance requiring majority support (>50%) for effectiveness."
+    },
+    {
+      "name": "eq_n4_power_thresh_unan_7d810e",
+      "filename": "eq_n4_power_thresh_unan_7d810e.json",
+      "path": "strategy_tables/eq_n4_power_thresh_unan_7d810e.xlsx",
+      "num_states": 15,
+      "num_transitions": 84,
+      "scenario_name": "higher_discounting_n4",
+      "scenario_description": "High time preference (\u03b4=0.90) emphasizing near-term considerations."
+    },
+    {
+      "name": "eq_n4_power_thresh_unan_99395d",
+      "filename": "eq_n4_power_thresh_unan_99395d.json",
+      "path": "strategy_tables/eq_n4_power_thresh_unan_99395d.xlsx",
+      "num_states": 15,
+      "num_transitions": 225,
+      "scenario_name": "dominant_cold_n4",
+      "scenario_description": null
+    },
+    {
+      "name": "eq_n4_power_thresh_unan_b25de6",
+      "filename": "eq_n4_power_thresh_unan_b25de6.json",
+      "path": "strategy_tables/eq_n4_power_thresh_unan_b25de6.xlsx",
+      "num_states": 15,
+      "num_transitions": 45,
+      "scenario_name": "dominant_warm_n4",
+      "scenario_description": "Warm country W holds dominant power (60%) while others share remaining influence equally."
+    },
+    {
+      "name": "eq_n4_weak_gov_maj_63a83f",
+      "filename": "eq_n4_weak_gov_maj_63a83f.json",
+      "path": "strategy_tables/eq_n4_weak_gov_maj_63a83f.xlsx",
+      "num_states": 15,
+      "num_transitions": 47,
+      "scenario_name": "weak_governance_no_unanimity_n4",
+      "scenario_description": "Standard 4-player weak governance with equal damage sensitivity and no unanimity requirement."
+    },
+    {
+      "name": "eq_n4_weak_gov_unan_b02e87",
+      "filename": "eq_n4_weak_gov_unan_b02e87.json",
+      "path": "strategy_tables/eq_n4_weak_gov_unan_b02e87.xlsx",
+      "num_states": 15,
+      "num_transitions": 46,
+      "scenario_name": "weak_governance_n4",
+      "scenario_description": "Standard 4-player weak governance with equal damage sensitivity and unanimity requirement."
+    },
+    {
+      "name": "power_threshold",
+      "filename": "power_threshold.json",
+      "path": "strategy_tables/power_threshold.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": null,
+      "scenario_description": null
+    },
+    {
+      "name": "power_threshold_no_unanimity",
+      "filename": "power_threshold_no_unanimity.json",
+      "path": "strategy_tables/power_threshold_no_unanimity.xlsx",
+      "num_states": 5,
+      "num_transitions": 10,
+      "scenario_name": null,
+      "scenario_description": null
+    },
+    {
+      "name": "weak_governance",
+      "filename": "weak_governance.json",
+      "path": "strategy_tables/weak_governance.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": null,
+      "scenario_description": null
+    }
+  ]
+}

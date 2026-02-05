@@ -625,8 +625,10 @@ downloadXlsxBtn.addEventListener('click', () => {
   const filename = pathParts[pathParts.length - 1];
 
   // Create a temporary link to download the file from static data
+  // Use BASE_URL to handle GitHub Pages subdirectory deployment
+  const baseUrl = import.meta.env.BASE_URL || '/';
   const link = document.createElement('a');
-  link.href = `/data/xlsx/${filename}`;
+  link.href = `${baseUrl}data/xlsx/${filename}`;
   link.download = filename;
   document.body.appendChild(link);
   link.click();
