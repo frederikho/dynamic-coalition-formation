@@ -1,9 +1,10 @@
 import type { GraphData, ProfilesResponse } from './types';
 
-const API_BASE = 'http://127.0.0.1:8000';
+// Static data mode - fetch precomputed JSON files from /data directory
+const DATA_BASE = '/data';
 
 export async function fetchProfiles(): Promise<ProfilesResponse> {
-  const response = await fetch(`${API_BASE}/profiles`);
+  const response = await fetch(`${DATA_BASE}/profiles.json`);
   if (!response.ok) {
     throw new Error(`Failed to fetch profiles: ${response.statusText}`);
   }
@@ -13,13 +14,14 @@ export async function fetchProfiles(): Promise<ProfilesResponse> {
 export async function fetchGraph(params: {
   profile: string;
 }): Promise<GraphData> {
-  const url = new URL(`${API_BASE}/graph`);
-  url.searchParams.set('profile', params.profile);
+  // Extract filename from path (e.g., "strategy_tables/foo.xlsx" -> "foo")
+  const pathParts = params.profile.split('/');
+  const filename = pathParts[pathParts.length - 1];
+  const basename = filename.replace('.xlsx', '');
 
-  const response = await fetch(url.toString());
+  const response = await fetch(`${DATA_BASE}/${basename}.json`);
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(error.detail || 'Failed to fetch graph');
+    throw new Error(`Failed to fetch graph data: ${response.statusText}`);
   }
   return response.json();
 }

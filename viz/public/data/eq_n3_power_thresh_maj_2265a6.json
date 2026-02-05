@@ -1,0 +1,210 @@
+{
+  "nodes": [
+    {
+      "id": "( )",
+      "label": "( )",
+      "meta": {
+        "index": 0,
+        "geo_level": 0.0,
+        "deploying_coalition": "None"
+      }
+    },
+    {
+      "id": "(TC)",
+      "label": "(TC)",
+      "meta": {
+        "index": 1,
+        "geo_level": 2.888888888888889,
+        "deploying_coalition": "(TC)"
+      }
+    },
+    {
+      "id": "(WC)",
+      "label": "(WC)",
+      "meta": {
+        "index": 2,
+        "geo_level": 5.7857142857142865,
+        "deploying_coalition": "(WC)"
+      }
+    },
+    {
+      "id": "(WT)",
+      "label": "(WT)",
+      "meta": {
+        "index": 3,
+        "geo_level": 6.812499999999999,
+        "deploying_coalition": "(WT)"
+      }
+    },
+    {
+      "id": "(WTC)",
+      "label": "(WTC)",
+      "meta": {
+        "index": 4,
+        "geo_level": 5.041666666666666,
+        "deploying_coalition": "(WTC)"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "source": "( )",
+      "target": "(TC)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e1",
+      "source": "( )",
+      "target": "(WT)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e2",
+      "source": "(TC)",
+      "target": "(TC)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": true
+      }
+    },
+    {
+      "id": "e3",
+      "source": "(TC)",
+      "target": "(WTC)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e4",
+      "source": "(WC)",
+      "target": "(TC)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e5",
+      "source": "(WC)",
+      "target": "(WTC)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e6",
+      "source": "(WT)",
+      "target": "(TC)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e7",
+      "source": "(WT)",
+      "target": "(WT)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": true
+      }
+    },
+    {
+      "id": "e8",
+      "source": "(WT)",
+      "target": "(WTC)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e9",
+      "source": "(WTC)",
+      "target": "(WTC)",
+      "p": 1.0,
+      "meta": {
+        "is_self_loop": true
+      }
+    }
+  ],
+  "metadata": {
+    "profile_path": "strategy_tables/eq_n3_power_thresh_maj_2265a6.xlsx",
+    "num_players": 3,
+    "num_states": 5,
+    "num_transitions": 10,
+    "expected_geo_level": 5.041666666666666,
+    "stationary_distribution": {
+      "( )": 0.0,
+      "(TC)": 0.0,
+      "(WC)": 0.0,
+      "(WT)": 0.0,
+      "(WTC)": 1.0
+    },
+    "mixing_time": 7,
+    "scenario_name": null,
+    "scenario_description": null,
+    "config": {
+      "power_rule": "power_threshold",
+      "unanimity_required": false,
+      "min_power": 0.5
+    },
+    "file_metadata": {
+      "start_time": "2026-02-03 22:46:03",
+      "end_time": "2026-02-03 22:46:15",
+      "runtime_seconds": "11.37",
+      "runtime_formatted": "0m 11.4s",
+      "verification_success": "True",
+      "n_players": "3",
+      "players": "W, T, C",
+      "n_states": "5",
+      "states": "( ), (TC), (WC), (WT), (WTC)",
+      "power_rule": "power_threshold",
+      "min_power": "0.5",
+      "unanimity_required": "False",
+      "discounting": "0.99",
+      "base_temp_W": "21.5",
+      "ideal_temp_W": "13.0",
+      "delta_temp_W": "3.0",
+      "m_damage_W": "0.75",
+      "power_W": "0.3333333333333333",
+      "base_temp_T": "14.0",
+      "ideal_temp_T": "13.0",
+      "delta_temp_T": "3.0",
+      "m_damage_T": "1.25",
+      "power_T": "0.3333333333333333",
+      "base_temp_C": "11.5",
+      "ideal_temp_C": "13.0",
+      "delta_temp_C": "3.0",
+      "m_damage_C": "1.0",
+      "power_C": "0.3333333333333333",
+      "protocol_W": "0.3333333333333333",
+      "protocol_T": "0.3333333333333333",
+      "protocol_C": "0.3333333333333333",
+      "converged": "True",
+      "outer_iterations": "5",
+      "final_tau_p": "0.129600",
+      "final_tau_r": "0.129600",
+      "config_hash": "2265a647cc"
+    },
+    "chain_diagnostics": {
+      "is_ergodic": false,
+      "num_absorbing_sets": 1,
+      "absorbing_sets": [
+        [
+          "(WTC)"
+        ]
+      ]
+    }
+  }
+}

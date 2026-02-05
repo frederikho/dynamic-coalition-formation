@@ -9,6 +9,8 @@ pnpm-debug.log*
 dist/
 dist-ssr/
 
+# Note: public/data/ is committed (contains precomputed JSON for static deployment)
+
 # Editor
 .vscode/
 .idea/

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "cd .. && bash build_static.sh",
     "build": "vite build",
     "preview": "vite preview"
   },
