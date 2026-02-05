@@ -19,6 +19,7 @@ const outgoingTransitionsDiv = document.getElementById('outgoing-transitions') a
 const incomingTransitionsDiv = document.getElementById('incoming-transitions') as HTMLDivElement;
 const graphContainer = document.getElementById('graph-container') as HTMLDivElement;
 const nodeColoringRadios = document.querySelectorAll('input[name="node-coloring"]') as NodeListOf<HTMLInputElement>;
+const layoutModeRadios = document.querySelectorAll('input[name="layout-mode"]') as NodeListOf<HTMLInputElement>;
 const absorbingLegendDiv = document.getElementById('absorbing-legend') as HTMLDivElement;
 const resultIndicatorDiv = document.getElementById('result-indicator') as HTMLDivElement;
 
@@ -46,6 +47,12 @@ function getFilterMode(): 'absolute' | 'cumulative' {
 function getNodeColoringMode(): 'none' | 'absorbing' | 'geoengineering' | 'deployer' {
   const selected = Array.from(nodeColoringRadios).find(radio => radio.checked);
   return (selected?.value as 'none' | 'absorbing' | 'geoengineering' | 'deployer') || 'none';
+}
+
+// Get selected layout mode
+function getLayoutMode(): 'default' | 'connections' | 'deployer' | 'geo-level' {
+  const selected = Array.from(layoutModeRadios).find(radio => radio.checked);
+  return (selected?.value as 'default' | 'connections' | 'deployer' | 'geo-level') || 'default';
 }
 
 // Update tooltip based on filter mode
@@ -119,7 +126,8 @@ async function loadGraph() {
     const threshold = parseFloat(probThresholdInput.value) || 0;
     const filterMode = getFilterMode();
     const coloringMode = getNodeColoringMode();
-    renderer!.render(graphData, threshold, { coloringMode, filterMode });
+    const layoutMode = getLayoutMode();
+    renderer!.render(graphData, threshold, { coloringMode, filterMode, layoutMode });
 
     // Update metadata display
     updateMetadata(graphData);
@@ -177,7 +185,7 @@ function updateLegend(data: GraphData, coloringMode: 'none' | 'absorbing' | 'geo
     absorbingLegendDiv.innerHTML = `
       <div style="font-weight:600;margin-bottom:6px">Deploying Coalition</div>
       ${items}
-      <div style="font-size:11px;color:#999;margin-top:8px">Border = State has exactly one coalition which deploys</div>
+      <div style="font-size:11px;color:#999;margin-top:8px">Border = This is the coalition which deploys within this group.</div>
     `;
   } else if (coloringMode === 'absorbing') {
     // Compute absorbing sets from graph structure
@@ -612,10 +620,14 @@ downloadXlsxBtn.addEventListener('click', () => {
     return;
   }
 
-  // Create a temporary link to download the file
+  // Extract filename from path
+  const pathParts = profileSelect.value.split('/');
+  const filename = pathParts[pathParts.length - 1];
+
+  // Create a temporary link to download the file from static data
   const link = document.createElement('a');
-  link.href = `http://127.0.0.1:8000/download?profile=${encodeURIComponent(profileSelect.value)}`;
-  link.download = profileSelect.value.split('/').pop() || 'profile.xlsx';
+  link.href = `/data/xlsx/${filename}`;
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -628,8 +640,9 @@ probThresholdInput.addEventListener('change', () => {
     const threshold = parseFloat(probThresholdInput.value) || 0;
     const filterMode = getFilterMode();
     const coloringMode = getNodeColoringMode();
+    const layoutMode = getLayoutMode();
     // Don't call initRenderer() - positions will be preserved
-    renderer.render(currentGraphData, threshold, { coloringMode, filterMode });
+    renderer.render(currentGraphData, threshold, { coloringMode, filterMode, layoutMode });
     updateLegend(currentGraphData, coloringMode);
   }
 });
@@ -646,8 +659,25 @@ nodeColoringRadios.forEach(radio => {
       const threshold = parseFloat(probThresholdInput.value) || 0;
       const filterMode = getFilterMode();
       const coloringMode = getNodeColoringMode();
+      const layoutMode = getLayoutMode();
       // Don't call initRenderer() - positions will be preserved
-      renderer.render(currentGraphData, threshold, { coloringMode, filterMode });
+      renderer.render(currentGraphData, threshold, { coloringMode, filterMode, layoutMode });
+      updateLegend(currentGraphData, coloringMode);
+    }
+  });
+});
+
+// Layout mode change
+layoutModeRadios.forEach(radio => {
+  radio.addEventListener('change', () => {
+    if (currentGraphData && renderer) {
+      const threshold = parseFloat(probThresholdInput.value) || 0;
+      const filterMode = getFilterMode();
+      const coloringMode = getNodeColoringMode();
+      const layoutMode = getLayoutMode();
+      // Don't preserve positions when changing layout mode - need fresh layout
+      initRenderer();
+      renderer.render(currentGraphData, threshold, { coloringMode, filterMode, layoutMode });
       updateLegend(currentGraphData, coloringMode);
     }
   });
@@ -661,8 +691,9 @@ filterModeRadios.forEach(radio => {
       const threshold = parseFloat(probThresholdInput.value) || 0;
       const filterMode = getFilterMode();
       const coloringMode = getNodeColoringMode();
+      const layoutMode = getLayoutMode();
       // Don't call initRenderer() - positions will be preserved
-      renderer.render(currentGraphData, threshold, { coloringMode, filterMode });
+      renderer.render(currentGraphData, threshold, { coloringMode, filterMode, layoutMode });
       updateLegend(currentGraphData, coloringMode);
     }
   });

@@ -304,22 +304,32 @@ class EquilibriumSolver:
 
         return new_proposals
 
-    def _apply_damping(self, old_dict: Dict, new_dict: Dict,
-                      damping: float) -> Dict:
-        """Apply damping to strategy updates.
+    def _apply_damping(self, old_dict: Dict, new_dict: Dict, damping: float) -> Dict:
+        """
+        Apply damping to strategy updates.
+
+        Convention:
+        - damping = 1.0 -> full damping (no change; keep old)
+        - damping = 0.0 -> no damping (full update; take new)
+        - intermediate -> convex combination
 
         Args:
             old_dict: Old strategy dictionary
             new_dict: New strategy dictionary
-            damping: Damping factor (lambda)
+            damping: Damping factor in [0, 1]
 
         Returns:
             Damped strategy dictionary
         """
+        if not (0.0 <= damping <= 1.0):
+            raise ValueError(f"damping must be in [0, 1], got {damping}")
+
         damped = {}
-        for key in old_dict:
-            damped[key] = (1 - damping) * old_dict[key] + damping * new_dict[key]
+        for key, old_val in old_dict.items():
+            new_val = new_dict[key]
+            damped[key] = damping * old_val + (1.0 - damping) * new_val
         return damped
+
 
     def _verify_candidate_equilibrium(self, strategy_df: pd.DataFrame) -> Tuple[bool, str, pd.DataFrame]:
         """Verify if a strategy profile is a valid equilibrium.
@@ -366,6 +376,9 @@ class EquilibriumSolver:
 
         This enforces strict acceptance rules and best-response proposals.
         """
+        # DEBUG: Track if we're setting strategies for split coalition states
+        split_states = [s for s in self.states if s.count('(') > 1]
+
         # Project acceptances: 1 if V_next > V_current, 0 if V_next < V_current
         for proposer in self.players:
             for current_state in self.states:
@@ -558,16 +571,23 @@ class EquilibriumSolver:
             'solve_values': [],
             'update_acceptances': [],
             'update_proposals': [],
-            'damping': []
+            'damping': [],
+            'checkpoint_save': [],
+            'early_verification': [],
+            'outer_total': [],  # Total time per outer iteration
+            'inner_total': []   # Total time for inner loop per outer iteration
         }
 
         while outer_iter < max_outer_iter:
+            outer_iter_start = time.time()  # Track total outer iteration time
+
             if self.verbose:
                 timestamp = datetime.now().strftime('%H:%M:%S')
                 self._log(f"\nOuter iteration {outer_iter + 1}/{max_outer_iter} [{timestamp}]")
                 self._log(f"  tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
 
             # Inner fixed-point iteration
+            inner_loop_start = time.time()
             max_change = float('inf')  # Track final max_change from inner loop
             for inner_iter in range(max_inner_iter):
                 # Save old strategies
@@ -630,6 +650,9 @@ class EquilibriumSolver:
                         self._log(f"    Converged after {inner_iter + 1} iterations")
                     break
 
+            inner_loop_time = time.time() - inner_loop_start
+            timing_stats['inner_total'].append(inner_loop_time)
+
             # Track this outer iteration's convergence
             recent_max_changes.append(max_change)
             if len(recent_max_changes) > consecutive_tol:
@@ -640,7 +663,9 @@ class EquilibriumSolver:
 
             # Save checkpoint after each outer iteration
             if checkpoint_path and config_hash:
+                t0 = time.time()
                 self._save_checkpoint(checkpoint_path, outer_iter, tau_p, tau_r, config_hash)
+                timing_stats['checkpoint_save'].append(time.time() - t0)
 
             # Check if strategies have stabilized
             consecutive_converged = (len(recent_max_changes) >= consecutive_tol and
@@ -648,6 +673,8 @@ class EquilibriumSolver:
 
             # Early termination: if strategies are stable, try projection and verification
             if consecutive_converged:
+                t_verify_start = time.time()  # Time the entire verification block
+
                 if self.verbose:
                     self._log(f"\n  Strategies stable for {consecutive_tol} iterations, attempting early verification...")
 
@@ -671,6 +698,8 @@ class EquilibriumSolver:
                 # Verify the projected equilibrium
                 success, message, V_projected = self._verify_candidate_equilibrium(projected_strategy_df)
 
+                timing_stats['early_verification'].append(time.time() - t_verify_start)
+
                 if success:
                     # Found valid equilibrium - stop early!
                     converged = True
@@ -680,6 +709,9 @@ class EquilibriumSolver:
                         self._log(f"    - Strategies stable for {consecutive_tol} iterations")
                         self._log(f"    - Projected equilibrium verified")
                         self._log(f"    - tau_p={tau_p:.4e}, tau_r={tau_r:.4e} (not yet at tau_min={tau_min:.4e})")
+                    # Record total outer iteration time before breaking
+                    outer_iter_total = time.time() - outer_iter_start
+                    timing_stats['outer_total'].append(outer_iter_total)
                     # Keep the projected strategies (already in self.p_proposals, self.r_acceptances)
                     break
                 else:
@@ -687,7 +719,7 @@ class EquilibriumSolver:
                     self.p_proposals = old_proposals
                     self.r_acceptances = old_acceptances
                     if self.verbose:
-                        self._log(f"  ✗ Equilibrium verification failed: {message}")
+                        self._log(f"  ✗ Equilibrium verification failed:\n{message}")
                         self._log(f"  Continuing annealing...")
 
             # Check regular convergence criterion (temperature + stability)
@@ -701,11 +733,19 @@ class EquilibriumSolver:
                     self._log(f"    - tau_p={tau_p:.4e} <= {tau_min * (1 + tau_margin):.4e}")
                     self._log(f"    - tau_r={tau_r:.4e} <= {tau_min * (1 + tau_margin):.4e}")
                     self._log(f"    - Last {consecutive_tol} max_changes < {outer_tol:.2e}")
+                # Record total outer iteration time before breaking
+                outer_iter_total = time.time() - outer_iter_start
+                timing_stats['outer_total'].append(outer_iter_total)
                 break
 
             # Decay temperatures
             tau_p = max(tau_p * tau_decay, tau_min)
             tau_r = max(tau_r * tau_decay, tau_min)
+
+            # Record total outer iteration time
+            outer_iter_total = time.time() - outer_iter_start
+            timing_stats['outer_total'].append(outer_iter_total)
+
             outer_iter += 1
 
         # Determine the stopping reason
@@ -765,14 +805,45 @@ class EquilibriumSolver:
             self._log("\n" + "="*80)
             self._log("TIMING ANALYSIS")
             self._log("="*80)
-            for op_name, timings in timing_stats.items():
+
+            # Order for display: inner loop operations first, then outer loop operations
+            inner_ops = ['create_df', 'compute_transitions', 'solve_values',
+                        'update_acceptances', 'update_proposals', 'damping']
+            outer_ops = ['inner_total', 'checkpoint_save', 'early_verification', 'outer_total']
+
+            self._log("Inner loop operations (per iteration):")
+            for op_name in inner_ops:
+                timings = timing_stats.get(op_name, [])
                 if timings:
                     total_time = sum(timings)
                     avg_time = total_time / len(timings)
-                    self._log(f"{op_name:25s}: {total_time:8.3f}s total, {avg_time*1000:7.3f}ms avg ({len(timings)} calls)")
+                    self._log(f"  {op_name:23s}: {total_time:8.3f}s total, {avg_time*1000:7.3f}ms avg ({len(timings)} calls)")
 
-            total_measured = sum(sum(times) for times in timing_stats.values())
-            self._log(f"{'TOTAL MEASURED':25s}: {total_measured:8.3f}s")
+            self._log("\nOuter loop operations (per outer iteration):")
+            for op_name in outer_ops:
+                timings = timing_stats.get(op_name, [])
+                if timings:
+                    total_time = sum(timings)
+                    avg_time = total_time / len(timings)
+                    self._log(f"  {op_name:23s}: {total_time:8.3f}s total, {avg_time*1000:7.3f}ms avg ({len(timings)} calls)")
+
+            # Compute overhead
+            total_outer = sum(timing_stats.get('outer_total', []))
+            total_inner = sum(timing_stats.get('inner_total', []))
+            total_checkpoint = sum(timing_stats.get('checkpoint_save', []))
+            total_verification = sum(timing_stats.get('early_verification', []))
+            overhead = total_outer - total_inner - total_checkpoint - total_verification
+
+            self._log("\nBreakdown:")
+            if total_outer > 0:
+                self._log(f"  {'Total outer time':23s}: {total_outer:8.3f}s (100.0%)")
+                self._log(f"  {'  Inner loops':23s}: {total_inner:8.3f}s ({100*total_inner/total_outer:5.1f}%)")
+                self._log(f"  {'  Checkpoint saves':23s}: {total_checkpoint:8.3f}s ({100*total_checkpoint/total_outer:5.1f}%)")
+                self._log(f"  {'  Early verifications':23s}: {total_verification:8.3f}s ({100*total_verification/total_outer:5.1f}%)")
+                self._log(f"  {'  Other overhead':23s}: {overhead:8.3f}s ({100*overhead/total_outer:5.1f}%)")
+            else:
+                self._log("  No outer iteration timing data available")
+
             self._log("="*80)
 
         return final_strategy_df, result

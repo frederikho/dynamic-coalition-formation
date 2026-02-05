@@ -127,11 +127,24 @@ SCENARIOS = {
         "unanimity_required": True
     },
     
+    "weak_governance_no_unanimity_n4": {
+        **get_base_config_n4(),
+
+        "scenario_name": "weak_governance_no_unanimity_n4",
+        "scenario_description": "Standard 4-player weak governance with equal damage sensitivity and no unanimity requirement.",
+        "experiment_name": "weak_governance_no_unanimity_n4",
+        "m_damage": {player: 1.0 for player in ["W", "T", "C", "F"]},
+        "power_rule": "weak_governance",
+        "min_power": None,
+        "unanimity_required": False
+    },
+    
     "power_threshold_n4": {
         **get_base_config_n4(),
         
         "scenario_name": "power_threshold_n4",
-        "scenario_description": "4-player power threshold governance requiring majority support (>50%) for effectiveness.","experiment_name": "power_threshold_n4",
+        "scenario_description": "4-player power threshold governance requiring majority support (>50%) for effectiveness.",
+        "experiment_name": "power_threshold_n4",
         "m_damage": {player: 1.0 for player in ["W", "T", "C", "F"]},
         "power_rule": "power_threshold",
         "min_power": 0.501,
@@ -143,7 +156,7 @@ SCENARIOS = {
         
         "scenario_name": "power_threshold_no_unanimity_n4",
         "scenario_description": "Power threshold without unanimity; varied damage parameters (W=0.75, T=1.25, C=1.0, F=1.1).","experiment_name": "power_threshold_no_unanimity_n4",
-        "m_damage": {"W": 0.75, "T": 1.25, "C": 1.0, "F": 1.1},
+        "m_damage": {player: 1.0 for player in ["W", "T", "C", "F"]},
         "power_rule": "power_threshold",
         "min_power": 0.501,
         "unanimity_required": False
@@ -233,8 +246,9 @@ SCENARIOS = {
         **get_base_config_n4(),
         
         "scenario_name": "extreme_damage_asymmetry_n4",
-        "scenario_description": "Extreme differences in climate vulnerability from W=0.25 to F=2.5, no unanimity.","experiment_name": "extreme_damage_asymmetry_n4",
-        "m_damage": {"W": 0.25, "T": 1.0, "C": 1.75, "F": 2.5},
+        "scenario_description": "Extreme differences in climate vulnerability, no unanimity.",
+        "experiment_name": "extreme_damage_asymmetry_n4",
+        "m_damage": {"W": 2.5, "T": 1.75, "C": 1.25, "F": 0.5},
         "power_rule": "power_threshold",
         "min_power": 0.501,
         "unanimity_required": False

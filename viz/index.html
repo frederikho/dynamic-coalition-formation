@@ -478,7 +478,7 @@
           </label>
           <label class="checkbox-group">
             <input type="radio" name="node-coloring" value="absorbing">
-            By absorbing set
+            By absorbing set (by filtered edges)
           </label>
           <label class="checkbox-group">
             <input type="radio" name="node-coloring" value="geoengineering">
@@ -486,11 +486,36 @@
           </label>
           <label class="checkbox-group">
             <input type="radio" name="node-coloring" value="deployer">
-            By deploying coalition
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              By deploying coalition
+              <span class="info-icon" style="position:relative;">
+                i
+                <span class="tooltip">States with G=0 are grouped as "None" (no actual deployment)</span>
+              </span>
+            </span>
           </label>
 
           <!-- Legend for absorbing sets and geoengineering -->
           <div id="absorbing-legend" style="font-size:12px; color:#666; margin-top:12px; padding:8px; background:#f8fafc; border-radius:4px;"></div>
+        </div>
+        <div class="control-group" style="margin-bottom:12px;">
+          <label>Layout Mode</label>
+          <label class="checkbox-group">
+            <input type="radio" name="layout-mode" value="default" checked>
+            Default (preset positions)
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="layout-mode" value="connections">
+            By connections (force-directed)
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="layout-mode" value="deployer">
+            By deploying coalition
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="layout-mode" value="geo-level">
+            By geoengineering level (rounded)
+          </label>
         </div>
         <div class="control-group" style="margin-bottom:12px;">
           <label>Filter Mode</label>

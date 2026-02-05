@@ -1,10 +1,12 @@
 import cytoscape, { Core, NodeSingular } from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
+import cola from 'cytoscape-cola';
 import type { GraphData } from './types';
 import { computeAbsorbingSets } from './absorbing';
 
-// Register layout algorithm
+// Register layout algorithms
 cytoscape.use(coseBilkent);
+cytoscape.use(cola);
 
 // Standard player order for normalization
 const STANDARD_ORDER = ['H', 'W', 'T', 'C', 'F', 'A', 'B', 'D', 'E', 'G'];
@@ -147,7 +149,82 @@ export class GraphRenderer {
     });
   }
 
-  render(graphData: GraphData, probThreshold: number = 0.001, options?: { coloringMode?: 'none' | 'absorbing' | 'geoengineering' | 'deployer'; filterMode?: 'absolute' | 'cumulative' }) {
+  private computeClusterPositions(
+    layoutMode: 'default' | 'connections' | 'deployer' | 'geo-level',
+    graphData: GraphData
+  ): Record<string, { x: number; y: number }> {
+    if (layoutMode !== 'deployer' && layoutMode !== 'geo-level') {
+      return {};
+    }
+
+    // Group nodes by cluster key (deployer or G level)
+    const nodesByCluster = new Map<string, string[]>();
+    graphData.nodes.forEach(node => {
+      let clusterKey: string;
+      if (layoutMode === 'deployer') {
+        clusterKey = node.meta?.deploying_coalition || 'None';
+      } else {
+        const gLevel = node.meta?.geo_level || 0;
+        clusterKey = Math.round(gLevel).toString();
+      }
+
+      if (!nodesByCluster.has(clusterKey)) {
+        nodesByCluster.set(clusterKey, []);
+      }
+      nodesByCluster.get(clusterKey)!.push(node.id);
+    });
+
+    // Position cluster centers in a large circle
+    const clusters = Array.from(nodesByCluster.keys());
+    const numClusters = clusters.length;
+    const clusterRadius = 280; // Large radius for separation
+
+    const clusterCenters = new Map<string, {x: number, y: number}>();
+    clusters.forEach((cluster, i) => {
+      const angle = (i / numClusters) * 2 * Math.PI - Math.PI / 2;
+      clusterCenters.set(cluster, {
+        x: Math.cos(angle) * clusterRadius,
+        y: Math.sin(angle) * clusterRadius
+      });
+    });
+
+    // Pre-position nodes near their cluster centers
+    const nodePositions: Record<string, {x: number, y: number}> = {};
+    const nodeDiameter = 70; // Node size from styles
+
+    nodesByCluster.forEach((nodeIds, cluster) => {
+      const center = clusterCenters.get(cluster)!;
+      const numNodes = nodeIds.length;
+
+      // Calculate minimum radius to prevent overlap
+      // Chord length between adjacent nodes must be > nodeDiameter
+      // Chord = 2R * sin(π/N), so R = (nodeDiameter * margin) / (2 * sin(π/N))
+      let nodeRadius: number;
+      if (numNodes === 1) {
+        nodeRadius = 0; // Single node at center
+      } else {
+        const margin = 1.3; // 30% spacing margin
+        const minChordLength = nodeDiameter * margin;
+        nodeRadius = minChordLength / (2 * Math.sin(Math.PI / numNodes));
+      }
+
+      nodeIds.forEach((nodeId, i) => {
+        const angle = (i / numNodes) * 2 * Math.PI;
+        nodePositions[nodeId] = {
+          x: center.x + Math.cos(angle) * nodeRadius,
+          y: center.y + Math.sin(angle) * nodeRadius
+        };
+      });
+    });
+
+    return nodePositions;
+  }
+
+  render(graphData: GraphData, probThreshold: number = 0.001, options?: {
+    coloringMode?: 'none' | 'absorbing' | 'geoengineering' | 'deployer';
+    filterMode?: 'absolute' | 'cumulative';
+    layoutMode?: 'default' | 'connections' | 'deployer' | 'geo-level';
+  }) {
     // Save current positions before destroying
     if (this.cy) {
       this.saveCurrentPositions();
@@ -157,6 +234,7 @@ export class GraphRenderer {
 
     const filterMode = options?.filterMode || 'absolute';
     const coloringMode = options?.coloringMode || 'none';
+    const layoutMode = options?.layoutMode || 'default';
 
     // Filter edges by probability threshold
     let filteredEdges: typeof graphData.edges;
@@ -206,15 +284,28 @@ export class GraphRenderer {
       presetPositions = getTwoCirclePositions(graphData.nodes.map(n => n.id));
     }
 
-    // Prefer saved positions over preset positions
+    // Compute cluster positions for clustering layouts
+    const clusterPositions = this.computeClusterPositions(layoutMode, graphData);
+
+    // Position priority: saved > cluster/preset positions
+    // This ensures that user interactions (dragging) or previous renders are preserved
     const finalPositions: Record<string, { x: number; y: number }> = {};
+
     for (const nodeId of graphData.nodes.map(n => n.id)) {
       if (this.savedPositions[nodeId]) {
+        // Always prioritize saved positions from previous render
         finalPositions[nodeId] = this.savedPositions[nodeId];
+      } else if (layoutMode === 'deployer' || layoutMode === 'geo-level') {
+        // For clustering modes: use computed cluster positions
+        if (clusterPositions[nodeId]) {
+          finalPositions[nodeId] = clusterPositions[nodeId];
+        }
       } else if (presetPositions[nodeId]) {
+        // For default/connections: use preset positions (pentagon/circles for n=3/4)
         finalPositions[nodeId] = presetPositions[nodeId];
       }
     }
+
     const usePresetPositions = Object.keys(finalPositions).length > 0;
 
     // Prepare coloring based on mode
@@ -420,22 +511,7 @@ export class GraphRenderer {
           }
         }
       ],
-      layout: usePresetPositions ? {
-        name: 'preset'
-      } : {
-        name: 'cose-bilkent',
-        animate: false,
-        randomize: true,
-        nodeRepulsion: 4500,
-        idealEdgeLength: 100,
-        edgeElasticity: 0.45,
-        nestingFactor: 0.1,
-        gravity: 0.25,
-        numIter: 2500,
-        tile: true,
-        tilingPaddingVertical: 10,
-        tilingPaddingHorizontal: 10
-      },
+      layout: this.getLayoutConfig(layoutMode, graphData, usePresetPositions),
       minZoom: 0.2,
       maxZoom: 3,
       wheelSensitivity: 0.2
@@ -483,6 +559,88 @@ export class GraphRenderer {
       // Map to 1-5px range
       const normalized = (probability - minTransition) / range;
       return Math.max(1, Math.min(5, 1 + 4 * normalized));
+    }
+  }
+
+  private getLayoutConfig(
+    layoutMode: 'default' | 'connections' | 'deployer' | 'geo-level',
+    graphData: GraphData,
+    usePresetPositions: boolean
+  ) {
+    switch (layoutMode) {
+      case 'default':
+        // Use preset positions for n=5/15, otherwise force-directed
+        if (usePresetPositions) {
+          return { name: 'preset' };
+        } else {
+          return {
+            name: 'cose-bilkent',
+            animate: false,
+            randomize: true,
+            nodeRepulsion: 4500,
+            idealEdgeLength: 100,
+            edgeElasticity: 0.45,
+            nestingFactor: 0.1,
+            gravity: 0.25,
+            numIter: 2500,
+            tile: true,
+            tilingPaddingVertical: 10,
+            tilingPaddingHorizontal: 10
+          };
+        }
+
+      case 'connections':
+        // Force-directed layout, but use saved positions if available
+        if (usePresetPositions) {
+          return { name: 'preset' };
+        } else {
+          return {
+            name: 'cose-bilkent',
+            animate: false,
+            randomize: true,
+            nodeRepulsion: 4500,
+            idealEdgeLength: 100,
+            edgeElasticity: 0.45,
+            nestingFactor: 0.1,
+            gravity: 0.25,
+            numIter: 2500,
+            tile: true,
+            tilingPaddingVertical: 10,
+            tilingPaddingHorizontal: 10
+          };
+        }
+
+      case 'deployer': {
+        // Cluster by deploying coalition
+        const nodesByDeployer = new Map<string, string[]>();
+        graphData.nodes.forEach(node => {
+          const deployer = node.meta?.deploying_coalition || 'None';
+          if (!nodesByDeployer.has(deployer)) {
+            nodesByDeployer.set(deployer, []);
+          }
+          nodesByDeployer.get(deployer)!.push(node.id);
+        });
+
+        const groups = Array.from(nodesByDeployer.values()).map(ids => ({ leaves: ids }));
+
+        return {
+          name: 'preset',  // Use preset with our computed cluster positions
+          fit: true,
+          padding: 50
+        };
+      }
+
+      case 'geo-level': {
+        // Cluster by geoengineering level
+        return {
+          name: 'preset',  // Use preset with our computed cluster positions
+          fit: true,
+          padding: 50
+        };
+      }
+
+      default:
+        return { name: 'cose-bilkent', animate: false };
     }
   }
 

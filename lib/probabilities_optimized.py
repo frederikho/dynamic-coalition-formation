@@ -253,8 +253,8 @@ class TransitionProbabilitiesOptimized:
                         p_approved = self.approval_probs[p_idx, a_idx, s_idx, ns_idx]
 
                     else:
-                        # Majority approval logic (same as original)
-                        assert len(approver_indices) == 2
+                        # Majority approval logic (generalized for n >= 3)
+                        # For n=3, typically 2 approvers; for n=4, can be 2-4 approvers
                         current_members = list_members(current_state)
                         next_members = list_members(next_state)
 
@@ -290,13 +290,13 @@ class TransitionProbabilitiesOptimized:
                                 raise ApprovalCommitteeError(indx)
 
                         elif not new_non_proposer_members:
-                            member_indices = [
-                                self.player_to_idx[m] for m in current_non_proposer_members
-                            ]
+                            # Use only members who are actually in the approval committee
+                            # (not all current_non_proposer_members, which may include non-approvers)
                             probs = self.approval_probs[
-                                p_idx, member_indices, s_idx, ns_idx
+                                p_idx, approver_indices, s_idx, ns_idx
                             ]
-                            p_approved = np.sum(probs) - np.prod(probs)
+                            # Probability that at least one approves: 1 - P(none approve)
+                            p_approved = 1.0 - np.prod(1.0 - probs)
                         else:
                             raise ApprovalCommitteeError(indx)
 
@@ -329,6 +329,38 @@ class TransitionProbabilitiesOptimized:
         if not np.isclose(row_sums, 1., atol=tol).all():
             print(f"ERROR: Row sums not all 1.0: {row_sums.values}")
             print(f"P matrix:\n{self.P}")
+
+            # DEBUG: Show which states have NaN values
+            has_nan = self.P.isna().any(axis=1)
+            if has_nan.any():
+                print(f"\nStates with NaN values:")
+                for state in self.P.index[has_nan]:
+                    print(f"  {state}: {self.P.loc[state].isna().sum()} NaN values")
+                    nan_cols = self.P.columns[self.P.loc[state].isna()]
+                    if len(nan_cols) > 0:
+                        print(f"    NaN transitions: {state} -> {list(nan_cols[:5])}{'...' if len(nan_cols) > 5 else ''}")
+
+                        # Check P_approvals for these transitions
+                        for next_state in list(nan_cols)[:3]:
+                            for proposer in self.players:
+                                key = (proposer, state, next_state)
+                                if key in self.P_approvals:
+                                    p_app = self.P_approvals[key]
+                                    if np.isnan(p_app):
+                                        print(f"      P_approvals[{proposer}, {state}, {next_state}] = NaN")
+                                        # Check approval committee
+                                        approvers_idx = self.approval_committees[self.player_to_idx[proposer]][
+                                            self.state_to_idx[state]][self.state_to_idx[next_state]]
+                                        approvers = [self.players[i] for i in approvers_idx]
+                                        print(f"        Approval committee: {approvers}")
+
+            # DEBUG: For split coalition states, show their approval probabilities
+            split_states = [s for s in self.states if s.count('(') > 1]
+            if split_states:
+                print(f"\nSplit coalition states: {split_states}")
+                for s in split_states:
+                    print(f"\n  State {s} row sum: {row_sums[self.P.index.get_loc(s)]:.4f}")
+
             raise AssertionError("Row sums not all 1.0")
 
         # All probabilities are in [0, 1]

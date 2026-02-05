@@ -301,11 +301,58 @@ def compute_mixing_time(P: pd.DataFrame, pi: np.ndarray, epsilon: float = 0.01) 
     return -1  # Did not converge
 
 
+def find_strongly_connected_components(adjacency_matrix: np.ndarray) -> list:
+    """Find strongly connected components using Tarjan's algorithm."""
+    n = adjacency_matrix.shape[0]
+    index_counter = [0]
+    stack = []
+    lowlink = [0] * n
+    index = [0] * n
+    on_stack = [False] * n
+    index_initialized = [False] * n
+    sccs = []
+    
+    def strongconnect(v):
+        index[v] = index_counter[0]
+        lowlink[v] = index_counter[0]
+        index_counter[0] += 1
+        index_initialized[v] = True
+        stack.append(v)
+        on_stack[v] = True
+        
+        # Consider successors
+        for w in range(n):
+            if adjacency_matrix[v, w] > 0:  # There's an edge from v to w
+                if not index_initialized[w]:
+                    strongconnect(w)
+                    lowlink[v] = min(lowlink[v], lowlink[w])
+                elif on_stack[w]:
+                    lowlink[v] = min(lowlink[v], index[w])
+        
+        # If v is a root node, pop the stack and generate an SCC
+        if lowlink[v] == index[v]:
+            scc = []
+            while True:
+                w = stack.pop()
+                on_stack[w] = False
+                scc.append(w)
+                if w == v:
+                    break
+            sccs.append(scc)
+    
+    for v in range(n):
+        if not index_initialized[v]:
+            strongconnect(v)
+    
+    return sccs
+
+
 def compute_stationary_distribution(P: pd.DataFrame) -> np.ndarray:
     """
-    Compute the stationary distribution of a Markov chain.
-
-    Solves: π = π * P subject to Σπ_i = 1
+    Compute the limiting distribution of a Markov chain.
+    
+    For chains with absorbing sets, computes the absorption probabilities
+    assuming a uniform initial distribution over all states.
 
     Args:
         P: Transition probability matrix (DataFrame)
@@ -315,9 +362,154 @@ def compute_stationary_distribution(P: pd.DataFrame) -> np.ndarray:
     """
     n = len(P)
     P_array = P.values
-
+    
+    # Find strongly connected components
+    sccs = find_strongly_connected_components(P_array)
+    
+    # Identify absorbing sets (SCCs with no outgoing edges)
+    absorbing_sets = []
+    for scc in sccs:
+        is_absorbing = True
+        for i in scc:
+            for j in range(n):
+                if j not in scc and P_array[i, j] > 1e-10:
+                    is_absorbing = False
+                    break
+            if not is_absorbing:
+                break
+        if is_absorbing:
+            absorbing_sets.append(scc)
+    
+    # If there are absorbing sets, compute absorption probabilities
+    if len(absorbing_sets) > 0:
+        # Flatten absorbing sets to get all absorbing states
+        absorbing_states = []
+        for abs_set in absorbing_sets:
+            absorbing_states.extend(abs_set)
+        
+        logger.info(f"Found {len(absorbing_sets)} absorbing sets with {len(absorbing_states)} total absorbing states")
+        for i, abs_set in enumerate(absorbing_sets):
+            set_states = [P.index[idx] for idx in abs_set]
+            logger.info(f"  Absorbing set {i+1}: {set_states}")
+        
+        # Partition states into transient (T) and absorbing (A)
+        transient_states = [i for i in range(n) if i not in absorbing_states]
+        logger.info(f"Found {len(transient_states)} transient states")
+        
+        if len(transient_states) == 0:
+            # All states are in absorbing sets
+            # Assume uniform initial distribution
+            pi = np.zeros(n)
+            initial_uniform = np.ones(n) / n
+            
+            for abs_set in absorbing_sets:
+                # Compute stationary distribution within this absorbing set
+                P_sub = P_array[np.ix_(abs_set, abs_set)]
+                try:
+                    n_sub = len(abs_set)
+                    A_sub = P_sub.T - np.eye(n_sub)
+                    A_sub[-1, :] = np.ones(n_sub)
+                    b_sub = np.zeros(n_sub)
+                    b_sub[-1] = 1.0
+                    pi_sub = np.linalg.solve(A_sub, b_sub)
+                    pi_sub = np.maximum(pi_sub, 0)
+                    pi_sub = pi_sub / pi_sub.sum()
+                    
+                    # Weight by initial probability mass in this set
+                    initial_mass = sum(initial_uniform[i] for i in abs_set)
+                    for i, state_idx in enumerate(abs_set):
+                        pi[state_idx] = pi_sub[i] * initial_mass
+                except:
+                    # Fallback: uniform within set
+                    for state_idx in abs_set:
+                        pi[state_idx] = initial_uniform[state_idx]
+            
+            pi = pi / pi.sum()
+            return pi
+        
+        # Extract Q (transient-to-transient) submatrix
+        Q = P_array[np.ix_(transient_states, transient_states)]
+        
+        # Compute fundamental matrix N = (I - Q)^(-1)
+        try:
+            I = np.eye(len(transient_states))
+            N = np.linalg.inv(I - Q)
+            
+            # For each absorbing set, compute absorption probability
+            pi = np.zeros(n)
+            initial_uniform = np.ones(n) / n
+            
+            for abs_set in absorbing_sets:
+                # R matrix: transient -> this absorbing set
+                R_set = P_array[np.ix_(transient_states, abs_set)]
+                
+                # Absorption probabilities: B_set = N * R_set
+                B_set = N @ R_set
+                
+                # From transient states
+                for i, t_idx in enumerate(transient_states):
+                    # Total probability of absorbing into this set
+                    total_abs_prob = B_set[i, :].sum()
+                    
+                    if total_abs_prob > 1e-10:
+                        # Compute stationary distribution within the absorbing set
+                        P_sub = P_array[np.ix_(abs_set, abs_set)]
+                        try:
+                            n_sub = len(abs_set)
+                            A_sub = P_sub.T - np.eye(n_sub)
+                            A_sub[-1, :] = np.ones(n_sub)
+                            b_sub = np.zeros(n_sub)
+                            b_sub[-1] = 1.0
+                            pi_sub = np.linalg.solve(A_sub, b_sub)
+                            pi_sub = np.maximum(pi_sub, 0)
+                            pi_sub = pi_sub / pi_sub.sum()
+                            
+                            # Distribute probability according to stationary distribution within set
+                            for j, a_idx in enumerate(abs_set):
+                                pi[a_idx] += initial_uniform[t_idx] * total_abs_prob * pi_sub[j]
+                        except:
+                            # Fallback: uniform within set
+                            for a_idx in abs_set:
+                                pi[a_idx] += initial_uniform[t_idx] * total_abs_prob / len(abs_set)
+            
+            # States already in absorbing sets
+            for abs_set in absorbing_sets:
+                P_sub = P_array[np.ix_(abs_set, abs_set)]
+                try:
+                    n_sub = len(abs_set)
+                    A_sub = P_sub.T - np.eye(n_sub)
+                    A_sub[-1, :] = np.ones(n_sub)
+                    b_sub = np.zeros(n_sub)
+                    b_sub[-1] = 1.0
+                    pi_sub = np.linalg.solve(A_sub, b_sub)
+                    pi_sub = np.maximum(pi_sub, 0)
+                    pi_sub = pi_sub / pi_sub.sum()
+                    
+                    initial_mass = sum(initial_uniform[i] for i in abs_set)
+                    for i, state_idx in enumerate(abs_set):
+                        pi[state_idx] += pi_sub[i] * initial_mass
+                except:
+                    for state_idx in abs_set:
+                        pi[state_idx] += initial_uniform[state_idx]
+            
+            # Normalize
+            pi = pi / pi.sum()
+            
+            # Log final distribution by absorbing set
+            logger.info("Final stationary distribution by absorbing set:")
+            for i, abs_set in enumerate(absorbing_sets):
+                set_prob = sum(pi[idx] for idx in abs_set)
+                set_states = [P.index[idx] for idx in abs_set]
+                logger.info(f"  Set {i+1} ({set_states}): {set_prob*100:.2f}%")
+            
+            return pi
+            
+        except np.linalg.LinAlgError:
+            # Fall back to standard method if fundamental matrix computation fails
+            pass
+    
+    # Standard method for ergodic chains (no absorbing states, or fallback)
     # Solve (P^T - I)π = 0 with constraint Σπ = 1
-    # This is equivalent to finding the left eigenvector for eigenvalue 1
     A = P_array.T - np.eye(n)
 
     # Replace last equation with normalization constraint Σπ = 1
@@ -548,11 +740,35 @@ def compute_transition_graph(
 
         # Create stationary distribution dict
         pi_dict = {state_name: float(pi[i]) for i, state_name in enumerate(config["state_names"])}
+        
+        # Detect absorbing sets for diagnostics
+        sccs = find_strongly_connected_components(P.values)
+        absorbing_sets = []
+        for scc in sccs:
+            is_absorbing = True
+            for i in scc:
+                for j in range(len(P)):
+                    if j not in scc and P.values[i, j] > 1e-10:
+                        is_absorbing = False
+                        break
+                if not is_absorbing:
+                    break
+            if is_absorbing:
+                # Convert indices to state names
+                absorbing_sets.append([config["state_names"][i] for i in scc])
+        
+        # Check if chain is ergodic (single SCC containing all states)
+        is_ergodic = len(sccs) == 1 and len(sccs[0]) == len(config["state_names"])
+        
     except Exception as e:
         print(f"Warning: Could not compute stationary distribution: {e}")
+        import traceback
+        traceback.print_exc()
         expected_G = None
         mixing_time = None
         pi_dict = None
+        absorbing_sets = []
+        is_ergodic = None
 
     return {
         "nodes": nodes,
@@ -572,7 +788,12 @@ def compute_transition_graph(
                 "unanimity_required": config["unanimity_required"],
                 "min_power": config["min_power"]
             },
-            "file_metadata": file_metadata  # Include all file metadata
+            "file_metadata": file_metadata,  # Include all file metadata
+            "chain_diagnostics": {
+                "is_ergodic": is_ergodic,
+                "num_absorbing_sets": len(absorbing_sets),
+                "absorbing_sets": absorbing_sets if len(absorbing_sets) > 0 else None
+            }
         }
     }
 

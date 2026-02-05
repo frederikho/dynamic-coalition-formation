@@ -144,22 +144,25 @@ def _get_solver_params(config, user_params=None):
     """
     if user_params is None:
         user_params = {}
-
+    """
     # Explanation parameters:
+
+    'tau_p_init': any positive value. if this is small, the softmax ...
+    'tau_r_init':  any positive value. if this is small, the sigmoid for acceptance becomes step-like
+    'tau_decay':  set between 0 and 1. if this is close to 1, the annealing is slow
+    'tau_min':  the temperature that has to be reached for convergence
+    'max_outer_iter': Safety valve - convergence criterion will stop earlier
+    'max_inner_iter':        
+    'damping': 1 means full damping, 0 means no damping
+    'inner_tol': 
+    Convergence precision for the fixed-point iteration at a given temperature. Measures how well we solve "for this temperature τ, find strategies that satisfy the smoothed best-response conditions."
     
-    # 'tau_p_init': if this is small, the softmax ...
-    # 'tau_r_init':  # if this is small, the sigmoid for acceptance becomes step-like
-    # 'tau_decay':  # if this is close to 1, the annealing is slow
-    # 'tau_min':  # the temperature that has to be reached for convergence
-    # 'max_outer_iter': # Safety valve - convergence criterion will stop earlier
-    # 'max_inner_iter':        
-    # 'damping': 1 means no damping
-    # 'inner_tol': ,
-    # 'outer_tol':   # If this is None, defaults to 10*inner_tol = 1e-9
-    # 'consecutive_tol':        
-    # 'tau_margin': ,
-    # 'project_to_exact': should always be True actually
-        
+    'outer_tol': max_change has be lower than this to trigger expensive early verification. 
+    'consecutive_tol': how many consecutive outer iterations must meet to trigger early verification   
+    'tau_margin': ,
+    'project_to_exact': should always be True actually
+    """
+    
     # Default parameters resembling Jere's implementation
     default_params = {
         'tau_p_init': 1e-6,
@@ -168,7 +171,7 @@ def _get_solver_params(config, user_params=None):
         'tau_min': 1e-8,
         'max_outer_iter': 400,
         'max_inner_iter': 100,
-        'damping': 1,
+        'damping': 0,
         'inner_tol': 1e-10,
         'outer_tol': 1e-9,
         'consecutive_tol': 1,
@@ -187,34 +190,19 @@ def _get_solver_params(config, user_params=None):
             'max_inner_iter': 100,
         })
 
-    # Special parameters for n>=4 (larger state space needs more smoothing)
+    # Special parameters for n>=4
     if len(config['players']) >= 4:
         default_params.update({
             'tau_p_init': 1,
             'tau_r_init': 1,
-            'tau_decay': 0.9,
-            'tau_min': 0.01,
-            'damping': 0.6,
-            'max_inner_iter': 250,
-            'max_outer_iter': 500,
-            'inner_tol': 1e-8,
-            'outer_tol': 1e-8,
-            'consecutive_tol': 1,
-        })
-
-    # overwrite
-    if len(config['players']) >= 4:
-        default_params.update({
-            'tau_p_init': 1,
-            'tau_r_init': 1,
-            'tau_decay': 0.95,
-            'tau_min': 0.01,
-            'damping': 0.5,
-            'max_inner_iter': 400,
+            'tau_decay': 0.90,
+            'tau_min': 0.001,
+            'damping': 0.9,
+            'max_inner_iter': 100,
             'max_outer_iter': 1000,
-            'inner_tol': 1e-4,
-            'outer_tol': 1e-4,
-            'consecutive_tol': 1,
+            'inner_tol': 2e-3,
+            'outer_tol': 2e-3,
+            'consecutive_tol': 3,
         })        
 
     # Update with user-provided parameters
@@ -706,10 +694,44 @@ Available scenarios (use --list-scenarios to see all):
     logger.info(f"  Power rule: {config['power_rule']}")
     logger.info(f"  Minimum power: {config.get('min_power', 'N/A')}")
     logger.info(f"  Unanimity required: {config['unanimity_required']}")
-    logger.info(f"  Damage parameters: {config['m_damage']}")
     logger.info(f"  Discounting: {config['discounting']}")
     if args.description:
         logger.info(f"  Description: {args.description}")
+
+    # Print player parameters table
+    players = config['players']
+    logger.info("")
+    logger.info("Player parameters:")
+
+    # Header
+    header = f"  {'Parameter':<15}" + "".join(f"{p:>8}" for p in players)
+    logger.info(header)
+    logger.info("  " + "-" * (15 + 8 * len(players)))
+
+    # Base temperature
+    base_temps = config['base_temp']
+    logger.info(f"  {'Base Temp':<15}" + "".join(f"{base_temps[p]:>8.1f}" for p in players))
+
+    # Ideal temperature
+    ideal_temps = config['ideal_temp']
+    logger.info(f"  {'Ideal Temp':<15}" + "".join(f"{ideal_temps[p]:>8.1f}" for p in players))
+
+    # Delta temperature (climate change)
+    delta_temps = config['delta_temp']
+    logger.info(f"  {'ΔTemp':<15}" + "".join(f"{delta_temps[p]:>8.2f}" for p in players))
+
+    # Damage coefficient
+    damages = config['m_damage']
+    logger.info(f"  {'Damage Coeff':<15}" + "".join(f"{damages[p]:>8.2f}" for p in players))
+
+    # Power share
+    powers = config['power']
+    logger.info(f"  {'Power':<15}" + "".join(f"{powers[p]:>8.3f}" for p in players))
+
+    # Protocol probability
+    protocols = config['protocol']
+    logger.info(f"  {'Protocol':<15}" + "".join(f"{protocols[p]:>8.3f}" for p in players))
+
     logger.info("")
 
     # Find equilibrium
@@ -726,10 +748,12 @@ Available scenarios (use --list-scenarios to see all):
 
     if result['verification_success']:
         logger.info("\n" + "=" * 80)
+        logger.info(f"Scenario: {args.scenario}")
         logger.success("SUCCESS: Found valid equilibrium!")
         logger.info("=" * 80)
     else:
         logger.warning("\n" + "=" * 80)
+        logger.warning(f"Scenario: {args.scenario}")
         logger.warning("WARNING: Equilibrium verification failed!")
         logger.warning(result['verification_message'])
         logger.warning("=" * 80)

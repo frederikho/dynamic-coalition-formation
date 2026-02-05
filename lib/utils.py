@@ -367,9 +367,7 @@ def verify_proposals(players: List[str], states: List[str],
                          f"Proposal strategy error with player {proposer}! "
                          f"In state {current_state}, positive probability "
                          f"on state(s) {pos_prob_next_states}, but the argmax "
-                         f"states are: {argmaxes}. \n"
-                         f"The value functions V are: \n"
-                         f"{V}"
+                         f"states are: {argmaxes}."
                          )
                 return False, error_msg
 
@@ -456,7 +454,11 @@ def verify_equilibrium(result: Dict[str, Any]):
         messages = [check[1] for check in [proposals_ok, approvals_ok]
                     if not check[0]]
 
-        return False, '\n'.join(messages)
+        # Prepend V values once when either verification fails
+        V = result["V"]
+        full_message = f"The value functions V are:\n{V}\n\n" + '\n'.join(messages)
+
+        return False, full_message
 
 
 def write_latex_tables(result: Dict[str, Any], variables: List[str],

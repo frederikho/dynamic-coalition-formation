@@ -206,7 +206,8 @@ class TransitionProbabilities:
                     # the cases where majority approval committee can
                     # validate state transitions.
                     else:
-                        assert len(approvers) == 2
+                        # Approval committee with multiple members (>=2).
+                        # Handle arbitrary committee sizes (not only 2).
                         current_members = list_members(current_state)
                         next_members = list_members(next_state)
 
@@ -266,15 +267,20 @@ class TransitionProbabilities:
 
                         # CASE 3:
                         # If there are no new non-proposer members,
-                        # at least one existing member must approve the
-                        # proposed transition.
+                        # at least one member of the approval committee must approve.
                         # E.g., W proposing (TC) -> ( ) or (TC) -> (WC)
                         # or (WTC) -> ( ) or (WTC) -> (WC) can be approved by
                         # either T or C, or W proposing (WTC)
                         elif not new_non_proposer_members:
+                            # Use only members who are in the approval committee
+                            # (not all current_non_proposer_members)
+                            approval_committee = get_approval_committee(
+                                self.effectivity, self.players,
+                                proposer, current_state, next_state)
                             probs = self.read_approval_probs(
-                                    current_non_proposer_members, *indx)
-                            p_approved = np.sum(probs) - np.prod(probs)
+                                    approval_committee, *indx)
+                            # Probability that at least one approves: 1 - P(none approve)
+                            p_approved = 1.0 - np.prod(1.0 - probs)
                             # print(*indx, current_non_proposer_members,
                             #       probs.values, p_approved)
                         else:
