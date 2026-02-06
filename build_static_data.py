@@ -4,11 +4,18 @@ Build script to precompute all transition graphs from XLSX strategy profiles.
 Generates static JSON files for frontend consumption.
 """
 
+import argparse
 import json
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, Any
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 # Add current directory to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -99,5 +106,74 @@ def build_static_data(
     print(f"✓ Total size: {total_size/1024:.1f} KB")
 
 
+def run_vite_build(vite_base_path: str):
+    """
+    Build the frontend with Vite for GitHub Pages deployment.
+    
+    Args:
+        vite_base_path: Base path for Vite build (e.g., '/repo-name/')
+    """
+    print()
+    print("=" * 80)
+    print("Building frontend with Vite...")
+    print("=" * 80)
+    
+    viz_dir = Path(__file__).parent / "viz"
+    env = os.environ.copy()
+    env["VITE_BASE_PATH"] = vite_base_path
+    
+    try:
+        result = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=viz_dir,
+            env=env,
+            check=True
+        )
+        print()
+        print(f"✓ Frontend build complete!")
+        print(f"✓ Output directory: docs/")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"✗ Vite build failed: {e}")
+        return False
+    except FileNotFoundError:
+        print("✗ npm not found. Please install Node.js and npm.")
+        return False
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Build static data and optionally rebuild frontend with Vite"
+    )
+    parser.add_argument(
+        "--vite-build",
+        action="store_true",
+        help="Also run Vite build for GitHub Pages (uses REPO_NAME from .env)"
+    )
+    parser.add_argument(
+        "--vite-base",
+        type=str,
+        default=None,
+        help="Base path for Vite build (default: /REPO_NAME/ from .env, or /)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Build static data first
     build_static_data()
+    
+    # Optionally build frontend
+    if args.vite_build:
+        # Determine base path
+        if args.vite_base:
+            vite_base_path = args.vite_base
+        else:
+            # Try to read from .env
+            repo_name = os.getenv("REPO_NAME")
+            if repo_name:
+                vite_base_path = f"/{repo_name}/"
+            else:
+                vite_base_path = "/"
+        
+        success = run_vite_build(vite_base_path)
+        sys.exit(0 if success else 1)

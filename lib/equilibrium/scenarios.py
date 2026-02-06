@@ -42,7 +42,7 @@ def get_base_config_n5():
     players = ["W", "T", "C", "F", "H"]
     return {
         "players": players,
-        "base_temp": {"W": 21.5, "T": 14.0, "C": 11.5, "F": 9.0, "H": 25.0},
+        "base_temp": { "H": 25.0, "W": 21.5, "T": 14.0, "C": 11.5, "F": 9.0},
         "ideal_temp": {player: 13.0 for player in players},
         "delta_temp": {player: 3.0 for player in players},
         "power": {player: 1/5 for player in players},
@@ -430,7 +430,7 @@ SCENARIOS = {
     
     "high_discounting_n5": {
         **get_base_config_n5(),
-        
+
         "scenario_name": "high_discounting_n5",
         "scenario_description": "5-player weak governance with high discounting (δ=0.95) favoring immediate gains.","experiment_name": "high_discounting_n5",
         "m_damage": {player: 1.0 for player in ["W", "T", "C", "F", "H"]},
@@ -438,6 +438,336 @@ SCENARIOS = {
         "min_power": None,
         "unanimity_required": True,
         "discounting": 0.95
+    },
+
+    # ========== EXPERIMENTAL SCENARIOS FOR CYCLING EXPLORATION ==========
+
+    # 3-player cycling experiments
+
+    "cycle_experiment_1_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "cycle_experiment_1_n3",
+        "scenario_description": "Rock-paper-scissors power structure: nearly equal power (0.34, 0.33, 0.33) with no unanimity to allow majority forcing.",
+        "experiment_name": "cycle_experiment_1_n3",
+        "power": {"W": 0.34, "T": 0.33, "C": 0.33},
+        "m_damage": {"W": 0.75, "T": 1.25, "C": 1.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    "cycle_experiment_2_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "cycle_experiment_2_n3",
+        "scenario_description": "Extreme damage asymmetry (W=2.5, T=0.5, C=1.5) with no unanimity, creating conflicting preferences.",
+        "experiment_name": "cycle_experiment_2_n3",
+        "power": {"W": 0.4, "T": 0.35, "C": 0.25},
+        "m_damage": {"W": 2.5, "T": 0.5, "C": 1.5},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    "cycle_experiment_3_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "cycle_experiment_3_n3",
+        "scenario_description": "Very low discounting (δ=0.5) with no unanimity, making players myopic and potentially unstable.",
+        "experiment_name": "cycle_experiment_3_n3",
+        "m_damage": {"W": 0.75, "T": 1.25, "C": 1.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False,
+        "discounting": 0.5
+    },
+
+    "cycle_experiment_4_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "cycle_experiment_4_n3",
+        "scenario_description": "Inverse damage-temperature relationship: cold countries more vulnerable (W=0.5, T=1.0, C=2.0) with no unanimity.",
+        "experiment_name": "cycle_experiment_4_n3",
+        "power": {"W": 0.35, "T": 0.33, "C": 0.32},
+        "m_damage": {"W": 0.5, "T": 1.0, "C": 2.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    # 4-player cycling experiments
+
+    "cycle_experiment_1_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "cycle_experiment_1_n4",
+        "scenario_description": "Balanced power (0.26, 0.26, 0.26, 0.22) with extreme damage variation, no unanimity.",
+        "experiment_name": "cycle_experiment_1_n4",
+        "power": {"W": 0.26, "T": 0.26, "C": 0.26, "F": 0.22},
+        "m_damage": {"W": 2.0, "T": 0.6, "C": 1.4, "F": 0.8},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    "cycle_experiment_2_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "cycle_experiment_2_n4",
+        "scenario_description": "Two pairs structure (W-T: 0.27 each, C-F: 0.23 each) with contrasting damage (W-T: 0.7, C-F: 1.8), no unanimity.",
+        "experiment_name": "cycle_experiment_2_n4",
+        "power": {"W": 0.27, "T": 0.27, "C": 0.23, "F": 0.23},
+        "m_damage": {"W": 0.7, "T": 0.7, "C": 1.8, "F": 1.8},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    "cycle_experiment_3_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "cycle_experiment_3_n4",
+        "scenario_description": "Very low discounting (δ=0.3) with heterogeneous damage and power, no unanimity.",
+        "experiment_name": "cycle_experiment_3_n4",
+        "power": {"W": 0.3, "T": 0.28, "C": 0.24, "F": 0.18},
+        "m_damage": {"W": 1.5, "T": 0.8, "C": 1.2, "F": 0.6},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False,
+        "discounting": 0.3
+    },
+
+    "cycle_experiment_4_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "cycle_experiment_4_n4",
+        "scenario_description": "Low threshold (0.4) with asymmetric power and damage, no unanimity - easier coalition formation.",
+        "experiment_name": "cycle_experiment_4_n4",
+        "power": {"W": 0.35, "T": 0.25, "C": 0.25, "F": 0.15},
+        "m_damage": {"W": 0.6, "T": 1.5, "C": 1.8, "F": 0.9},
+        "power_rule": "power_threshold",
+        "min_power": 0.4,
+        "unanimity_required": False
+    },
+
+    "cycle_experiment_5_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "cycle_experiment_5_n4",
+        "scenario_description": "Non-monotonic damage (W=1.2, T=0.6, C=1.8, F=0.4) creating complex preference ordering, no unanimity.",
+        "experiment_name": "cycle_experiment_5_n4",
+        "power": {"W": 0.28, "T": 0.27, "C": 0.26, "F": 0.19},
+        "m_damage": {"W": 1.2, "T": 0.6, "C": 1.8, "F": 0.4},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    "cycle_experiment_6_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "cycle_experiment_6_n4",
+        "scenario_description": "Weak governance with very heterogeneous damage (0.3 to 2.5) and low discounting (δ=0.7), no unanimity.",
+        "experiment_name": "cycle_experiment_6_n4",
+        "m_damage": {"W": 2.5, "T": 0.3, "C": 1.8, "F": 0.9},
+        "power_rule": "weak_governance",
+        "min_power": None,
+        "unanimity_required": False,
+        "discounting": 0.7
+    },
+
+    # ========== ULTRA-EXTREME SCENARIOS FOR FORCING CYCLES ==========
+
+    "ultra_cycle_1_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "ultra_cycle_1_n3",
+        "scenario_description": "Ultra-myopic players (δ=0.1), perfectly balanced power, extreme damage asymmetry.",
+        "experiment_name": "ultra_cycle_1_n3",
+        "power": {"W": 0.334, "T": 0.333, "C": 0.333},
+        "m_damage": {"W": 3.0, "T": 0.3, "C": 1.5},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False,
+        "discounting": 0.1
+    },
+
+    "ultra_cycle_2_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "ultra_cycle_2_n3",
+        "scenario_description": "Very myopic (δ=0.3), alternating damage (high-low-high), no unanimity.",
+        "experiment_name": "ultra_cycle_2_n3",
+        "power": {"W": 0.35, "T": 0.33, "C": 0.32},
+        "m_damage": {"W": 2.5, "T": 0.4, "C": 2.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False,
+        "discounting": 0.3
+    },
+
+    "ultra_cycle_3_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "ultra_cycle_3_n3",
+        "scenario_description": "Myopic (δ=0.5), very low threshold (0.4), extreme asymmetry.",
+        "experiment_name": "ultra_cycle_3_n3",
+        "power": {"W": 0.45, "T": 0.35, "C": 0.2},
+        "m_damage": {"W": 0.2, "T": 3.0, "C": 1.5},
+        "power_rule": "power_threshold",
+        "min_power": 0.4,
+        "unanimity_required": False,
+        "discounting": 0.5
+    },
+
+    "ultra_cycle_1_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "ultra_cycle_1_n4",
+        "scenario_description": "Ultra-myopic 4-player (δ=0.1), balanced power, wild damage variation.",
+        "experiment_name": "ultra_cycle_1_n4",
+        "power": {"W": 0.255, "T": 0.25, "C": 0.25, "F": 0.245},
+        "m_damage": {"W": 3.0, "T": 0.2, "C": 2.5, "F": 0.5},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False,
+        "discounting": 0.1
+    },
+
+    "ultra_cycle_2_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "ultra_cycle_2_n4",
+        "scenario_description": "Very myopic (δ=0.2), two dominant pairs, conflicting preferences.",
+        "experiment_name": "ultra_cycle_2_n4",
+        "power": {"W": 0.3, "T": 0.28, "C": 0.25, "F": 0.17},
+        "m_damage": {"W": 0.3, "T": 2.8, "C": 0.4, "F": 2.5},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False,
+        "discounting": 0.2
+    },
+
+    "ultra_cycle_3_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "ultra_cycle_3_n4",
+        "scenario_description": "Myopic (δ=0.4), low threshold (0.4), circular damage pattern.",
+        "experiment_name": "ultra_cycle_3_n4",
+        "power": {"W": 0.28, "T": 0.27, "C": 0.26, "F": 0.19},
+        "m_damage": {"W": 2.0, "T": 0.5, "C": 1.5, "F": 1.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.4,
+        "unanimity_required": False,
+        "discounting": 0.4
+    },
+
+    # ========== HETEROGENEOUS IDEAL TEMPERATURES (KEY INSIGHT!) ==========
+
+    "hetero_ideal_1_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "hetero_ideal_1_n3",
+        "scenario_description": "DIFFERENT ideal temperatures: W prefers warm (16°C), T temperate (13°C), C cold (10°C). No unanimity, balanced power.",
+        "experiment_name": "hetero_ideal_1_n3",
+        "ideal_temp": {"W": 16.0, "T": 13.0, "C": 10.0},
+        "power": {"W": 0.34, "T": 0.33, "C": 0.33},
+        "m_damage": {"W": 1.0, "T": 1.0, "C": 1.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    "hetero_ideal_2_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "hetero_ideal_2_n3",
+        "scenario_description": "Extreme ideal temp differences: W=18°C (hot preference), T=13°C, C=8°C (very cold). No unanimity.",
+        "experiment_name": "hetero_ideal_2_n3",
+        "ideal_temp": {"W": 18.0, "T": 13.0, "C": 8.0},
+        "power": {"W": 0.34, "T": 0.33, "C": 0.33},
+        "m_damage": {"W": 1.0, "T": 1.0, "C": 1.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    "hetero_ideal_3_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "hetero_ideal_3_n3",
+        "scenario_description": "Different ideal temps (W=16, T=13, C=10) with heterogeneous damage (creates double asymmetry).",
+        "experiment_name": "hetero_ideal_3_n3",
+        "ideal_temp": {"W": 16.0, "T": 13.0, "C": 10.0},
+        "power": {"W": 0.34, "T": 0.33, "C": 0.33},
+        "m_damage": {"W": 0.8, "T": 1.0, "C": 1.2},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    "hetero_ideal_4_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "hetero_ideal_4_n3",
+        "scenario_description": "Different ideals (W=17, T=13, C=9) with low discounting (δ=0.7) - myopic + conflicting goals.",
+        "experiment_name": "hetero_ideal_4_n3",
+        "ideal_temp": {"W": 17.0, "T": 13.0, "C": 9.0},
+        "power": {"W": 0.34, "T": 0.33, "C": 0.33},
+        "m_damage": {"W": 1.0, "T": 1.0, "C": 1.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False,
+        "discounting": 0.7
+    },
+
+    "hetero_ideal_5_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "hetero_ideal_5_n3",
+        "scenario_description": "Different ideals (W=16, T=13, C=10), very myopic (δ=0.3), low threshold (0.4) - maximum cycling potential.",
+        "experiment_name": "hetero_ideal_5_n3",
+        "ideal_temp": {"W": 16.0, "T": 13.0, "C": 10.0},
+        "power": {"W": 0.35, "T": 0.33, "C": 0.32},
+        "m_damage": {"W": 1.0, "T": 1.0, "C": 1.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.4,
+        "unanimity_required": False,
+        "discounting": 0.3
+    },
+
+    "hetero_ideal_6_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "hetero_ideal_6_n3",
+        "scenario_description": "Weak governance + different ideals (W=16, T=13, C=10) - free-driver problem with conflicting goals.",
+        "experiment_name": "hetero_ideal_6_n3",
+        "ideal_temp": {"W": 16.0, "T": 13.0, "C": 10.0},
+        "m_damage": {"W": 1.0, "T": 1.0, "C": 1.0},
+        "power_rule": "weak_governance",
+        "min_power": None,
+        "unanimity_required": False
+    },
+
+    "hetero_ideal_7_n3": {
+        **get_base_config_n3(),
+        "scenario_name": "hetero_ideal_7_n3",
+        "scenario_description": "Moderate different ideals (W=15, T=13, C=11) - subtle but real conflict.",
+        "experiment_name": "hetero_ideal_7_n3",
+        "ideal_temp": {"W": 15.0, "T": 13.0, "C": 11.0},
+        "power": {"W": 0.34, "T": 0.33, "C": 0.33},
+        "m_damage": {"W": 1.0, "T": 1.0, "C": 1.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    # ========== 4-PLAYER WITH HETEROGENEOUS IDEALS ==========
+
+    "hetero_ideal_1_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "hetero_ideal_1_n4",
+        "scenario_description": "4-player with divergent ideal temps (W=17, T=14, C=11, F=8) - testing complex state space for cycles.",
+        "experiment_name": "hetero_ideal_1_n4",
+        "ideal_temp": {"W": 17.0, "T": 14.0, "C": 11.0, "F": 8.0},
+        "power": {"W": 0.26, "T": 0.26, "C": 0.25, "F": 0.23},
+        "m_damage": {"W": 1.0, "T": 1.0, "C": 1.0, "F": 1.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False
+    },
+
+    "hetero_ideal_2_n4": {
+        **get_base_config_n4(),
+        "scenario_name": "hetero_ideal_2_n4",
+        "scenario_description": "4-player extreme ideals (W=19, T=15, C=10, F=6) with low discounting (δ=0.5) - maximum cycling potential.",
+        "experiment_name": "hetero_ideal_2_n4",
+        "ideal_temp": {"W": 19.0, "T": 15.0, "C": 10.0, "F": 6.0},
+        "power": {"W": 0.26, "T": 0.26, "C": 0.25, "F": 0.23},
+        "m_damage": {"W": 1.0, "T": 1.0, "C": 1.0, "F": 1.0},
+        "power_rule": "power_threshold",
+        "min_power": 0.501,
+        "unanimity_required": False,
+        "discounting": 0.5
     },
 }
 

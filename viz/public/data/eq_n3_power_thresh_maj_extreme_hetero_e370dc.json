@@ -1,0 +1,217 @@
+{
+  "nodes": [
+    {
+      "id": "( )",
+      "label": "( )",
+      "meta": {
+        "index": 0,
+        "geo_level": 0.0,
+        "deploying_coalition": "None"
+      }
+    },
+    {
+      "id": "(CT)",
+      "label": "(CT)",
+      "meta": {
+        "index": 1,
+        "geo_level": 5.249999999999999,
+        "deploying_coalition": "(TC)"
+      }
+    },
+    {
+      "id": "(CW)",
+      "label": "(CW)",
+      "meta": {
+        "index": 2,
+        "geo_level": 6.5,
+        "deploying_coalition": "(WC)"
+      }
+    },
+    {
+      "id": "(TW)",
+      "label": "(TW)",
+      "meta": {
+        "index": 3,
+        "geo_level": 5.268656716417911,
+        "deploying_coalition": "(WT)"
+      }
+    },
+    {
+      "id": "(CTW)",
+      "label": "(CTW)",
+      "meta": {
+        "index": 4,
+        "geo_level": 5.675,
+        "deploying_coalition": "(WTC)"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "source": "( )",
+      "target": "(CT)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e1",
+      "source": "( )",
+      "target": "(CW)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e2",
+      "source": "(CT)",
+      "target": "(CT)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": true
+      }
+    },
+    {
+      "id": "e3",
+      "source": "(CT)",
+      "target": "(CW)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e4",
+      "source": "(CW)",
+      "target": "(CW)",
+      "p": 1.0,
+      "meta": {
+        "is_self_loop": true
+      }
+    },
+    {
+      "id": "e5",
+      "source": "(TW)",
+      "target": "(CW)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e6",
+      "source": "(TW)",
+      "target": "(TW)",
+      "p": 0.33333333333333337,
+      "meta": {
+        "is_self_loop": true
+      }
+    },
+    {
+      "id": "e7",
+      "source": "(CTW)",
+      "target": "(CW)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false
+      }
+    },
+    {
+      "id": "e8",
+      "source": "(CTW)",
+      "target": "(CTW)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": true
+      }
+    }
+  ],
+  "metadata": {
+    "profile_path": "strategy_tables/eq_n3_power_thresh_maj_extreme_hetero_e370dc.xlsx",
+    "num_players": 3,
+    "num_states": 5,
+    "num_transitions": 9,
+    "expected_geo_level": 6.5,
+    "stationary_distribution": {
+      "( )": 0.0,
+      "(CT)": 0.0,
+      "(CW)": 1.0,
+      "(TW)": 0.0,
+      "(CTW)": 0.0
+    },
+    "mixing_time": 5,
+    "scenario_name": "hetero_ideal_2_n3",
+    "scenario_description": "Extreme ideal temp differences: W=18\u00b0C (hot preference), T=13\u00b0C, C=8\u00b0C (very cold). No unanimity.",
+    "config": {
+      "power_rule": "power_threshold",
+      "unanimity_required": false,
+      "min_power": 0.501
+    },
+    "file_metadata": {
+      "start_time": "2026-02-05 23:54:03",
+      "end_time": "2026-02-05 23:54:11",
+      "runtime_seconds": "7.58",
+      "runtime_formatted": "0m 7.6s",
+      "verification_success": "True",
+      "scenario_name": "hetero_ideal_2_n3",
+      "scenario_description": "Extreme ideal temp differences: W=18\u00b0C (hot preference), T=13\u00b0C, C=8\u00b0C (very cold). No unanimity.",
+      "n_players": "3",
+      "players": "W, T, C",
+      "n_states": "5",
+      "states": "( ), (CT), (CW), (TW), (CTW)",
+      "power_rule": "power_threshold",
+      "min_power": "0.501",
+      "unanimity_required": "False",
+      "discounting": "0.99",
+      "base_temp_W": "21.5",
+      "ideal_temp_W": "18.0",
+      "delta_temp_W": "3.0",
+      "m_damage_W": "1.0",
+      "power_W": "0.34",
+      "base_temp_T": "14.0",
+      "ideal_temp_T": "13.0",
+      "delta_temp_T": "3.0",
+      "m_damage_T": "1.0",
+      "power_T": "0.33",
+      "base_temp_C": "11.5",
+      "ideal_temp_C": "8.0",
+      "delta_temp_C": "3.0",
+      "m_damage_C": "1.0",
+      "power_C": "0.33",
+      "protocol_W": "0.3333333333333333",
+      "protocol_T": "0.3333333333333333",
+      "protocol_C": "0.3333333333333333",
+      "converged": "True",
+      "outer_iterations": "6",
+      "final_tau_p": "0.773781",
+      "final_tau_r": "0.773781",
+      "random_seed": "1204707310",
+      "solver_tau_p_init": "1.0",
+      "solver_tau_r_init": "1.0",
+      "solver_tau_decay": "0.95",
+      "solver_tau_min": "0.01",
+      "solver_max_outer_iter": "400",
+      "solver_max_inner_iter": "100",
+      "solver_damping": "0.5",
+      "solver_inner_tol": "1e-10",
+      "solver_outer_tol": "1e-09",
+      "solver_consecutive_tol": "1",
+      "solver_tau_margin": "0.01",
+      "solver_project_to_exact": "True",
+      "config_hash": "e370dc10c8",
+      "custom_description": "extreme_hetero"
+    },
+    "chain_diagnostics": {
+      "is_ergodic": false,
+      "num_absorbing_sets": 1,
+      "absorbing_sets": [
+        [
+          "(CW)"
+        ]
+      ]
+    }
+  }
+}

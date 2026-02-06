@@ -1,4 +1,4 @@
-# Coalition Formation Transition Graph Visualizer
+# Coalition Transition Graph Visualizer
 
 Interactive visualization tool for exploring Markov chain transition graphs derived from coalition formation strategy profiles.
 

@@ -10,6 +10,51 @@
       "scenario_description": null
     },
     {
+      "name": "eq_n3_power_thresh_maj_4bb7b8",
+      "filename": "eq_n3_power_thresh_maj_4bb7b8.json",
+      "path": "strategy_tables/eq_n3_power_thresh_maj_4bb7b8.xlsx",
+      "num_states": 5,
+      "num_transitions": 11,
+      "scenario_name": "cycle_experiment_4_n3",
+      "scenario_description": "Inverse damage-temperature relationship: cold countries more vulnerable (W=0.5, T=1.0, C=2.0) with no unanimity."
+    },
+    {
+      "name": "eq_n3_power_thresh_maj_extreme_hetero_e370dc",
+      "filename": "eq_n3_power_thresh_maj_extreme_hetero_e370dc.json",
+      "path": "strategy_tables/eq_n3_power_thresh_maj_extreme_hetero_e370dc.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": "hetero_ideal_2_n3",
+      "scenario_description": "Extreme ideal temp differences: W=18\u00b0C (hot preference), T=13\u00b0C, C=8\u00b0C (very cold). No unanimity."
+    },
+    {
+      "name": "eq_n3_power_thresh_maj_hetero_ideal_4ae712",
+      "filename": "eq_n3_power_thresh_maj_hetero_ideal_4ae712.json",
+      "path": "strategy_tables/eq_n3_power_thresh_maj_hetero_ideal_4ae712.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": "hetero_ideal_1_n3",
+      "scenario_description": "DIFFERENT ideal temperatures: W prefers warm (16\u00b0C), T temperate (13\u00b0C), C cold (10\u00b0C). No unanimity, balanced power."
+    },
+    {
+      "name": "eq_n3_power_thresh_maj_hetero_myopic_d9e8aa",
+      "filename": "eq_n3_power_thresh_maj_hetero_myopic_d9e8aa.json",
+      "path": "strategy_tables/eq_n3_power_thresh_maj_hetero_myopic_d9e8aa.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": "hetero_ideal_5_n3",
+      "scenario_description": "Different ideals (W=16, T=13, C=10), very myopic (\u03b4=0.3), low threshold (0.4) - maximum cycling potential."
+    },
+    {
+      "name": "eq_n3_power_thresh_maj_ultra_myopic_da3086",
+      "filename": "eq_n3_power_thresh_maj_ultra_myopic_da3086.json",
+      "path": "strategy_tables/eq_n3_power_thresh_maj_ultra_myopic_da3086.xlsx",
+      "num_states": 5,
+      "num_transitions": 8,
+      "scenario_name": "ultra_cycle_1_n3",
+      "scenario_description": "Ultra-myopic players (\u03b4=0.1), perfectly balanced power, extreme damage asymmetry."
+    },
+    {
       "name": "eq_n3_power_thresh_unan_649999",
       "filename": "eq_n3_power_thresh_unan_649999.json",
       "path": "strategy_tables/eq_n3_power_thresh_unan_649999.xlsx",
@@ -17,6 +62,15 @@
       "num_transitions": 9,
       "scenario_name": null,
       "scenario_description": null
+    },
+    {
+      "name": "eq_n3_weak_gov_maj_weak_gov_hetero_492a79",
+      "filename": "eq_n3_weak_gov_maj_weak_gov_hetero_492a79.json",
+      "path": "strategy_tables/eq_n3_weak_gov_maj_weak_gov_hetero_492a79.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": "hetero_ideal_6_n3",
+      "scenario_description": "Weak governance + different ideals (W=16, T=13, C=10) - free-driver problem with conflicting goals."
     },
     {
       "name": "eq_n3_weak_gov_unan_974d28",

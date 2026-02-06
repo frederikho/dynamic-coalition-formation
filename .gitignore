@@ -11,5 +11,6 @@ scripts/combined*
 
 /checkpoints
 /logs
+.env
 
 # Note: /docs is committed (GitHub Pages deploys from this folder)

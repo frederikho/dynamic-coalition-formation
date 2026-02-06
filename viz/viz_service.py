@@ -138,6 +138,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Default profiles directory (absolute path to repository's strategy_tables)
+DEFAULT_PROFILES_DIR = str(Path(__file__).parent.parent / "strategy_tables")
+
 # Default configuration (matches main.py base_config)
 DEFAULT_CONFIG = {
     "players": ["W", "T", "C"],
@@ -824,12 +827,9 @@ async def get_graph(
         # Resolve path
         profile_path = Path(profile)
 
-        # If not absolute, check if it exists as-is first
-        if not profile_path.is_absolute():
-            if not profile_path.exists():
-                # Try prepending strategy_tables/ if it doesn't start with it
-                if not str(profile_path).startswith("strategy_tables"):
-                    profile_path = Path("strategy_tables") / profile_path
+        # If not absolute and doesn't exist, try prepending the default profiles dir
+        if not profile_path.is_absolute() and not profile_path.exists():
+            profile_path = Path(DEFAULT_PROFILES_DIR) / profile_path
 
         if not profile_path.exists():
             logger.error(f"Profile not found: {profile_path}")
@@ -855,7 +855,7 @@ async def get_graph(
 
 
 @app.get("/profiles")
-async def list_profiles(profiles_dir: str = Query("strategy_tables", description="Directory containing XLSX profiles")):
+async def list_profiles(profiles_dir: str = Query(DEFAULT_PROFILES_DIR, description="Directory containing XLSX profiles")):
     """
     List available strategy profile XLSX files.
     """
@@ -899,12 +899,9 @@ async def download_profile(
         # Resolve path
         profile_path = Path(profile)
 
-        # If not absolute, check if it exists as-is first
-        if not profile_path.is_absolute():
-            if not profile_path.exists():
-                # Try prepending strategy_tables/ if it doesn't start with it
-                if not str(profile_path).startswith("strategy_tables"):
-                    profile_path = Path("strategy_tables") / profile_path
+        # If not absolute and doesn't exist, try prepending the default profiles dir
+        if not profile_path.is_absolute() and not profile_path.exists():
+            profile_path = Path(DEFAULT_PROFILES_DIR) / profile_path
 
         if not profile_path.exists():
             raise HTTPException(
@@ -943,8 +940,8 @@ def main():
     )
     parser.add_argument(
         "--profiles-dir",
-        default="strategy_tables",
-        help="Directory containing XLSX strategy profiles (default: strategy_tables)"
+        default=DEFAULT_PROFILES_DIR,
+        help=f"Directory containing XLSX strategy profiles (default: {DEFAULT_PROFILES_DIR})"
     )
 
     args = parser.parse_args()

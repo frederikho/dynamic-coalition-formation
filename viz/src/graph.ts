@@ -300,8 +300,8 @@ export class GraphRenderer {
         if (clusterPositions[nodeId]) {
           finalPositions[nodeId] = clusterPositions[nodeId];
         }
-      } else if (presetPositions[nodeId]) {
-        // For default/connections: use preset positions (pentagon/circles for n=3/4)
+      } else if (layoutMode === 'default' && presetPositions[nodeId]) {
+        // Only apply preset positions for the 'default' layout
         finalPositions[nodeId] = presetPositions[nodeId];
       }
     }
@@ -352,10 +352,10 @@ export class GraphRenderer {
         // Count coalitions in state name: "(CF)" has 1, "(CF)(TW)" has 2, "( )" has 0
         const coalitionCount = (node.id.match(/\([A-Z]+\)/g) || []).length;
 
-        // Border if: G > 0, has exactly one coalition, and it matches the deployer
+        // Border if: only when coloring by deployer, G > 0, has exactly one coalition, and it matches the deployer
         // Compare normalized versions to handle different orderings
         const normalizedState = normalizeStateName(node.id);
-        const hasDeploymentBorder = geoLevel > 0 && coalitionCount === 1 && normalizedState === deployingCoalition;
+        const hasDeploymentBorder = coloringMode === 'deployer' && geoLevel > 0 && coalitionCount === 1 && normalizedState === deployingCoalition;
 
         const element: cytoscape.ElementDefinition = {
           group: 'nodes' as const,
@@ -569,8 +569,9 @@ export class GraphRenderer {
   ) {
     switch (layoutMode) {
       case 'default':
-        // Use preset positions for n=5/15, otherwise force-directed
-        if (usePresetPositions) {
+        // Use preset positions for n=5/15 or when preset positions were computed,
+        // otherwise force-directed
+        if (usePresetPositions || graphData.nodes.length === 5 || graphData.nodes.length === 15) {
           return { name: 'preset' };
         } else {
           return {
@@ -590,7 +591,7 @@ export class GraphRenderer {
         }
 
       case 'connections':
-        // Force-directed layout, but use saved positions if available
+        // Force-directed layout, but use saved or preset positions if available
         if (usePresetPositions) {
           return { name: 'preset' };
         } else {
