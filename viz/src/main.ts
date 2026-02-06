@@ -28,6 +28,18 @@ let currentGraphData: GraphData | null = null;
 let renderer: GraphRenderer | null = null;
 let previousMetadata: any = null;
 
+// Temporary display toggles (can toggle with keyboard shortcuts)
+let showSelfLoops = true;
+let showEdgeLabels = true;
+let showNodeLabels = true;
+
+function getRenderOptions() {
+  const filterMode = getFilterMode();
+  const coloringMode = getNodeColoringMode();
+  const layoutMode = getLayoutMode();
+  return { coloringMode, filterMode, layoutMode, showSelfLoops, showEdgeLabels, showNodeLabels };
+}
+
 // Initialize graph renderer
 function initRenderer() {
   if (renderer) {
@@ -127,7 +139,7 @@ async function loadGraph() {
     const filterMode = getFilterMode();
     const coloringMode = getNodeColoringMode();
     const layoutMode = getLayoutMode();
-    renderer!.render(graphData, threshold, { coloringMode, filterMode, layoutMode });
+    renderer!.render(graphData, threshold, getRenderOptions());
 
     // Update metadata display
     updateMetadata(graphData);
@@ -644,7 +656,7 @@ probThresholdInput.addEventListener('change', () => {
     const coloringMode = getNodeColoringMode();
     const layoutMode = getLayoutMode();
     // Don't call initRenderer() - positions will be preserved
-    renderer.render(currentGraphData, threshold, { coloringMode, filterMode, layoutMode });
+    renderer.render(currentGraphData, threshold, getRenderOptions());
     updateLegend(currentGraphData, coloringMode);
   }
 });
@@ -663,7 +675,7 @@ nodeColoringRadios.forEach(radio => {
       const coloringMode = getNodeColoringMode();
       const layoutMode = getLayoutMode();
       // Don't call initRenderer() - positions will be preserved
-      renderer.render(currentGraphData, threshold, { coloringMode, filterMode, layoutMode });
+      renderer.render(currentGraphData, threshold, getRenderOptions());
       updateLegend(currentGraphData, coloringMode);
     }
   });
@@ -679,7 +691,7 @@ layoutModeRadios.forEach(radio => {
       const layoutMode = getLayoutMode();
       // Don't preserve positions when changing layout mode - need fresh layout
       initRenderer();
-      renderer.render(currentGraphData, threshold, { coloringMode, filterMode, layoutMode });
+      renderer.render(currentGraphData, threshold, getRenderOptions());
       updateLegend(currentGraphData, coloringMode);
     }
   });
@@ -695,10 +707,37 @@ filterModeRadios.forEach(radio => {
       const coloringMode = getNodeColoringMode();
       const layoutMode = getLayoutMode();
       // Don't call initRenderer() - positions will be preserved
-      renderer.render(currentGraphData, threshold, { coloringMode, filterMode, layoutMode });
+      renderer.render(currentGraphData, threshold, getRenderOptions());
       updateLegend(currentGraphData, coloringMode);
     }
   });
+});
+
+// Keyboard shortcuts for quick toggles (temporary display changes)
+// s = toggle self-loops, e = toggle edge labels, l = toggle node labels
+document.addEventListener('keydown', (ev) => {
+  const key = ev.key.toLowerCase();
+  let changed = false;
+  if (key === 's') {
+    showSelfLoops = !showSelfLoops;
+    showStatus(`Self-loops ${showSelfLoops ? 'shown' : 'hidden'}`, 'info');
+    changed = true;
+  } else if (key === 'e') {
+    showEdgeLabels = !showEdgeLabels;
+    showStatus(`Edge probabilities ${showEdgeLabels ? 'shown' : 'hidden'}`, 'info');
+    changed = true;
+  } else if (key === 'l') {
+    showNodeLabels = !showNodeLabels;
+    showStatus(`Node labels ${showNodeLabels ? 'shown' : 'hidden'}`, 'info');
+    changed = true;
+  }
+
+  if (changed && currentGraphData && renderer) {
+    const threshold = parseFloat(probThresholdInput.value) || 0;
+    renderer.render(currentGraphData, threshold, getRenderOptions());
+    // Update legend to reflect coloring mode (labels toggles don't affect legend but keep consistent)
+    updateLegend(currentGraphData, getNodeColoringMode());
+  }
 });
 
 // Initialize

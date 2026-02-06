@@ -12,5 +12,6 @@ scripts/combined*
 /checkpoints
 /logs
 .env
+/strategy_tables
 
 # Note: /docs is committed (GitHub Pages deploys from this folder)

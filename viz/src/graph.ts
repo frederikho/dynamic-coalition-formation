@@ -224,6 +224,10 @@ export class GraphRenderer {
     coloringMode?: 'none' | 'absorbing' | 'geoengineering' | 'deployer';
     filterMode?: 'absolute' | 'cumulative';
     layoutMode?: 'default' | 'connections' | 'deployer' | 'geo-level';
+    // UI toggles
+    showSelfLoops?: boolean;
+    showEdgeLabels?: boolean;
+    showNodeLabels?: boolean;
   }) {
     // Save current positions before destroying
     if (this.cy) {
@@ -235,6 +239,9 @@ export class GraphRenderer {
     const filterMode = options?.filterMode || 'absolute';
     const coloringMode = options?.coloringMode || 'none';
     const layoutMode = options?.layoutMode || 'default';
+    const showSelfLoops = options?.showSelfLoops !== false; // default true
+    const showEdgeLabels = options?.showEdgeLabels !== false; // default true
+    const showNodeLabels = options?.showNodeLabels !== false; // default true
 
     // Filter edges by probability threshold
     let filteredEdges: typeof graphData.edges;
@@ -339,6 +346,9 @@ export class GraphRenderer {
       });
     }
 
+    // If requested, remove self-loop edges from display
+    const displayedEdgesList = showSelfLoops ? filteredEdges : filteredEdges.filter(e => e.source !== e.target);
+
     // Convert to Cytoscape format
     const elements: cytoscape.ElementDefinition[] = [
       // Nodes
@@ -409,12 +419,13 @@ export class GraphRenderer {
         return element;
       }),
       // Edges
-      ...filteredEdges.map(edge => ({
+      ...displayedEdgesList.map(edge => ({
         group: 'edges' as const,
         data: {
           id: edge.id,
           source: edge.source,
           target: edge.target,
+          // keep probability data but label rendering can be toggled via styles
           label: this.formatProbability(edge.p),
           probability: edge.p,
           isSelfLoop: edge.source === edge.target,
@@ -423,94 +434,112 @@ export class GraphRenderer {
       }))
     ];
 
+    // Build style array dynamically based on toggles
+    const styles: any[] = [];
+
+    // Node base style (use text-opacity to reliably hide/show labels)
+    styles.push({
+      selector: 'node',
+      style: {
+        'background-color': 'data(color)',
+        'label': 'data(label)',
+        'text-opacity': showNodeLabels ? 1 : 0,
+        'color': '#1e293b',
+        'text-valign': 'center',
+        'text-halign': 'center',
+        'font-size': '12px',
+        'font-weight': 'normal',
+        'width': 70,
+        'height': 70,
+        'text-outline-width': 0,
+        'text-wrap': 'wrap',
+        'text-max-width': '65px',
+        'border-width': 0,
+        'border-color': '#1e293b'
+      }
+    });
+
+    // Deployment border
+    styles.push({
+      selector: 'node[has_deployment]',
+      style: {
+        'border-width': function(ele: any) {
+          return ele.data('has_deployment') ? 3 : 0;
+        },
+        'border-color': '#1e293b'
+      }
+    });
+
+    // Selected node
+    styles.push({
+      selector: 'node:selected',
+      style: {
+        'background-color': '#94a3b8',
+        'border-width': 3,
+        'border-color': '#475569'
+      }
+    });
+
+    // Edge base style (use text-opacity to hide labels without affecting layout)
+    styles.push({
+      selector: 'edge',
+      style: {
+        'width': 'data(width)',
+        'line-color': '#334155',
+        'target-arrow-color': '#334155',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        'label': 'data(label)',
+        'text-opacity': showEdgeLabels ? 1 : 0,
+        'font-size': '11px',
+        'text-rotation': 'autorotate',
+        'text-margin-y': -10,
+        'color': '#1e293b',
+        'text-background-color': 'transparent',
+        'text-background-opacity': 0
+      }
+    });
+
+    // Self-loop style
+    styles.push({
+      selector: 'edge[isSelfLoop]',
+      style: {
+        'curve-style': 'loop',
+        'loop-direction': '0deg',
+        'loop-sweep': '90deg',
+        'control-point-step-size': 40
+      }
+    });
+
+    // Highlight / dim styles
+    styles.push({
+      selector: '.highlighted',
+      style: {
+        'line-color': '#0f172a',
+        'target-arrow-color': '#0f172a',
+        'opacity': 1
+      }
+    });
+
+    styles.push({
+      selector: '.highlighted-node',
+      style: {
+        'opacity': 1
+      }
+    });
+
+    styles.push({
+      selector: '.dimmed',
+      style: {
+        'opacity': 0.2
+      }
+    });
+
     // Create Cytoscape instance
     this.cy = cytoscape({
       container: this.container,
       elements,
-      style: [
-        {
-          selector: 'node',
-          style: {
-            'background-color': 'data(color)',
-            'label': 'data(label)',
-            'color': '#1e293b',
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'font-size': '12px',
-            'font-weight': 'normal',
-            'width': 70,
-            'height': 70,
-            'text-outline-width': 0,
-            'text-wrap': 'wrap',
-            'text-max-width': '65px',
-            'border-width': 0,
-            'border-color': '#1e293b'
-          }
-        },
-        {
-          selector: 'node[has_deployment]',
-          style: {
-            'border-width': function(ele: any) {
-              return ele.data('has_deployment') ? 3 : 0;
-            },
-            'border-color': '#1e293b'
-          }
-        },
-        {
-          selector: 'node:selected',
-          style: {
-            'background-color': '#94a3b8',
-            'border-width': 3,
-            'border-color': '#475569'
-          }
-        },
-        {
-          selector: 'edge',
-          style: {
-            'width': 'data(width)',
-            'line-color': '#334155',
-            'target-arrow-color': '#334155',
-            'target-arrow-shape': 'triangle',
-            'curve-style': 'bezier',
-            'label': 'data(label)',
-            'font-size': '11px',
-            'text-rotation': 'autorotate',
-            'text-margin-y': -10,
-            'color': '#1e293b',
-            'text-background-color': 'transparent',
-            'text-background-opacity': 0
-          }
-        },
-        {
-          selector: 'edge[isSelfLoop]',
-          style: {
-            'curve-style': 'loop',
-            'loop-direction': '0deg',
-            'loop-sweep': '90deg',
-            'control-point-step-size': 40
-          }
-        },
-        {
-          selector: '.highlighted',
-          style: {
-            'line-color': '#0f172a',
-            'target-arrow-color': '#0f172a',
-            'opacity': 1
-          }
-        },
-          {
-            selector: '.highlighted-node',
-            style: {
-              'opacity': 1
-            }
-          },
-        {
-          selector: '.dimmed',
-          style: {
-            'opacity': 0.2
-          }
-        }
-      ],
+      style: styles,
       layout: this.getLayoutConfig(layoutMode, graphData, usePresetPositions),
       minZoom: 0.2,
       maxZoom: 3,

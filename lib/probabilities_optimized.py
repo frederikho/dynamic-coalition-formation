@@ -121,6 +121,31 @@ class TransitionProbabilitiesOptimized:
                     approver_indices = [self.player_to_idx[a] for a in approvers]
                     self.approval_committees[p_idx][s_idx][ns_idx] = approver_indices
 
+    def update_from_dicts(self, p_proposals: Dict, r_acceptances: Dict):
+        """Update internal arrays directly from strategy dicts.
+
+        This bypasses DataFrame construction entirely for maximum speed.
+        Use this in tight loops where performance matters.
+
+        Args:
+            p_proposals: Dict[(proposer, current_state, next_state)] = probability
+            r_acceptances: Dict[(proposer, current_state, next_state, approver)] = probability
+        """
+        # Update proposal arrays directly
+        for (proposer, current_state, next_state), prob in p_proposals.items():
+            p_idx = self.player_to_idx[proposer]
+            s_idx = self.state_to_idx[current_state]
+            ns_idx = self.state_to_idx[next_state]
+            self.proposal_probs[p_idx, s_idx, ns_idx] = prob
+
+        # Update acceptance arrays directly
+        for (proposer, current_state, next_state, approver), prob in r_acceptances.items():
+            p_idx = self.player_to_idx[proposer]
+            a_idx = self.player_to_idx[approver]
+            s_idx = self.state_to_idx[current_state]
+            ns_idx = self.state_to_idx[next_state]
+            self.approval_probs[p_idx, a_idx, s_idx, ns_idx] = prob
+
     def update_strategies(self, df: pd.DataFrame):
         """Update strategy arrays from new DataFrame using vectorized operations.
 

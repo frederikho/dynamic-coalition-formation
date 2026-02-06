@@ -96,6 +96,10 @@ class EquilibriumSolver:
         self.r_acceptances = {}  # Acceptance probabilities
         self._initialize_strategies()
 
+        # Create TransitionProbabilities object once for fast updates
+        # (will be initialized with current strategy dicts in first use)
+        self.tp = None  # Lazy initialization on first solve() call
+
     def _log(self, message, level='info'):
         """Log message using logger if available, otherwise print."""
         if self.logger:
@@ -185,8 +189,39 @@ class EquilibriumSolver:
 
         return df
 
+    def _compute_transition_probabilities_fast(self) -> Tuple:
+        """Compute transition probabilities from strategy dicts (fast path).
+
+        Uses pre-created TP object and updates arrays directly from dicts,
+        bypassing DataFrame construction for maximum speed.
+        """
+        # Lazy initialization of TP object on first call
+        if self.tp is None:
+            # Create initial DataFrame for first-time setup
+            initial_df = self._create_strategy_dataframe()
+            initial_df.fillna(0., inplace=True)
+
+            self.tp = TransitionProbabilitiesOptimized(
+                df=initial_df,
+                effectivity=self.effectivity,
+                players=self.players,
+                states=self.states,
+                protocol=self.protocol,
+                unanimity_required=self.unanimity_required
+            )
+
+        # Fast update: dict -> arrays directly (no DataFrame construction)
+        self.tp.update_from_dicts(self.p_proposals, self.r_acceptances)
+
+        # Compute probabilities from updated arrays
+        return self.tp.get_probabilities()
+
     def _compute_transition_probabilities(self, strategy_df: pd.DataFrame) -> Tuple:
-        """Compute transition probabilities from strategy DataFrame."""
+        """Compute transition probabilities from strategy DataFrame.
+
+        This is the slower path used for verification and final output.
+        For inner loop, use _compute_transition_probabilities_fast() instead.
+        """
         # Fill NaN values with 0.0 (NaN values indicate non-committee members or zero probabilities)
         strategy_df_filled = strategy_df.copy()
         strategy_df_filled.fillna(0., inplace=True)
@@ -594,16 +629,9 @@ class EquilibriumSolver:
                 old_proposals = self.p_proposals.copy()
                 old_acceptances = self.r_acceptances.copy()
 
-                # 1. Create strategy DataFrame
+                # 1. Compute transition probabilities (FAST PATH: dict -> arrays directly)
                 t0 = time.time()
-                strategy_df = self._create_strategy_dataframe()
-                timing_stats['create_df'].append(time.time() - t0)
-
-                # 2. Compute transition probabilities
-                t0 = time.time()
-                P, P_proposals, P_approvals = self._compute_transition_probabilities(
-                    strategy_df
-                )
+                P, P_proposals, P_approvals = self._compute_transition_probabilities_fast()
                 timing_stats['compute_transitions'].append(time.time() - t0)
 
                 # 3. Solve value functions
