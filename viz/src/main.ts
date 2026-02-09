@@ -22,6 +22,10 @@ const nodeColoringRadios = document.querySelectorAll('input[name="node-coloring"
 const layoutModeRadios = document.querySelectorAll('input[name="layout-mode"]') as NodeListOf<HTMLInputElement>;
 const absorbingLegendDiv = document.getElementById('absorbing-legend') as HTMLDivElement;
 const resultIndicatorDiv = document.getElementById('result-indicator') as HTMLDivElement;
+const menuToggleBtn = document.getElementById('menu-toggle') as HTMLButtonElement;
+const sidebarBackdrop = document.getElementById('sidebar-backdrop') as HTMLDivElement;
+const sidebar = document.getElementById('sidebar') as HTMLDivElement;
+const sidebarCloseBtn = document.getElementById('sidebar-close') as HTMLButtonElement;
 
 // State
 let currentGraphData: GraphData | null = null;
@@ -709,6 +713,60 @@ filterModeRadios.forEach(radio => {
       // Don't call initRenderer() - positions will be preserved
       renderer.render(currentGraphData, threshold, getRenderOptions());
       updateLegend(currentGraphData, coloringMode);
+    }
+  });
+});
+
+// Mobile menu toggle functionality
+function openMobileMenu() {
+  sidebar.classList.add('active');
+  sidebarBackdrop.classList.add('active');
+  document.body.style.overflow = 'hidden'; // Prevent scrolling when menu is open
+}
+
+function closeMobileMenu() {
+  sidebar.classList.remove('active');
+  sidebarBackdrop.classList.remove('active');
+  document.body.style.overflow = ''; // Restore scrolling
+}
+
+// Toggle mobile menu
+menuToggleBtn.addEventListener('click', () => {
+  if (sidebar.classList.contains('active')) {
+    closeMobileMenu();
+  } else {
+    openMobileMenu();
+  }
+});
+
+// Close menu when clicking backdrop
+sidebarBackdrop.addEventListener('click', closeMobileMenu);
+
+// Close menu when clicking close button
+sidebarCloseBtn.addEventListener('click', closeMobileMenu);
+
+// Close menu when user selects an option (for better UX)
+// This makes it easier to see the changes on the graph
+profileSelect.addEventListener('change', () => {
+  if (window.innerWidth <= 768) {
+    closeMobileMenu();
+  }
+});
+
+// Also close when user applies visualization changes on mobile
+nodeColoringRadios.forEach(radio => {
+  radio.addEventListener('change', () => {
+    if (window.innerWidth <= 768) {
+      // Small delay so user can see what they selected
+      setTimeout(closeMobileMenu, 300);
+    }
+  });
+});
+
+layoutModeRadios.forEach(radio => {
+  radio.addEventListener('change', () => {
+    if (window.innerWidth <= 768) {
+      setTimeout(closeMobileMenu, 300);
     }
   });
 });
