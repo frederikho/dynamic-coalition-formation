@@ -125,6 +125,42 @@ function getTwoCirclePositions(stateNames: string[]): Record<string, { x: number
   return positions;
 }
 
+// Seed for deterministic force-directed layout (controls both initial positions and
+// internal random decisions in cose-bilkent, ensuring identical results across devices).
+const FORCE_LAYOUT_SEED = 42;
+
+// Module-level cache for force-directed layout positions.
+// Survives initRenderer() calls. Keyed by a string derived from node IDs + edge structure.
+const forceDirectedCache = new Map<string, Record<string, { x: number; y: number }>>();
+
+function getGraphCacheKey(graphData: GraphData): string {
+  const nodeIds = graphData.nodes.map(n => n.id).sort().join(',');
+  const edgeIds = graphData.edges.map(e => `${e.source}->${e.target}`).sort().join(',');
+  return `${nodeIds}|${edgeIds}`;
+}
+
+// Seeded PRNG (mulberry32) to make force-directed layout deterministic across machines.
+// Temporarily replaces Math.random while cose-bilkent runs.
+function mulberry32(seed: number): () => number {
+  let s = seed | 0;
+  return function() {
+    s = s + 0x6D2B79F5 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function withSeededRandom<T>(seed: number, fn: () => T): T {
+  const originalRandom = Math.random;
+  Math.random = mulberry32(seed);
+  try {
+    return fn();
+  } finally {
+    Math.random = originalRandom;
+  }
+}
+
 export class GraphRenderer {
   private cy: Core | null = null;
   private container: HTMLElement;
@@ -294,7 +330,20 @@ export class GraphRenderer {
     // Compute cluster positions for clustering layouts
     const clusterPositions = this.computeClusterPositions(layoutMode, graphData);
 
-    // Position priority: saved > cluster/preset positions
+    // Check force-directed cache (in-memory, falls back to localStorage)
+    const cacheKey = getGraphCacheKey(graphData);
+    let cachedForcePositions = forceDirectedCache.get(cacheKey);
+    if (!cachedForcePositions) {
+      try {
+        const stored = localStorage.getItem(`force-layout:${cacheKey}`);
+        if (stored) {
+          cachedForcePositions = JSON.parse(stored);
+          forceDirectedCache.set(cacheKey, cachedForcePositions!);
+        }
+      } catch { /* ignore localStorage errors */ }
+    }
+
+    // Position priority: saved > cached force-directed > cluster/preset positions
     // This ensures that user interactions (dragging) or previous renders are preserved
     const finalPositions: Record<string, { x: number; y: number }> = {};
 
@@ -302,6 +351,9 @@ export class GraphRenderer {
       if (this.savedPositions[nodeId]) {
         // Always prioritize saved positions from previous render
         finalPositions[nodeId] = this.savedPositions[nodeId];
+      } else if (layoutMode === 'connections' && cachedForcePositions?.[nodeId]) {
+        // Use cached force-directed positions
+        finalPositions[nodeId] = cachedForcePositions[nodeId];
       } else if (layoutMode === 'deployer' || layoutMode === 'geo-level') {
         // For clustering modes: use computed cluster positions
         if (clusterPositions[nodeId]) {
@@ -535,19 +587,36 @@ export class GraphRenderer {
       }
     });
 
-    // Create Cytoscape instance
-    this.cy = cytoscape({
+    // Create Cytoscape instance.
+    // For force-directed layout, seed Math.random so the result is identical across machines.
+    const layoutConfig = this.getLayoutConfig(layoutMode, graphData, usePresetPositions);
+    const needsSeededRandom = layoutMode === 'connections' && layoutConfig.name === 'cose-bilkent';
+    const createCy = () => cytoscape({
       container: this.container,
       elements,
       style: styles,
-      layout: this.getLayoutConfig(layoutMode, graphData, usePresetPositions),
+      layout: layoutConfig,
       minZoom: 0.2,
       maxZoom: 3,
       wheelSensitivity: 0.2
     });
+    this.cy = needsSeededRandom ? withSeededRandom(FORCE_LAYOUT_SEED, createCy) : createCy();
+
+    // Cache force-directed positions after layout completes (memory + localStorage)
+    if (layoutMode === 'connections' && !cachedForcePositions) {
+      const positions: Record<string, { x: number; y: number }> = {};
+      this.cy.nodes().forEach(node => {
+        const pos = node.position();
+        positions[node.id()] = { x: pos.x, y: pos.y };
+      });
+      forceDirectedCache.set(cacheKey, positions);
+      try {
+        localStorage.setItem(`force-layout:${cacheKey}`, JSON.stringify(positions));
+      } catch { /* ignore localStorage errors */ }
+    }
 
     this.setupInteractions();
-    
+
     // For larger graphs (n=4 with 15 nodes), fit to view with padding
     if (graphData.nodes.length >= 15) {
       this.cy.fit(undefined, 50); // Fit all elements with 50px padding
@@ -620,25 +689,26 @@ export class GraphRenderer {
         }
 
       case 'connections':
-        // Force-directed layout, but use saved or preset positions if available
+        // Use cached positions if available (deterministic across switches)
         if (usePresetPositions) {
           return { name: 'preset' };
-        } else {
-          return {
-            name: 'cose-bilkent',
-            animate: false,
-            randomize: true,
-            nodeRepulsion: 4500,
-            idealEdgeLength: 100,
-            edgeElasticity: 0.45,
-            nestingFactor: 0.1,
-            gravity: 0.25,
-            numIter: 2500,
-            tile: true,
-            tilingPaddingVertical: 10,
-            tilingPaddingHorizontal: 10
-          };
         }
+        // First time: run force-directed with seeded PRNG for deterministic result.
+        // Positions are cached to localStorage after layout completes.
+        return {
+          name: 'cose-bilkent',
+          animate: false,
+          randomize: true,
+          nodeRepulsion: 4500,
+          idealEdgeLength: 100,
+          edgeElasticity: 0.45,
+          nestingFactor: 0.1,
+          gravity: 0.25,
+          numIter: 2500,
+          tile: true,
+          tilingPaddingVertical: 10,
+          tilingPaddingHorizontal: 10
+        };
 
       case 'deployer': {
         // Cluster by deploying coalition

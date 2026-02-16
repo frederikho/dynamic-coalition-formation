@@ -30,7 +30,7 @@ cd ..
 From the repository root:
 
 ```bash
-python -m viz_service
+python -m service_viz
 ```
 
 You should see:
@@ -103,7 +103,7 @@ States with only self-loops (probability 1.0 of staying) are **absorbing states*
 
 ```
 .
-├── viz_service.py          # Python backend API (new)
+├── service_viz.py          # Python backend API (new)
 ├── viz/                    # Frontend visualizer (new)
 │   ├── src/               # TypeScript source
 │   ├── index.html         # UI
@@ -122,14 +122,14 @@ States with only self-loops (probability 1.0 of staying) are **absorbing states*
 
 The visualizer is designed as a **thin integration layer**:
 - **No changes to `main.py`** or core research logic
-- `viz_service.py` imports and calls existing computation functions from `lib/`
+- `service_viz.py` imports and calls existing computation functions from `lib/`
 - Frontend is entirely separate in `viz/` directory
 - You can still run `python main.py` as before to generate all results
 
 ## Troubleshooting
 
 **"Failed to fetch profiles"**
-- Make sure `python -m viz_service` is running
+- Make sure `python -m service_viz` is running
 - Check that port 8000 is not blocked
 
 **"Profile not found"**
@@ -141,7 +141,7 @@ The visualizer is designed as a **thin integration layer**:
 - Click "Refresh" in the visualizer (it doesn't auto-reload)
 
 **Port already in use**
-- Backend: `python -m viz_service --port 8001`
+- Backend: `python -m service_viz --port 8001`
 - Frontend: Edit `viz/vite.config.ts` to change port
 
 ## Advanced Usage

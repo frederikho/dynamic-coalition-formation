@@ -205,6 +205,20 @@ def _get_solver_params(config, user_params=None):
             'consecutive_tol': 3,
         })        
 
+    if len(config['players']) >= 5:
+        default_params.update({
+            'tau_p_init': 2,
+            'tau_r_init': 2,
+            'tau_decay': 0.90,
+            'tau_min': 0.01,
+            'damping': 0.95,
+            'max_inner_iter': 300,
+            'max_outer_iter': 1000,
+            'inner_tol': 1e-2,
+            'outer_tol': 1e-2,
+            'consecutive_tol': 1,
+        }) 
+        
     # Update with user-provided parameters
     default_params.update(user_params)
 

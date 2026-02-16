@@ -14,7 +14,7 @@ This visualization tool provides an interactive way to:
 
 The system consists of two components:
 
-1. **Python Viz Service** (`../viz_service.py`): FastAPI server that computes transition graphs from XLSX strategy profiles
+1. **Python Viz Service** (`../service_viz.py`): FastAPI server that computes transition graphs from XLSX strategy profiles
 2. **Frontend** (this directory): Vite + TypeScript + Sigma.js web application for rendering and interaction
 
 ## Prerequisites
@@ -39,7 +39,7 @@ pip install fastapi uvicorn openpyxl
 From the repository root:
 
 ```bash
-python -m viz_service
+python -m service_viz
 ```
 
 This starts the API server at `http://127.0.0.1:8000`
@@ -176,7 +176,7 @@ If port 8000 or 3000 is already in use:
 
 ### CORS Errors
 
-The viz service enables CORS for `*` origins in development. For production, restrict this in `viz_service.py`.
+The viz service enables CORS for `*` origins in development. For production, restrict this in `service_viz.py`.
 
 ### Profile Not Found
 
@@ -194,7 +194,7 @@ The viz service enables CORS for `*` origins in development. For production, res
 
 ### Adding More Graph Metadata
 
-Edit `viz_service.py` `compute_transition_graph()` to include additional node/edge metadata:
+Edit `service_viz.py` `compute_transition_graph()` to include additional node/edge metadata:
 
 ```python
 nodes.append({

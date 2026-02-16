@@ -31,6 +31,7 @@ const sidebarCloseBtn = document.getElementById('sidebar-close') as HTMLButtonEl
 let currentGraphData: GraphData | null = null;
 let renderer: GraphRenderer | null = null;
 let previousMetadata: any = null;
+let highlightTimeoutId: number | null = null;
 
 // Temporary display toggles (can toggle with keyboard shortcuts)
 let showSelfLoops = true;
@@ -395,6 +396,26 @@ function updateMetadata(data: GraphData) {
     return !!val;
   };
 
+  // Helper to compute derived player parameter
+  const computeDerivedParam = (param: string, player: string, metadata: any): number | undefined => {
+    if (param === 'temp_before_sg') {
+      const baseTemp = metadata[`base_temp_${player}`];
+      const deltaTemp = metadata[`delta_temp_${player}`];
+      if (baseTemp !== undefined && deltaTemp !== undefined) {
+        return parseFloat(baseTemp) + parseFloat(deltaTemp);
+      }
+    } else if (param === 'ideal_g') {
+      const baseTemp = metadata[`base_temp_${player}`];
+      const deltaTemp = metadata[`delta_temp_${player}`];
+      const idealTemp = metadata[`ideal_temp_${player}`];
+      if (baseTemp !== undefined && deltaTemp !== undefined && idealTemp !== undefined) {
+        const tempBeforeSG = parseFloat(baseTemp) + parseFloat(deltaTemp);
+        return tempBeforeSG - parseFloat(idealTemp);
+      }
+    }
+    return undefined;
+  };
+
   // Track changes from previous metadata
   const changedFields = new Set<string>();
   if (previousMetadata) {
@@ -410,14 +431,27 @@ function updateMetadata(data: GraphData) {
     if (prevMeta.players !== fileMetadata.players) changedFields.add('players');
     if (previousMetadata.scenario_name !== data.metadata.scenario_name) changedFields.add('scenario');
 
-    // Check player parameters
+    // Check player parameters (including derived ones)
     const players = typeof fileMetadata.players === 'string' ? fileMetadata.players.split(',').map(p => p.trim()) : [];
-    const paramNames = ['base_temp', 'ideal_temp', 'delta_temp', 'm_damage', 'power', 'protocol'];
+    const allParamNames = ['base_temp', 'delta_temp', 'temp_before_sg', 'ideal_temp', 'ideal_g', 'm_damage', 'power', 'protocol'];
 
-    for (const param of paramNames) {
+    for (const param of allParamNames) {
       for (const player of players) {
-        const key = `${param}_${player}`;
-        if (prevMeta[key] !== fileMetadata[key]) {
+        let currentValue: any;
+        let previousValue: any;
+
+        // Check if it's a derived parameter
+        if (param === 'temp_before_sg' || param === 'ideal_g') {
+          currentValue = computeDerivedParam(param, player, fileMetadata);
+          previousValue = computeDerivedParam(param, player, prevMeta);
+        } else {
+          const key = `${param}_${player}`;
+          currentValue = fileMetadata[key];
+          previousValue = prevMeta[key];
+        }
+
+        // Mark as changed if values differ
+        if (currentValue !== previousValue) {
           changedFields.add(`player_${param}_${player}`);
         }
       }
@@ -460,11 +494,13 @@ function updateMetadata(data: GraphData) {
 
   let playerParamsSection = '';
   if (players.length > 0) {
-    const paramNames = ['base_temp', 'ideal_temp', 'delta_temp', 'm_damage', 'power', 'protocol'];
+    const paramNames = ['base_temp', 'delta_temp', 'temp_before_sg', 'ideal_temp', 'ideal_g', 'm_damage', 'power', 'protocol'];
     const paramLabels: Record<string, string> = {
       'base_temp': 'Base Temp',
-      'ideal_temp': 'Ideal Temp',
       'delta_temp': 'ΔTemp',
+      'temp_before_sg': 'Temp before SG',
+      'ideal_temp': 'Ideal Temp',
+      'ideal_g': 'Ideal G',
       'm_damage': 'Damage Coeff',
       'power': 'Power',
       'protocol': 'Protocol'
@@ -513,18 +549,29 @@ function updateMetadata(data: GraphData) {
 
       // Add rows for each parameter
       paramNames.forEach(param => {
-        const values = players.map(player => {
-          const key = `${param}_${player}`;
-          return formatValue(fileMetadata[key]);
-        });
+        let values: string[];
+
+        // Get values (derived or direct from metadata)
+        if (param === 'temp_before_sg' || param === 'ideal_g') {
+          values = players.map(player => {
+            const val = computeDerivedParam(param, player, fileMetadata);
+            return formatValue(val);
+          });
+        } else {
+          // Original parameters from file metadata
+          values = players.map(player => {
+            const key = `${param}_${player}`;
+            return formatValue(fileMetadata[key]);
+          });
+        }
 
         // Only show row if at least one value exists
         if (values.some(v => v !== '—')) {
           tableHTML += `
             <tr style="border-bottom: 1px solid #e2e8f0;">
               <td style="padding: 4px;">${paramLabels[param] || param}</td>
-              ${players.map(player => {
-                const val = formatValue(fileMetadata[`${param}_${player}`]);
+              ${players.map((player, i) => {
+                const val = values[i];
                 const changed = changedFields.has(`player_${param}_${player}`) ? ' class="changed-field"' : '';
                 return `<td style="text-align: right; padding: 4px;"${changed}>${val}</td>`;
               }).join('')}
@@ -559,12 +606,18 @@ function updateMetadata(data: GraphData) {
     ${playerParamsSection}
   `;
 
+  // Clear any pending highlight removal from previous profile switch
+  if (highlightTimeoutId !== null) {
+    clearTimeout(highlightTimeoutId);
+  }
+
   // Trigger animation by adding and removing class after a delay
-  setTimeout(() => {
+  highlightTimeoutId = window.setTimeout(() => {
     const changedElements = metadataDiv.querySelectorAll('.changed-field');
     changedElements.forEach(el => {
       el.classList.remove('changed-field');
     });
+    highlightTimeoutId = null;
   }, 5000);
 }
 
