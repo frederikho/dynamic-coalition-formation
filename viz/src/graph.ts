@@ -481,7 +481,8 @@ export class GraphRenderer {
           label: this.formatProbability(edge.p),
           probability: edge.p,
           isSelfLoop: edge.source === edge.target,
-          width: this.getEdgeWidth(edge.p, edge.source === edge.target, filteredEdges)
+          width: this.getEdgeWidth(edge.p, edge.source === edge.target, filteredEdges),
+          breakdown: (edge as any).meta?.breakdown
         }
       }))
     ];
@@ -852,34 +853,36 @@ export class GraphRenderer {
     };
   }
 
-  getOutgoingEdges(nodeId: string): Array<{ target: string; probability: number }> {
+  getOutgoingEdges(nodeId: string): Array<{ target: string; probability: number; breakdown?: any }> {
     if (!this.cy) return [];
 
     const node = this.cy.$id(nodeId);
     if (node.length === 0) return [];
 
-    const edges: Array<{ target: string; probability: number }> = [];
+    const edges: Array<{ target: string; probability: number; breakdown?: any }> = [];
     node.outgoers('edge').forEach(edge => {
       edges.push({
         target: edge.target().id(),
-        probability: edge.data('probability')
+        probability: edge.data('probability'),
+        breakdown: edge.data('breakdown')
       });
     });
 
     return edges.sort((a, b) => b.probability - a.probability);
   }
 
-  getIncomingEdges(nodeId: string): Array<{ source: string; probability: number }> {
+  getIncomingEdges(nodeId: string): Array<{ source: string; probability: number; breakdown?: any }> {
     if (!this.cy) return [];
 
     const node = this.cy.$id(nodeId);
     if (node.length === 0) return [];
 
-    const edges: Array<{ source: string; probability: number }> = [];
+    const edges: Array<{ source: string; probability: number; breakdown?: any }> = [];
     node.incomers('edge').forEach(edge => {
       edges.push({
         source: edge.source().id(),
-        probability: edge.data('probability')
+        probability: edge.data('probability'),
+        breakdown: edge.data('breakdown')
       });
     });
 

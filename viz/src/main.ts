@@ -307,7 +307,7 @@ function renderResultIndicator(expectedG: number, pi: any, mixingTime: number | 
         <span>Mixing time: ${timeValue}</span>
         <span class="info-icon" style="font-size:10px;cursor:help;">
           i
-          <span class="tooltip" style="width:280px;white-space:normal;text-align:left;">${tooltipText}</span>
+          <span class="tooltip tooltip-mixing">${tooltipText}</span>
         </span>
       </div>
     `;
@@ -506,6 +506,11 @@ function updateMetadata(data: GraphData) {
       'protocol': 'Protocol'
     };
 
+    const paramTooltips: Record<string, string> = {
+      'power': 'Share of total world power. Determines influence within coalitions and whether a coalition meets the minimum power threshold to deploy geoengineering.',
+      'protocol': 'Probability of being selected as the proposer for state transitions. Uniform protocol means equal probability for all countries.'
+    };
+
     // Check if any player parameters exist
     const hasPlayerParams = paramNames.some(param =>
       players.some(player => fileMetadata[`${param}_${player}`] !== undefined)
@@ -567,9 +572,16 @@ function updateMetadata(data: GraphData) {
 
         // Only show row if at least one value exists
         if (values.some(v => v !== '—')) {
+          const label = paramLabels[param] || param;
+          const tooltip = paramTooltips[param];
+          const tooltipClass = tooltip ? `tooltip tooltip-${param}` : '';
+          const labelWithTooltip = tooltip
+            ? `${label} <span class="info-icon" style="margin-left:4px;">i<span class="${tooltipClass}">${tooltip}</span></span>`
+            : label;
+
           tableHTML += `
             <tr style="border-bottom: 1px solid #e2e8f0;">
-              <td style="padding: 4px;">${paramLabels[param] || param}</td>
+              <td style="padding: 4px;">${labelWithTooltip}</td>
               ${players.map((player, i) => {
                 const val = values[i];
                 const changed = changedFields.has(`player_${param}_${player}`) ? ' class="changed-field"' : '';
@@ -598,7 +610,13 @@ function updateMetadata(data: GraphData) {
     <div><strong>Transitions:</strong> ${data.metadata.num_transitions}</div>
     <div${highlight('power_rule')}><strong>Power Rule:</strong> ${fileMetadata.power_rule || data.metadata.config.power_rule}</div>
     ${fileMetadata.min_power ? `<div${highlight('min_power')}><strong>Min Power:</strong> ${fileMetadata.min_power}</div>` : ''}
-    <div${highlight('unanimity')}><strong>Unanimity:</strong> ${unanimityValue ? 'Yes' : 'No'}</div>
+    <div${highlight('unanimity')}>
+      <strong>Unanimity:</strong> ${unanimityValue ? 'Yes' : 'No'}
+      <span class="info-icon" style="margin-left:4px;">
+        i
+        <span class="tooltip tooltip-unanimity">If Yes, ALL members of the approval committee must approve a proposed transition. If No, only a simple majority is needed (all new members + majority of existing members).</span>
+      </span>
+    </div>
     ${fileMetadata.discounting ? `<div${highlight('discounting')}><strong>Discounting:</strong> ${fileMetadata.discounting}</div>` : ''}
     ${fileMetadata.converged !== undefined ? `<div><strong>Converged:</strong> ${fileMetadata.converged ? 'Yes' : 'No'}</div>` : ''}
     ${fileMetadata.outer_iterations ? `<div><strong>Iterations:</strong> ${fileMetadata.outer_iterations}</div>` : ''}
@@ -649,27 +667,92 @@ function handleNodeSelect(nodeId: string | null) {
     selectedStateNameSpan.textContent = normalizedStateName;
   }
 
+  // Helper to render transition breakdown
+  const renderBreakdown = (breakdown: any[]) => {
+    if (!breakdown || breakdown.length === 0) return '';
+    return breakdown.map((path, idx) => {
+      const approvedBy = path.committee.filter((p: string) => path.approvals[p] === 1);
+      const rejectedBy = path.committee.filter((p: string) => path.approvals[p] === 0);
+      const mixedBy = path.committee.filter((p: string) => {
+        const prob = path.approvals[p];
+        return prob !== undefined && prob > 0 && prob < 1;
+      });
+
+      return `
+        <div style="font-size:10px;color:#64748b;margin-left:16px;padding:4px 0;border-top:1px solid #e5e7eb;">
+          <div><strong>Proposer:</strong> ${path.proposer} (${(path.path_prob * 100).toFixed(1)}%)</div>
+          ${approvedBy.length > 0 ? `<div><strong>Approved by:</strong> ${approvedBy.join(', ')}</div>` : ''}
+          ${rejectedBy.length > 0 ? `<div><strong>Rejected by:</strong> ${rejectedBy.join(', ')}</div>` : ''}
+          ${mixedBy.length > 0 ? `<div><strong>Mixed:</strong> ${mixedBy.map((p: string) => `${p} (${(path.approvals[p] * 100).toFixed(0)}%)`).join(', ')}</div>` : ''}
+          ${path.not_in_committee.length > 0 ? `<div><strong>Not in committee:</strong> ${path.not_in_committee.join(', ')}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+  };
+
   // Outgoing transitions
   const outgoing = renderer.getOutgoingEdges(nodeId);
   outgoingTransitionsDiv.innerHTML = outgoing.length > 0
-    ? outgoing.map(edge => `
-        <div class="transition-item">
-          <span>${edge.target}</span>
-          <span class="prob">${(edge.probability * 100).toFixed(1)}%</span>
-        </div>
-      `).join('')
+    ? outgoing.map((edge, idx) => {
+        const breakdownId = `out-breakdown-${idx}`;
+        const hasBreakdown = edge.breakdown && edge.breakdown.length > 0;
+        const targetName = normalizeStateName ? normalizeStateName(edge.target) : edge.target;
+        return `
+          <div class="transition-item" style="display:block;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span>${targetName}</span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="prob">${(edge.probability * 100).toFixed(1)}%</span>
+                ${hasBreakdown ? `<button class="breakdown-toggle" data-target="${breakdownId}" style="background:none;border:none;cursor:pointer;padding:4px;color:#64748b;font-size:12px;">▼</button>` : ''}
+              </div>
+            </div>
+            ${hasBreakdown ? `<div id="${breakdownId}" class="breakdown-content" style="display:none;">${renderBreakdown(edge.breakdown)}</div>` : ''}
+          </div>
+        `;
+      }).join('')
     : '<div style="color: #999; padding: 8px;">No outgoing transitions</div>';
 
   // Incoming transitions
   const incoming = renderer.getIncomingEdges(nodeId);
   incomingTransitionsDiv.innerHTML = incoming.length > 0
-    ? incoming.map(edge => `
-        <div class="transition-item">
-          <span>${edge.source}</span>
-          <span class="prob">${(edge.probability * 100).toFixed(1)}%</span>
-        </div>
-      `).join('')
+    ? incoming.map((edge, idx) => {
+        const breakdownId = `in-breakdown-${idx}`;
+        const hasBreakdown = edge.breakdown && edge.breakdown.length > 0;
+        const sourceName = normalizeStateName ? normalizeStateName(edge.source) : edge.source;
+        return `
+          <div class="transition-item" style="display:block;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span>${sourceName}</span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="prob">${(edge.probability * 100).toFixed(1)}%</span>
+                ${hasBreakdown ? `<button class="breakdown-toggle" data-target="${breakdownId}" style="background:none;border:none;cursor:pointer;padding:4px;color:#64748b;font-size:12px;">▼</button>` : ''}
+              </div>
+            </div>
+            ${hasBreakdown ? `<div id="${breakdownId}" class="breakdown-content" style="display:none;">${renderBreakdown(edge.breakdown)}</div>` : ''}
+          </div>
+        `;
+      }).join('')
     : '<div style="color: #999; padding: 8px;">No incoming transitions</div>';
+
+  // Add event listeners for breakdown toggles
+  document.querySelectorAll('.breakdown-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const target = (e.target as HTMLElement).closest('.breakdown-toggle');
+      if (!target) return;
+      const targetId = target.getAttribute('data-target');
+      if (!targetId) return;
+      const content = document.getElementById(targetId);
+      if (!content) return;
+
+      if (content.style.display === 'none') {
+        content.style.display = 'block';
+        target.textContent = '▲';
+      } else {
+        content.style.display = 'none';
+        target.textContent = '▼';
+      }
+    });
+  });
 
   nodeDetailsDiv.style.display = 'block';
 }
@@ -851,10 +934,70 @@ document.addEventListener('keydown', (ev) => {
   }
 });
 
+// Global tooltip system - renders tooltips as fixed overlays outside the sidebar
+const globalTooltip = document.getElementById('global-tooltip') as HTMLDivElement;
+let tooltipHideTimeout: number | null = null;
+
+function setupGlobalTooltips() {
+  document.addEventListener('mouseenter', (e) => {
+    const icon = (e.target as HTMLElement).closest('.info-icon');
+    if (!icon) return;
+    const tooltipSource = icon.querySelector('.tooltip');
+    if (!tooltipSource) return;
+
+    if (tooltipHideTimeout !== null) {
+      clearTimeout(tooltipHideTimeout);
+      tooltipHideTimeout = null;
+    }
+
+    globalTooltip.textContent = '';
+    globalTooltip.innerHTML = tooltipSource.innerHTML;
+
+    const rect = icon.getBoundingClientRect();
+    const tooltipWidth = 280;
+
+    // Position above the icon by default
+    let top = rect.top - 8;
+    let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+
+    // Clamp horizontal position to viewport
+    if (left < 8) left = 8;
+    if (left + tooltipWidth > window.innerWidth - 8) left = window.innerWidth - tooltipWidth - 8;
+
+    // Show tooltip, measure its height, then position above
+    globalTooltip.style.width = tooltipWidth + 'px';
+    globalTooltip.style.left = left + 'px';
+    globalTooltip.style.top = '0px';
+    globalTooltip.style.opacity = '1';
+
+    // Measure actual height after rendering
+    requestAnimationFrame(() => {
+      const tooltipHeight = globalTooltip.offsetHeight;
+      let finalTop = rect.top - tooltipHeight - 8;
+
+      // If not enough space above, show below
+      if (finalTop < 8) {
+        finalTop = rect.bottom + 8;
+      }
+
+      globalTooltip.style.top = finalTop + 'px';
+    });
+  }, true);
+
+  document.addEventListener('mouseleave', (e) => {
+    const icon = (e.target as HTMLElement).closest('.info-icon');
+    if (!icon) return;
+    tooltipHideTimeout = window.setTimeout(() => {
+      globalTooltip.style.opacity = '0';
+    }, 100);
+  }, true);
+}
+
 // Initialize
 async function init() {
   // Initialize tooltip
   updateTooltip();
+  setupGlobalTooltips();
 
   // Load profiles
   await loadProfiles();

@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
-from lib.probabilities import TransitionProbabilities
+from lib.probabilities_optimized import TransitionProbabilitiesOptimized
 from lib.utils import derive_effectivity
 
 
@@ -656,7 +656,7 @@ def compute_transition_graph(
 
     # 5. Compute transition probabilities
     try:
-        transition_probabilities = TransitionProbabilities(
+        transition_probabilities = TransitionProbabilitiesOptimized(
             df=strategy_df,
             effectivity=effectivity,
             players=config["players"],
@@ -720,13 +720,55 @@ def compute_transition_graph(
         for j, target_state in enumerate(config["state_names"]):
             prob = P.iloc[i, j]
             if prob > 0:  # Only include edges with positive probability
+                # Compute breakdown: which proposers and approval patterns contribute
+                breakdown = []
+                for proposer in config["players"]:
+                    prop_key = (proposer, source_state, target_state)
+                    if prop_key in P_proposals and P_proposals[prop_key] > 0:
+                        app_key = prop_key
+                        if app_key in P_approvals:
+                            # Get approval committee info from effectivity
+                            committee = []
+                            not_in_committee = []
+                            approvals = {}
+
+                            for responder in config["players"]:
+                                eff_key = (proposer, source_state, target_state, responder)
+                                if eff_key in transition_probabilities.effectivity and transition_probabilities.effectivity[eff_key] == 1:
+                                    # In committee
+                                    committee.append(responder)
+                                    # Get acceptance probability from dataframe
+                                    try:
+                                        col_key = (f"Proposer {proposer}", target_state)
+                                        acc_prob = transition_probabilities.df.loc[(source_state, 'Acceptance', responder), col_key]
+                                        if pd.notna(acc_prob):
+                                            approvals[responder] = float(acc_prob)
+                                    except:
+                                        pass
+                                else:
+                                    not_in_committee.append(responder)
+
+                            # Compute this path's contribution to total probability
+                            path_prob = transition_probabilities.protocol[proposer] * P_proposals[prop_key] * P_approvals[app_key]
+
+                            breakdown.append({
+                                "proposer": proposer,
+                                "prop_prob": float(P_proposals[prop_key]),
+                                "approval_prob": float(P_approvals[app_key]),
+                                "path_prob": float(path_prob),
+                                "committee": committee,
+                                "not_in_committee": not_in_committee,
+                                "approvals": approvals
+                            })
+
                 edges.append({
                     "id": f"e{edge_id}",
                     "source": source_state,
                     "target": target_state,
                     "p": float(prob),
                     "meta": {
-                        "is_self_loop": source_state == target_state
+                        "is_self_loop": source_state == target_state,
+                        "breakdown": breakdown
                     }
                 })
                 edge_id += 1

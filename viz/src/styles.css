@@ -392,37 +392,28 @@ label {
   background: #64748b;
 }
 
+/* Tooltip content is hidden inside info-icon; shown via JS as a fixed overlay */
 .tooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
+  display: none;
+}
+
+/* Global fixed tooltip rendered by JS outside the sidebar */
+#global-tooltip {
+  position: fixed;
   background: #1f2937;
   color: white;
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: normal;
-  white-space: nowrap;
+  white-space: normal;
+  width: 280px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s;
-  z-index: 1000;
+  transition: opacity 0.15s;
+  z-index: 100000;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.tooltip::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-top-color: #1f2937;
-}
-
-.info-icon:hover .tooltip {
-  opacity: 1;
+  line-height: 1.4;
 }
 
 select, input[type="number"], input[type="text"] {
@@ -533,8 +524,6 @@ button.secondary:hover {
 }
 
 .transition-list {
-  max-height: 300px;
-  overflow-y: auto;
   font-size: 12px;
 }
 

@@ -64,7 +64,7 @@
               By deploying coalition
               <span class="info-icon" style="position:relative;">
                 i
-                <span class="tooltip">States with G=0 are grouped as "None" (no actual deployment)</span>
+                <span class="tooltip tooltip-deploying">States with G=0 are grouped as "None" (no actual deployment)</span>
               </span>
             </span>
           </label>
@@ -107,7 +107,7 @@
             <label for="prob-threshold">Edge Probability Threshold</label>
             <span class="info-icon">
               i
-              <span class="tooltip" id="threshold-tooltip">Hide edges with probability below this value</span>
+              <span class="tooltip tooltip-threshold" id="threshold-tooltip">Hide edges with probability below this value</span>
             </span>
           </div>
           <input type="number" id="prob-threshold" min="0" max="1" step="0.01" value="0">
@@ -139,6 +139,7 @@
     <div id="graph-container"></div>
     <div id="result-indicator" style="display: none;"></div>
   </div>
+  <div id="global-tooltip"></div>
 
   <script>
     // Handle collapsible sections with dynamic height
