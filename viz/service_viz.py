@@ -722,44 +722,100 @@ def compute_transition_graph(
             if prob > 0:  # Only include edges with positive probability
                 # Compute breakdown: which proposers and approval patterns contribute
                 breakdown = []
+                is_self_loop = source_state == target_state
+
+                def _get_committee_info(proposer, src, tgt):
+                    """Get approval committee details for a proposer/transition."""
+                    committee = []
+                    not_in_committee = []
+                    approvals = {}
+                    for responder in config["players"]:
+                        eff_key = (proposer, src, tgt, responder)
+                        if eff_key in transition_probabilities.effectivity and transition_probabilities.effectivity[eff_key] == 1:
+                            committee.append(responder)
+                            try:
+                                col_key = (f"Proposer {proposer}", tgt)
+                                acc_prob = transition_probabilities.df.loc[(src, 'Acceptance', responder), col_key]
+                                if pd.notna(acc_prob):
+                                    approvals[responder] = float(acc_prob)
+                            except:
+                                pass
+                        else:
+                            not_in_committee.append(responder)
+                    return committee, not_in_committee, approvals
+
                 for proposer in config["players"]:
-                    prop_key = (proposer, source_state, target_state)
-                    if prop_key in P_proposals and P_proposals[prop_key] > 0:
-                        app_key = prop_key
-                        if app_key in P_approvals:
-                            # Get approval committee info from effectivity
-                            committee = []
-                            not_in_committee = []
-                            approvals = {}
+                    if is_self_loop:
+                        # For self-loops, show ALL contributions: direct stay proposals
+                        # AND rejected proposals for other states that cause staying
+                        for other_state in config["state_names"]:
+                            other_key = (proposer, source_state, other_state)
+                            if other_key not in P_proposals or P_proposals[other_key] <= 0:
+                                continue
+                            if other_key not in P_approvals:
+                                continue
 
-                            for responder in config["players"]:
-                                eff_key = (proposer, source_state, target_state, responder)
-                                if eff_key in transition_probabilities.effectivity and transition_probabilities.effectivity[eff_key] == 1:
-                                    # In committee
-                                    committee.append(responder)
-                                    # Get acceptance probability from dataframe
-                                    try:
-                                        col_key = (f"Proposer {proposer}", target_state)
-                                        acc_prob = transition_probabilities.df.loc[(source_state, 'Acceptance', responder), col_key]
-                                        if pd.notna(acc_prob):
-                                            approvals[responder] = float(acc_prob)
-                                    except:
-                                        pass
-                                else:
-                                    not_in_committee.append(responder)
+                            committee, not_in_committee, approvals = _get_committee_info(
+                                proposer, source_state, other_state
+                            )
 
-                            # Compute this path's contribution to total probability
-                            path_prob = transition_probabilities.protocol[proposer] * P_proposals[prop_key] * P_approvals[app_key]
+                            if other_state == source_state:
+                                # Direct "propose to stay" path
+                                path_prob = transition_probabilities.protocol[proposer] * P_proposals[other_key] * P_approvals[other_key]
+                                if path_prob > 0:
+                                    breakdown.append({
+                                        "type": "direct",
+                                        "proposer": proposer,
+                                        "proposed_target": other_state,
+                                        "prop_prob": float(P_proposals[other_key]),
+                                        "approval_prob": float(P_approvals[other_key]),
+                                        "path_prob": float(path_prob),
+                                        "committee": committee,
+                                        "not_in_committee": not_in_committee,
+                                        "approvals": approvals
+                                    })
+                            else:
+                                # Rejected proposal: proposer wanted other_state but got rejected
+                                p_rejected = 1.0 - P_approvals[other_key]
+                                path_prob = transition_probabilities.protocol[proposer] * P_proposals[other_key] * p_rejected
+                                if path_prob > 1e-12:
+                                    breakdown.append({
+                                        "type": "rejection",
+                                        "proposer": proposer,
+                                        "proposed_target": other_state,
+                                        "prop_prob": float(P_proposals[other_key]),
+                                        "approval_prob": float(P_approvals[other_key]),
+                                        "rejection_prob": float(p_rejected),
+                                        "path_prob": float(path_prob),
+                                        "committee": committee,
+                                        "not_in_committee": not_in_committee,
+                                        "approvals": approvals
+                                    })
+                    else:
+                        # Non-self-loop: standard breakdown (proposer proposes this target)
+                        prop_key = (proposer, source_state, target_state)
+                        if prop_key in P_proposals and P_proposals[prop_key] > 0:
+                            app_key = prop_key
+                            if app_key in P_approvals:
+                                committee, not_in_committee, approvals = _get_committee_info(
+                                    proposer, source_state, target_state
+                                )
+                                path_prob = transition_probabilities.protocol[proposer] * P_proposals[prop_key] * P_approvals[app_key]
 
-                            breakdown.append({
-                                "proposer": proposer,
-                                "prop_prob": float(P_proposals[prop_key]),
-                                "approval_prob": float(P_approvals[app_key]),
-                                "path_prob": float(path_prob),
-                                "committee": committee,
-                                "not_in_committee": not_in_committee,
-                                "approvals": approvals
-                            })
+                                breakdown.append({
+                                    "type": "direct",
+                                    "proposer": proposer,
+                                    "proposed_target": target_state,
+                                    "prop_prob": float(P_proposals[prop_key]),
+                                    "approval_prob": float(P_approvals[app_key]),
+                                    "path_prob": float(path_prob),
+                                    "committee": committee,
+                                    "not_in_committee": not_in_committee,
+                                    "approvals": approvals
+                                })
+
+                # Sort breakdown: largest contributions first
+                breakdown.sort(key=lambda x: -x["path_prob"])
 
                 edges.append({
                     "id": f"e{edge_id}",
@@ -780,13 +836,10 @@ def compute_transition_graph(
         G_values = np.array([geo_levels[state_name] for state_name in config["state_names"]])
         expected_G = float(np.dot(pi, G_values))
 
-        # Compute mixing time
-        mixing_time = compute_mixing_time(P, pi)
-
         # Create stationary distribution dict
         pi_dict = {state_name: float(pi[i]) for i, state_name in enumerate(config["state_names"])}
-        
-        # Detect absorbing sets for diagnostics
+
+        # Detect absorbing sets for diagnostics (must come before mixing/absorption time)
         sccs = find_strongly_connected_components(P.values)
         absorbing_sets = []
         for scc in sccs:
@@ -799,11 +852,36 @@ def compute_transition_graph(
                 if not is_absorbing:
                     break
             if is_absorbing:
-                # Convert indices to state names
                 absorbing_sets.append([config["state_names"][i] for i in scc])
-        
+
         # Check if chain is ergodic (single SCC containing all states)
         is_ergodic = len(sccs) == 1 and len(sccs[0]) == len(config["state_names"])
+
+        # Compute mixing time (only meaningful for ergodic chains)
+        mixing_time = compute_mixing_time(P, pi) if is_ergodic else None
+
+        # For non-ergodic chains with absorbing sets, compute absorption time
+        absorption_time = None
+        if not is_ergodic and len(absorbing_sets) > 0:
+            absorbing_indices = set()
+            for abs_set in absorbing_sets:
+                for s in abs_set:
+                    absorbing_indices.add(config["state_names"].index(s))
+            transient_indices = [i for i in range(len(P)) if i not in absorbing_indices]
+
+            if len(transient_indices) > 0:
+                Q = P.values[np.ix_(transient_indices, transient_indices)]
+                try:
+                    N = np.linalg.inv(np.eye(len(transient_indices)) - Q)
+                    t_absorb = N @ np.ones(len(transient_indices))
+                    absorption_time = {
+                        "max": float(np.max(t_absorb)),
+                        "mean": float(np.mean(t_absorb)),
+                        "by_state": {config["state_names"][transient_indices[i]]: float(t_absorb[i])
+                                     for i in range(len(transient_indices))}
+                    }
+                except np.linalg.LinAlgError:
+                    pass
         
     except Exception as e:
         print(f"Warning: Could not compute stationary distribution: {e}")
@@ -811,6 +889,7 @@ def compute_transition_graph(
         traceback.print_exc()
         expected_G = None
         mixing_time = None
+        absorption_time = None
         pi_dict = None
         absorbing_sets = []
         is_ergodic = None
@@ -834,6 +913,7 @@ def compute_transition_graph(
                 "min_power": config["min_power"]
             },
             "file_metadata": file_metadata,  # Include all file metadata
+            "absorption_time": absorption_time,
             "chain_diagnostics": {
                 "is_ergodic": is_ergodic,
                 "num_absorbing_sets": len(absorbing_sets),

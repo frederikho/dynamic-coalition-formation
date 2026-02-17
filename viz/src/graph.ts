@@ -167,6 +167,8 @@ export class GraphRenderer {
   private selectedNode: string | null = null;
   private onNodeSelect: ((nodeId: string | null) => void) | null = null;
   private savedPositions: Record<string, { x: number; y: number }> = {};
+  private savedZoom: number | null = null;
+  private savedPan: { x: number; y: number } | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -183,6 +185,9 @@ export class GraphRenderer {
       const pos = node.position();
       this.savedPositions[node.id()] = { x: pos.x, y: pos.y };
     });
+    // Save zoom and pan state
+    this.savedZoom = this.cy.zoom();
+    this.savedPan = this.cy.pan();
   }
 
   private computeClusterPositions(
@@ -527,7 +532,9 @@ export class GraphRenderer {
     styles.push({
       selector: 'node:selected',
       style: {
-        'background-color': '#94a3b8',
+        'overlay-color': '#000000',
+        'overlay-opacity': 0.2,
+        'overlay-padding': 6,
         'border-width': 3,
         'border-color': '#475569'
       }
@@ -599,7 +606,7 @@ export class GraphRenderer {
       layout: layoutConfig,
       minZoom: 0.2,
       maxZoom: 3,
-      wheelSensitivity: 0.2
+      wheelSensitivity: 1.5
     });
     this.cy = needsSeededRandom ? withSeededRandom(FORCE_LAYOUT_SEED, createCy) : createCy();
 
@@ -618,9 +625,15 @@ export class GraphRenderer {
 
     this.setupInteractions();
 
-    // For larger graphs (n=4 with 15 nodes), fit to view with padding
-    if (graphData.nodes.length >= 15) {
-      this.cy.fit(undefined, 50); // Fit all elements with 50px padding
+    // Restore zoom and pan if previously saved
+    if (this.savedZoom !== null && this.savedPan !== null) {
+      this.cy.zoom(this.savedZoom);
+      this.cy.pan(this.savedPan);
+    } else {
+      // For larger graphs (n=4 with 15 nodes), fit to view with padding on initial render
+      if (graphData.nodes.length >= 15) {
+        this.cy.fit(undefined, 50); // Fit all elements with 50px padding
+      }
     }
   }
 
@@ -834,6 +847,30 @@ export class GraphRenderer {
   resetView() {
     if (!this.cy) return;
     this.cy.fit(undefined, 50);
+  }
+
+  zoomIn() {
+    if (!this.cy) return;
+    const currentZoom = this.cy.zoom();
+    this.cy.zoom({
+      level: currentZoom * 1.2,
+      renderedPosition: {
+        x: this.cy.width() / 2,
+        y: this.cy.height() / 2
+      }
+    });
+  }
+
+  zoomOut() {
+    if (!this.cy) return;
+    const currentZoom = this.cy.zoom();
+    this.cy.zoom({
+      level: currentZoom / 1.2,
+      renderedPosition: {
+        x: this.cy.width() / 2,
+        y: this.cy.height() / 2
+      }
+    });
   }
 
   getNodeData(nodeId: string): any {

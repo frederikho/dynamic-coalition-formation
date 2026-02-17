@@ -98,7 +98,7 @@ def run_experiment(config):
     # pass them to the final check of strategy consistency.
 
     experiment_results = dict(
-        experiment_name=config["experiment_name"],
+        scenario_name=config["scenario_name"],
         V=V, P=P, geoengineering=geoengineering, payoffs=payoffs,
         P_proposals=P_proposals, P_approvals=P_approvals,
         players=config["players"], state_names=config["state_names"],
@@ -126,7 +126,7 @@ def main():
 
     experiment_configs = {
         "weak_governance": dict(
-            experiment_name="main_text_weak_governance",
+            scenario_name="main_text_weak_governance",
             m_damage={player: 1. for player in players},
             power_rule="weak_governance",
             min_power=None,
@@ -135,7 +135,7 @@ def main():
         ),
 
         "power_threshold": dict(
-            experiment_name="main_text_power_threshold",
+            scenario_name="main_text_power_threshold",
             m_damage={player: 1. for player in players},
             power_rule="power_threshold",
             min_power=0.5,
@@ -144,7 +144,7 @@ def main():
         ),
 
         "power_threshold_extra_1": dict(
-            experiment_name="supplementary_with_unanimity",
+            scenario_name="supplementary_with_unanimity",
             m_damage={"W": 0.75, "T": 1.25, "C": 1.},
             power_rule="power_threshold",
             min_power=0.5,
@@ -153,7 +153,7 @@ def main():
         ),
 
         "power_threshold_extra_2": dict(
-            experiment_name="supplementary_without_unanimity",
+            scenario_name="supplementary_without_unanimity",
             m_damage={"W": 0.75, "T": 1.25, "C": 1.},
             power_rule="power_threshold",
             min_power=0.5,

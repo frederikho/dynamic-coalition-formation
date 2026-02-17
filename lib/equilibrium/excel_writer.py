@@ -38,11 +38,11 @@ def generate_config_hash(config, length=6):
     Returns:
         Short hash string (e.g., 'a3f2b1')
     """
-    # Create a sorted JSON string of relevant config parameters
-    # Exclude non-config items like 'experiment_name', 'state_names', 
-    # 'scenario_name', and 'scenario_description' (editable metadata)
+    # Create a sorted JSON string of relevant config parameters.
+    # Exclude metadata fields that don't affect the game (scenario_name,
+    # scenario_description, state_names).
     hash_params = {k: v for k, v in sorted(config.items())
-                   if k not in ['experiment_name', 'state_names', 'scenario_name', 'scenario_description']}
+                   if k not in ['scenario_name', 'state_names', 'scenario_description']}
 
     # Convert to JSON string (with sorted keys for consistency)
     config_str = json.dumps(hash_params, sort_keys=True, default=str)
@@ -56,12 +56,12 @@ def generate_filename(config, description=None, output_dir='./strategy_tables'):
     """
     Generate filename from configuration parameters.
 
-    Format: eq_n{n}_{power_rule_abbrev}_{unan/maj}_{description}_{hash}.xlsx
-    Example: eq_n3_power_thresh_unan_RICE50_a3f2b1.xlsx
+    Format: eq_n{n}_{scenario_name_without_nN_suffix}_{hash}.xlsx
+    Example: eq_n4_power_threshold_a3f2b1.xlsx
 
     Args:
         config: Configuration dictionary
-        description: Optional custom description/tag
+        description: Unused (kept for backwards compatibility)
         output_dir: Output directory
 
     Returns:
@@ -70,16 +70,9 @@ def generate_filename(config, description=None, output_dir='./strategy_tables'):
     # Number of players
     n = len(config['players'])
 
-    # Power rule abbreviation
-    power_rule_abbrev = {
-        'power_threshold': 'power_thresh',
-        'weak_governance': 'weak_gov',
-        'weak': 'weak_gov',
-        'threshold': 'power_thresh'
-    }.get(config['power_rule'], config['power_rule'][:12])
-
-    # Unanimity abbreviation
-    unanimity_abbrev = 'unan' if config.get('unanimity_required', True) else 'maj'
+    # Scenario name: strip the trailing _nN suffix since n is already in the prefix
+    import re
+    scenario_part = re.sub(r'_n\d+$', '', config.get('scenario_name', 'unknown'))
 
     # Generate hash
     config_hash = generate_config_hash(config)
@@ -88,18 +81,9 @@ def generate_filename(config, description=None, output_dir='./strategy_tables'):
     parts = [
         'eq',
         f'n{n}',
-        power_rule_abbrev,
-        unanimity_abbrev
+        scenario_part,
+        config_hash,
     ]
-
-    # Add optional description
-    if description:
-        # Sanitize description (remove special chars, limit length)
-        clean_desc = ''.join(c for c in description if c.isalnum() or c in '-_')[:20]
-        parts.append(clean_desc)
-
-    # Add hash
-    parts.append(config_hash)
 
     # Combine into filename
     filename = '_'.join(parts) + '.xlsx'

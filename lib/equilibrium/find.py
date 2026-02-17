@@ -190,19 +190,34 @@ def _get_solver_params(config, user_params=None):
             'max_inner_iter': 100,
         })
 
-    # Special parameters for n>=4
-    if len(config['players']) >= 4:
+    # Standard parameters for 4-player scenarios. Works well for some of them. Commented out, do not delete yet.
+    # if len(config['players']) == 4:
+    #     default_params.update({
+    #         'tau_p_init': 1,
+    #         'tau_r_init': 1,
+    #         'tau_decay': 0.90,
+    #         'tau_min': 0.001,
+    #         'damping': 0.3,
+    #         'max_inner_iter': 100,
+    #         'max_outer_iter': 1000,
+    #         'inner_tol': 2e-2,
+    #         'outer_tol': 2e-2,
+    #         'consecutive_tol': 2,
+    #     })  
+        
+    # Special parameters for n==4
+    if len(config['players']) == 4:
         default_params.update({
-            'tau_p_init': 1,
-            'tau_r_init': 1,
-            'tau_decay': 0.90,
+            'tau_p_init': 0.2,
+            'tau_r_init': 0.2,
+            'tau_decay': 0.98,
             'tau_min': 0.001,
             'damping': 0.9,
-            'max_inner_iter': 100,
+            'max_inner_iter': 300,
             'max_outer_iter': 1000,
-            'inner_tol': 2e-3,
-            'outer_tol': 2e-3,
-            'consecutive_tol': 3,
+            'inner_tol': 2e-2,
+            'outer_tol': 2e-2,
+            'consecutive_tol': 2,
         })        
 
     if len(config['players']) >= 5:
@@ -337,7 +352,7 @@ def _build_metadata(config, setup, solver_params, solver_result,
         'verification_success': verification_success,
         '': '',
         '--- SCENARIO INFO ---': '',
-        'scenario_name': config.get('scenario_name', config.get('experiment_name', 'N/A')),
+        'scenario_name': config.get('scenario_name', 'N/A'),
         'scenario_description': config.get('scenario_description', description or ''),
         ' ': '',
         '--- GAME CONFIG ---': '',
@@ -450,7 +465,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     """
     # Setup logger if not provided
     if logger is None:
-        scenario_name = config.get('experiment_name', 'equilibrium')
+        scenario_name = config.get('scenario_name', 'equilibrium')
         log_file = Path('./logs') / f"{scenario_name}.log"
         logger = get_logger(log_file=log_file)
 
@@ -525,7 +540,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
 
     # Build result dictionary
     result = {
-        'experiment_name': config.get('experiment_name', 'equilibrium'),
+        'scenario_name': config.get('scenario_name', 'equilibrium'),
         'V': V,
         'P': P,
         'geoengineering': setup['geoengineering'],
@@ -594,16 +609,16 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 Examples:
-  # Find equilibrium for weak governance scenario (3 players)
+  # Find equilibrium for a single scenario
   python -m lib.equilibrium.find weak_governance_n3
 
-  # Find equilibrium for power threshold with 4 players
-  python -m lib.equilibrium.find power_threshold_n4
+  # Run multiple scenarios sequentially
+  python -m lib.equilibrium.find weak_governance_n4 power_threshold_n4 power_threshold_no_unanimity_n4
 
-  # With custom output file
+  # With custom output file (single scenario only)
   python -m lib.equilibrium.find power_threshold_n3 -o my_results.xlsx
 
-  # Start fresh (ignore existing checkpoint)
+  # Start fresh (ignore existing checkpoints)
   python -m lib.equilibrium.find weak_governance_n3 --fresh
 
 Available scenarios (use --list-scenarios to see all):
@@ -612,8 +627,8 @@ Available scenarios (use --list-scenarios to see all):
     )
     parser.add_argument(
         'scenario',
-        nargs='?',
-        help='Scenario to run (see --list-scenarios for options)'
+        nargs='*',
+        help='One or more scenarios to run sequentially (see --list-scenarios for options)'
     )
     parser.add_argument(
         '--list-scenarios',
@@ -677,22 +692,16 @@ Available scenarios (use --list-scenarios to see all):
             print(f"  - {name}")
         return
 
-    # Require scenario if not listing
+    # Require at least one scenario if not listing
     if not args.scenario:
-        parser.error("scenario is required (use --list-scenarios to see available options)")
+        parser.error("at least one scenario is required (use --list-scenarios to see available options)")
+
+    # --output only makes sense for a single scenario
+    if len(args.scenario) > 1 and args.output != 'auto':
+        parser.error("--output cannot be used with multiple scenarios (filenames are auto-generated)")
 
     # By default, load from checkpoint unless --fresh is specified
     load_from_checkpoint = not args.fresh
-
-    # Get scenario configuration
-    try:
-        config = get_scenario(args.scenario)
-    except KeyError as e:
-        parser.error(str(e))
-
-    # Setup logger with scenario-specific log file
-    log_file = Path('./logs') / f"{config['experiment_name']}.log"
-    logger = get_logger(log_file=log_file)
 
     # Solver parameters: only include when provided on CLI so file defaults remain
     solver_params = {}
@@ -701,76 +710,88 @@ Available scenarios (use --list-scenarios to see all):
     if args.max_inner_iter is not None:
         solver_params['max_inner_iter'] = args.max_inner_iter
 
-    logger.info("=" * 80)
-    logger.info(f"FINDING EQUILIBRIUM FOR: {args.scenario}")
-    logger.info("=" * 80)
-    logger.info(f"Configuration:")
-    logger.info(f"  Power rule: {config['power_rule']}")
-    logger.info(f"  Minimum power: {config.get('min_power', 'N/A')}")
-    logger.info(f"  Unanimity required: {config['unanimity_required']}")
-    logger.info(f"  Discounting: {config['discounting']}")
-    if args.description:
-        logger.info(f"  Description: {args.description}")
+    results_summary = []
 
-    # Print player parameters table
-    players = config['players']
-    logger.info("")
-    logger.info("Player parameters:")
+    for scenario_name in args.scenario:
+        # Get scenario configuration
+        try:
+            config = get_scenario(scenario_name)
+        except KeyError as e:
+            parser.error(str(e))
 
-    # Header
-    header = f"  {'Parameter':<15}" + "".join(f"{p:>8}" for p in players)
-    logger.info(header)
-    logger.info("  " + "-" * (15 + 8 * len(players)))
+        # Setup logger with scenario-specific log file
+        log_file = Path('./logs') / f"{config['scenario_name']}.log"
+        logger = get_logger(log_file=log_file)
 
-    # Base temperature
-    base_temps = config['base_temp']
-    logger.info(f"  {'Base Temp':<15}" + "".join(f"{base_temps[p]:>8.1f}" for p in players))
-
-    # Ideal temperature
-    ideal_temps = config['ideal_temp']
-    logger.info(f"  {'Ideal Temp':<15}" + "".join(f"{ideal_temps[p]:>8.1f}" for p in players))
-
-    # Delta temperature (climate change)
-    delta_temps = config['delta_temp']
-    logger.info(f"  {'ΔTemp':<15}" + "".join(f"{delta_temps[p]:>8.2f}" for p in players))
-
-    # Damage coefficient
-    damages = config['m_damage']
-    logger.info(f"  {'Damage Coeff':<15}" + "".join(f"{damages[p]:>8.2f}" for p in players))
-
-    # Power share
-    powers = config['power']
-    logger.info(f"  {'Power':<15}" + "".join(f"{powers[p]:>8.3f}" for p in players))
-
-    # Protocol probability
-    protocols = config['protocol']
-    logger.info(f"  {'Protocol':<15}" + "".join(f"{protocols[p]:>8.3f}" for p in players))
-
-    logger.info("")
-
-    # Find equilibrium
-    result = find_equilibrium(
-        config,
-        output_file=args.output,
-        solver_params=solver_params,
-        verbose=not args.quiet,
-        description=args.description,
-        load_from_checkpoint=load_from_checkpoint,
-        random_seed=args.seed,
-        logger=logger
-    )
-
-    if result['verification_success']:
-        logger.info("\n" + "=" * 80)
-        logger.info(f"Scenario: {args.scenario}")
-        logger.success("SUCCESS: Found valid equilibrium!")
         logger.info("=" * 80)
-    else:
-        logger.warning("\n" + "=" * 80)
-        logger.warning(f"Scenario: {args.scenario}")
-        logger.warning("WARNING: Equilibrium verification failed!")
-        logger.warning(result['verification_message'])
-        logger.warning("=" * 80)
+        logger.info(f"FINDING EQUILIBRIUM FOR: {scenario_name}")
+        logger.info("=" * 80)
+        logger.info(f"Configuration:")
+        logger.info(f"  Power rule: {config['power_rule']}")
+        logger.info(f"  Minimum power: {config.get('min_power', 'N/A')}")
+        logger.info(f"  Unanimity required: {config['unanimity_required']}")
+        logger.info(f"  Discounting: {config['discounting']}")
+        if args.description:
+            logger.info(f"  Description: {args.description}")
+
+        # Print player parameters table
+        players = config['players']
+        logger.info("")
+        logger.info("Player parameters:")
+
+        header = f"  {'Parameter':<15}" + "".join(f"{p:>8}" for p in players)
+        logger.info(header)
+        logger.info("  " + "-" * (15 + 8 * len(players)))
+
+        base_temps = config['base_temp']
+        logger.info(f"  {'Base Temp':<15}" + "".join(f"{base_temps[p]:>8.1f}" for p in players))
+        ideal_temps = config['ideal_temp']
+        logger.info(f"  {'Ideal Temp':<15}" + "".join(f"{ideal_temps[p]:>8.1f}" for p in players))
+        delta_temps = config['delta_temp']
+        logger.info(f"  {'ΔTemp':<15}" + "".join(f"{delta_temps[p]:>8.2f}" for p in players))
+        damages = config['m_damage']
+        logger.info(f"  {'Damage Coeff':<15}" + "".join(f"{damages[p]:>8.2f}" for p in players))
+        powers = config['power']
+        logger.info(f"  {'Power':<15}" + "".join(f"{powers[p]:>8.3f}" for p in players))
+        protocols = config['protocol']
+        logger.info(f"  {'Protocol':<15}" + "".join(f"{protocols[p]:>8.3f}" for p in players))
+        logger.info("")
+
+        result = find_equilibrium(
+            config,
+            output_file=args.output,
+            solver_params=solver_params,
+            verbose=not args.quiet,
+            description=args.description,
+            load_from_checkpoint=load_from_checkpoint,
+            random_seed=args.seed,
+            logger=logger
+        )
+
+        results_summary.append((scenario_name, result['verification_success'],
+                                 result.get('verification_message', '')))
+
+        if result['verification_success']:
+            logger.info("\n" + "=" * 80)
+            logger.info(f"Scenario: {scenario_name}")
+            logger.success("SUCCESS: Found valid equilibrium!")
+            logger.info("=" * 80)
+        else:
+            logger.warning("\n" + "=" * 80)
+            logger.warning(f"Scenario: {scenario_name}")
+            logger.warning("WARNING: Equilibrium verification failed!")
+            logger.warning(result['verification_message'])
+            logger.warning("=" * 80)
+
+    # Print summary when multiple scenarios were run
+    if len(args.scenario) > 1:
+        print("\n" + "=" * 80)
+        print("SUMMARY")
+        print("=" * 80)
+        for name, success, _ in results_summary:
+            status = "✓ SUCCESS" if success else "✗ FAILED"
+            print(f"  {status}  {name}")
+        print("=" * 80)
 
 
 if __name__ == "__main__":

@@ -16,7 +16,6 @@ const metadataDiv = document.getElementById('metadata') as HTMLDivElement;
 const nodeDetailsDiv = document.getElementById('node-details') as HTMLDivElement;
 const selectedStateNameSpan = document.getElementById('selected-state-name') as HTMLSpanElement;
 const outgoingTransitionsDiv = document.getElementById('outgoing-transitions') as HTMLDivElement;
-const incomingTransitionsDiv = document.getElementById('incoming-transitions') as HTMLDivElement;
 const graphContainer = document.getElementById('graph-container') as HTMLDivElement;
 const nodeColoringRadios = document.querySelectorAll('input[name="node-coloring"]') as NodeListOf<HTMLInputElement>;
 const layoutModeRadios = document.querySelectorAll('input[name="layout-mode"]') as NodeListOf<HTMLInputElement>;
@@ -282,29 +281,43 @@ function updateResultIndicator(data: GraphData) {
   const expectedG = data.metadata.expected_geo_level;
   const pi = data.metadata.stationary_distribution;
   const mixingTime = data.metadata.mixing_time;
+  const absorptionTime = (data.metadata as any).absorption_time;
 
   if (expectedG !== null && expectedG !== undefined) {
-    renderResultIndicator(expectedG, pi, mixingTime, resultIndicatorExpanded);
+    renderResultIndicator(expectedG, pi, mixingTime, absorptionTime, resultIndicatorExpanded);
     resultIndicatorDiv.style.display = 'block';
   } else {
     resultIndicatorDiv.style.display = 'none';
   }
 }
 
-function renderResultIndicator(expectedG: number, pi: any, mixingTime: number | null, expanded: boolean) {
+function renderResultIndicator(expectedG: number, pi: any, mixingTime: number | null, absorptionTime: any | null, expanded: boolean) {
   const expandIcon = expanded ? '▼' : '▶';
 
-  // Format mixing time display with info icon
-  let mixingTimeDisplay = '';
-  if (mixingTime !== null) {
-    const timeValue = mixingTime >= 0 ? `${mixingTime} steps` : `>10,000 steps`;
-    const tooltipText = mixingTime >= 0
-      ? `Mixing time: smallest t such that ||P^t - π|| < ε (ε=0.01). This chain converges in ${mixingTime} steps.`
-      : `Mixing time: smallest t such that ||P^t - π|| < ε (ε=0.01). This chain requires >10,000 steps (slow mixing).`;
+  // Format convergence time display
+  let convergenceDisplay = '';
+  if (absorptionTime && absorptionTime.max != null) {
+    // Non-ergodic chain with absorbing sets: show absorption time
+    const maxSteps = Math.round(absorptionTime.max);
+    const meanSteps = Math.round(absorptionTime.mean);
+    const tooltipText = `Expected steps to reach an absorbing state from a transient state. Mean: ${meanSteps}, worst-case: ${maxSteps}. Mixing time is undefined for chains with multiple absorbing sets.`;
 
-    mixingTimeDisplay = `
+    convergenceDisplay = `
       <div style="font-size:12px;color:#64748b;margin-top:2px;display:flex;align-items:center;gap:4px;">
-        <span>Mixing time: ${timeValue}</span>
+        <span>Absorption time: ${maxSteps} steps (worst-case)</span>
+        <span class="info-icon" style="font-size:10px;cursor:help;">
+          i
+          <span class="tooltip tooltip-mixing">${tooltipText}</span>
+        </span>
+      </div>
+    `;
+  } else if (mixingTime != null && mixingTime >= 0) {
+    // Ergodic chain with finite mixing time
+    const tooltipText = `Mixing time: smallest t such that ||P^t - \u03C0|| < \u03B5 (\u03B5=0.01). This chain converges in ${mixingTime} steps.`;
+
+    convergenceDisplay = `
+      <div style="font-size:12px;color:#64748b;margin-top:2px;display:flex;align-items:center;gap:4px;">
+        <span>Mixing time: ${mixingTime} steps</span>
         <span class="info-icon" style="font-size:10px;cursor:help;">
           i
           <span class="tooltip tooltip-mixing">${tooltipText}</span>
@@ -317,7 +330,7 @@ function renderResultIndicator(expectedG: number, pi: any, mixingTime: number | 
     <div class="result-summary">
       <div>
         <div><strong>E<sub>π</sub>[G]:</strong> ${expectedG.toFixed(2)}°C</div>
-        ${mixingTimeDisplay}
+        ${convergenceDisplay}
       </div>
       <span class="expand-icon">${expandIcon}</span>
     </div>
@@ -508,7 +521,7 @@ function updateMetadata(data: GraphData) {
 
     const paramTooltips: Record<string, string> = {
       'power': 'Share of total world power. Determines influence within coalitions and whether a coalition meets the minimum power threshold to deploy geoengineering.',
-      'protocol': 'Probability of being selected as the proposer for state transitions. Uniform protocol means equal probability for all countries.'
+      'protocol': 'Probability of being selected as the proposer for state transitions. Uniform protocol is the default and means equal probability for all countries.'
     };
 
     // Check if any player parameters exist
@@ -621,6 +634,7 @@ function updateMetadata(data: GraphData) {
     ${fileMetadata.converged !== undefined ? `<div><strong>Converged:</strong> ${fileMetadata.converged ? 'Yes' : 'No'}</div>` : ''}
     ${fileMetadata.outer_iterations ? `<div><strong>Iterations:</strong> ${fileMetadata.outer_iterations}</div>` : ''}
     ${fileMetadata.config_hash ? `<div style="font-size: 11px; color: #888;"><strong>Hash:</strong> ${fileMetadata.config_hash}</div>` : ''}
+    ${fileMetadata.end_time ? `<div style="font-size: 11px; color: #888;"><strong>Computed:</strong> ${fileMetadata.end_time}</div>` : ''}
     ${playerParamsSection}
   `;
 
@@ -667,24 +681,103 @@ function handleNodeSelect(nodeId: string | null) {
     selectedStateNameSpan.textContent = normalizedStateName;
   }
 
-  // Helper to render transition breakdown
+  // Helper to render transition breakdown grouped by proposer
   const renderBreakdown = (breakdown: any[]) => {
     if (!breakdown || breakdown.length === 0) return '';
-    return breakdown.map((path, idx) => {
-      const approvedBy = path.committee.filter((p: string) => path.approvals[p] === 1);
-      const rejectedBy = path.committee.filter((p: string) => path.approvals[p] === 0);
-      const mixedBy = path.committee.filter((p: string) => {
-        const prob = path.approvals[p];
-        return prob !== undefined && prob > 0 && prob < 1;
+
+    // Group by proposer
+    const byProposer: Record<string, { total: number; paths: any[] }> = {};
+    for (const path of breakdown) {
+      const p = path.proposer;
+      if (!byProposer[p]) byProposer[p] = { total: 0, paths: [] };
+      byProposer[p].total += path.path_prob;
+      byProposer[p].paths.push(path);
+    }
+
+    // Sort proposers by total contribution descending
+    const sorted = Object.entries(byProposer).sort((a, b) => b[1].total - a[1].total);
+
+    return sorted.map(([proposer, data]) => {
+      // Build individual path entries showing: target (prop_prob%) -> approval details
+      const pathEntries = data.paths.map(path => {
+        const approvedBy = path.committee.filter((p: string) => path.approvals[p] === 1);
+        const rejectedBy = path.committee.filter((p: string) => path.approvals[p] === 0);
+        const mixedBy = path.committee.filter((p: string) => {
+          const prob = path.approvals[p];
+          return prob !== undefined && prob > 0 && prob < 1;
+        });
+        const proposedTarget = path.proposed_target
+          ? (normalizeStateName ? normalizeStateName(path.proposed_target) : path.proposed_target)
+          : '';
+
+        // Format approval/rejection details
+        let approvalDetail = '';
+        if (path.type === 'rejection') {
+          // Show rejection: only show percentages for mixed strategies
+          const details: string[] = [];
+          if (mixedBy.length > 0) {
+            // Mixed strategy: show all players with their approval probabilities
+            rejectedBy.forEach(p => details.push(`${p} (0%)`));
+            mixedBy.forEach(p => details.push(`${p} (${(path.approvals[p] * 100).toFixed(0)}%)`));
+            approvalDetail = `rejected by ${details.join(', ')}`;
+          } else {
+            // Pure rejection: just list who rejected
+            approvalDetail = rejectedBy.length > 0 ? `rejected by ${rejectedBy.join(', ')}` : 'rejected';
+          }
+        } else {
+          // Show acceptance: only show percentages for mixed strategies
+          const details: string[] = [];
+          if (mixedBy.length > 0) {
+            // Mixed strategy: show all players with their approval probabilities
+            approvedBy.forEach(p => details.push(`${p} (100%)`));
+            mixedBy.forEach(p => details.push(`${p} (${(path.approvals[p] * 100).toFixed(0)}%)`));
+            approvalDetail = `approved by ${details.join(', ')}`;
+          } else {
+            // Pure approval: just list who approved
+            approvalDetail = approvedBy.length > 0 ? `approved by ${approvedBy.join(', ')}` : 'approved';
+          }
+        }
+
+        return {
+          target: proposedTarget,
+          propProb: path.prop_prob,
+          approvalDetail: approvalDetail,
+          pathProb: path.path_prob
+        };
       });
 
+      // Build the detail lines: target (prop_prob%) -> approval details
+      const lines = pathEntries.map(entry => {
+        return `<div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>${entry.target} (${(entry.propProb * 100).toFixed(1)}%) \u2192 ${entry.approvalDetail}</span><span style="white-space:nowrap;margin-left:8px;color:#94a3b8;">${(entry.pathProb * 100).toFixed(1)}%</span></div>`;
+      }).join('');
+
+      // Single line: show inline
+      if (pathEntries.length === 1) {
+        return `
+          <div style="font-size:10px;color:#64748b;margin-left:16px;padding:4px 0;border-top:1px solid #e5e7eb;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+              <strong>${proposer} proposes:</strong>
+              <span>${(data.total * 100).toFixed(1)}%</span>
+            </div>
+            <div style="margin-left:8px;">${lines}</div>
+          </div>
+        `;
+      }
+
+      // Multiple lines: expandable
+      const detailId = `proposer-detail-${proposer}-${Math.random().toString(36).slice(2, 8)}`;
       return `
         <div style="font-size:10px;color:#64748b;margin-left:16px;padding:4px 0;border-top:1px solid #e5e7eb;">
-          <div><strong>Proposer:</strong> ${path.proposer} (${(path.path_prob * 100).toFixed(1)}%)</div>
-          ${approvedBy.length > 0 ? `<div><strong>Approved by:</strong> ${approvedBy.join(', ')}</div>` : ''}
-          ${rejectedBy.length > 0 ? `<div><strong>Rejected by:</strong> ${rejectedBy.join(', ')}</div>` : ''}
-          ${mixedBy.length > 0 ? `<div><strong>Mixed:</strong> ${mixedBy.map((p: string) => `${p} (${(path.approvals[p] * 100).toFixed(0)}%)`).join(', ')}</div>` : ''}
-          ${path.not_in_committee.length > 0 ? `<div><strong>Not in committee:</strong> ${path.not_in_committee.join(', ')}</div>` : ''}
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong>${proposer} proposes:</strong>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span>${(data.total * 100).toFixed(1)}%</span>
+              <button class="breakdown-toggle" data-target="${detailId}" style="background:none;border:none;cursor:pointer;padding:2px;color:#64748b;font-size:10px;">\u25BC</button>
+            </div>
+          </div>
+          <div id="${detailId}" class="breakdown-content" style="display:none;margin-left:8px;">
+            ${lines}
+          </div>
         </div>
       `;
     }).join('');
@@ -697,10 +790,14 @@ function handleNodeSelect(nodeId: string | null) {
         const breakdownId = `out-breakdown-${idx}`;
         const hasBreakdown = edge.breakdown && edge.breakdown.length > 0;
         const targetName = normalizeStateName ? normalizeStateName(edge.target) : edge.target;
+        const isSelfLoop = edge.target === nodeId;
+        const label = isSelfLoop
+          ? `${targetName} <span style="color:#b0b8c4;font-style:italic;font-weight:normal;">\u2014 status quo</span>`
+          : targetName;
         return `
           <div class="transition-item" style="display:block;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span>${targetName}</span>
+              <span>${label}</span>
               <div style="display:flex;align-items:center;gap:8px;">
                 <span class="prob">${(edge.probability * 100).toFixed(1)}%</span>
                 ${hasBreakdown ? `<button class="breakdown-toggle" data-target="${breakdownId}" style="background:none;border:none;cursor:pointer;padding:4px;color:#64748b;font-size:12px;">▼</button>` : ''}
@@ -711,29 +808,6 @@ function handleNodeSelect(nodeId: string | null) {
         `;
       }).join('')
     : '<div style="color: #999; padding: 8px;">No outgoing transitions</div>';
-
-  // Incoming transitions
-  const incoming = renderer.getIncomingEdges(nodeId);
-  incomingTransitionsDiv.innerHTML = incoming.length > 0
-    ? incoming.map((edge, idx) => {
-        const breakdownId = `in-breakdown-${idx}`;
-        const hasBreakdown = edge.breakdown && edge.breakdown.length > 0;
-        const sourceName = normalizeStateName ? normalizeStateName(edge.source) : edge.source;
-        return `
-          <div class="transition-item" style="display:block;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span>${sourceName}</span>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span class="prob">${(edge.probability * 100).toFixed(1)}%</span>
-                ${hasBreakdown ? `<button class="breakdown-toggle" data-target="${breakdownId}" style="background:none;border:none;cursor:pointer;padding:4px;color:#64748b;font-size:12px;">▼</button>` : ''}
-              </div>
-            </div>
-            ${hasBreakdown ? `<div id="${breakdownId}" class="breakdown-content" style="display:none;">${renderBreakdown(edge.breakdown)}</div>` : ''}
-          </div>
-        `;
-      }).join('')
-    : '<div style="color: #999; padding: 8px;">No incoming transitions</div>';
-
   // Add event listeners for breakdown toggles
   document.querySelectorAll('.breakdown-toggle').forEach(btn => {
     btn.addEventListener('click', (e) => {

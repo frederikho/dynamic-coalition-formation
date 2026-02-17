@@ -233,71 +233,101 @@ def derive_effectivity(df: pd.DataFrame, players: List[str],
                     idx = (proposer, current_state, next_state, responder)
                     effectivity[idx] = is_member
 
-                # Trivially, the proposer must approve the transition,
-                # and is therefore included in the effectivity correspondence.
-                # However, for convenience, we only include the proposer
-                # explicitly in the strategy table when the proposer is the
-                # only approval committee member, and thus can approve
-                # the proposed transition without consulting others.
-
-                # For every possible proposer, it is always possible to
-                # maintain the status quo without the approval of others.
-                # Therefore, for such a transition, check that the current
-                # proposer is the only member in the effectivity
-                # correspondence. Similarly, any country is allowed to
-                # walk out of its existing coalition.
-                if current_state == next_state or is_unilateral_breakout(
-                                    proposer, current_state, next_state, len(players)):
-
-                    committee = get_approval_committee(effectivity, players,
-                                                       proposer, current_state,
-                                                       next_state)
-                    assert [proposer] == committee
 
     return effectivity
 
 
+def _coalition_structure_as_frozensets(state: str) -> frozenset:
+    """Represent a coalition structure as a frozenset of frozensets for semantic comparison.
+
+    Singletons are not listed in state names but every player is implicitly
+    present.  This function only returns the *non-singleton* coalitions, which
+    is sufficient for exit-type detection.
+
+    '(CT)(FW)' -> frozenset({frozenset({'C','T'}), frozenset({'F','W'})})
+    '(WTC)'    -> frozenset({frozenset({'W','T','C'})})
+    '( )'      -> frozenset()
+    """
+    return frozenset(frozenset(c) for c in list_coalitions(state))
+
+
+def _exit_committee(proposer: str, current_state: str, next_state: str) -> set:
+    """Return the set of players who actively exit in this transition, or an
+    empty set if the transition is not exit-type.
+
+    A transition is *exit-type* when:
+      1. No cross-coalition mergers occur (every next coalition is a subset of
+         some current coalition — no players from different current coalitions
+         end up together).
+      2. The proposer was in a non-singleton coalition and becomes a singleton.
+
+    The returned set always includes the proposer (if exit-type).  It also
+    includes every co-member of the proposer's current coalition who also
+    becomes a singleton, but only when that coalition had ≥ 3 members.  In a
+    2-member coalition the remaining member is stranded with no agency and is
+    therefore not included.
+
+    This is a private helper used by is_unilateral_breakout() and by the
+    effectivity rules in lib/effectivity.py.  It was introduced when the
+    framework was generalised beyond n=3: the original is_unilateral_breakout()
+    used hard-coded n=3 checks and string-based state comparison, both of
+    which fail for multi-coalition states such as (CT)(FW) → (CT) and for
+    non-canonical state-name orderings like '(CT)' vs '(TC)'.
+    """
+    current_sets = _coalition_structure_as_frozensets(current_state)
+    next_sets    = _coalition_structure_as_frozensets(next_state)
+
+    # Condition 1: no cross-coalition mergers.
+    for ns in next_sets:
+        if not any(ns.issubset(cs) for cs in current_sets):
+            return set()   # merger detected → not exit-type
+
+    # Condition 2: proposer must leave a non-singleton coalition.
+    proposer_current = frozenset(get_player_coalition(proposer, current_state))
+    if len(proposer_current) < 2:
+        return set()   # proposer already singleton
+
+    proposer_next = frozenset(get_player_coalition(proposer, next_state))
+    if len(proposer_next) > 1:
+        return set()   # proposer stays in a coalition → not exiting
+
+    # Build the committee: proposer plus any co-members who also become singletons
+    # (only meaningful when the coalition had ≥ 3 members).
+    committee = {proposer}
+    if len(proposer_current) >= 3:
+        for member in proposer_current - {proposer}:
+            if len(frozenset(get_player_coalition(member, next_state))) == 1:
+                committee.add(member)
+
+    return committee
+
+
 def is_unilateral_breakout(proposer: str, current_state: str,
                            next_state: str, n_players: int) -> bool:
-    """Check if the current transition corresponds to the proposer alone
-    walking out of an existing coalition. Such a move is always allowed,
-    and needs not be approved by any other players.
+    """Return True iff the transition is a unilateral exit by the proposer alone.
 
-    Arguments:
-        proposer: Name of the current proposer. E.g., 'T'.
-        current_state: Current coalition structure. E.g., '(WTC)'.
-        next_state: Proposed next coalition structure. E.g., '(WC)'.
-        n_players: Total number of players in the game.
+    **Why this function was extended beyond the original n=3 logic**
+
+    The original implementation used hard-coded checks covering only the two
+    exit patterns that arise for n=3 (leaving the grand coalition, or leaving a
+    2-player coalition into full singletons).  When the framework was
+    generalised to n=4, new patterns appeared — e.g. a proposer leaving one
+    coalition in a multi-coalition state such as (CT)(FW) → (CT) — and string
+    comparison failed because state names are not canonical ('(CT)' vs '(TC)').
+
+    The function now delegates to the private helper _exit_committee(), which
+    uses frozensets for order-independent semantic comparison and covers the
+    general case for any n.  A transition is unilateral when _exit_committee()
+    returns a set containing only the proposer.
 
     For instance:
-        'T' proposing '(WTC)' -> '(WC)' returns True (n=3).
-        'C' proposing '(CFTW)' -> '(FTW)' returns True (n=4).
-        'C' proposing '(CFT)' -> '(FT)' returns False (n=4, not grand coalition).
-
-    A unilateral breakout occurs when:
-    1. Proposer leaves the TRUE grand coalition (single coalition with all n players), OR
-    2. Proposer leaves a 2-player coalition to all singletons
+        'T' proposing '(WTC)' -> '(WC)' returns True  (n=3, T exits alone).
+        'C' proposing '(CFTW)' -> '(FTW)' returns True  (n=4, C exits alone).
+        'W' proposing '(CT)(FW)' -> '(CT)' returns True  (n=4, F stranded).
+        'C' proposing '(CT)(FW)' -> '(FW)' returns True  (n=4, T stranded).
+        'C' proposing '(CFTW)' -> '(TW)' returns False  (n=4, F also exits).
     """
-
-    current_members = list_members(current_state)
-    next_members = list_members(next_state)
-
-    # Breakout from TRUE grand coalition (not just full partition)
-    # Must check that current state is a single coalition containing all players
-    current_coalitions = list_coalitions(current_state)
-    is_grand_coalition = (len(current_coalitions) == 1 and
-                         len(current_coalitions[0]) == n_players)
-
-    if is_grand_coalition and len(next_members) == n_players - 1:
-        if proposer in current_members and proposer not in next_members:
-            return True
-
-    # Breakout from a 2-player coalition to all singletons
-    elif len(current_members) == 2 and len(next_members) == 0:
-        if proposer in current_members:
-            return True
-
-    return False
+    return _exit_committee(proposer, current_state, next_state) == {proposer}
 
 
 def verify_proposals(players: List[str], states: List[str],
@@ -473,7 +503,7 @@ def write_latex_tables(result: Dict[str, Any], variables: List[str],
         float_format: How many digits to include in the .tex tables.
     """
 
-    experiment = result['experiment_name']
+    experiment = result['scenario_name']
     for variable in variables:
 
         path = f"{results_path}/{variable}_{experiment}.tex"

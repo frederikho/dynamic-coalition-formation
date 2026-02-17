@@ -93,7 +93,7 @@ An interactive transition graph visualizer is available to explore coalition for
 
 ```bash
 # Start the backend service
-python -m viz_service
+python -m service_viz
 
 # In a new terminal, start the frontend
 cd viz
@@ -162,7 +162,7 @@ The model is built on five interconnected classes that represent different aspec
 - Two power rules: 'power_threshold' (coalition needs min_power share) or 'weak_governance' (free-driver case)
 - Calculates static payoffs for all countries given the coalition structure
 
-**TransitionProbabilities (lib/probabilities.py)** - Maps player strategies to state transition probabilities.
+**TransitionProbabilitiesOptimized (lib/probabilities_optimized.py)** - Maps player strategies to state transition probabilities.
 - Reads strategy profiles from Excel files in `strategy_tables/`
 - Derives effectivity correspondence (who approves which transitions)
 - Supports two approval mechanisms: unanimous or majority-based
@@ -299,5 +299,5 @@ High-probability transitions indicate the likely evolution path. Absorbing state
 ### Notes
 - Never use fallbacks. Better fail early than that it seems it works while it actually doesnt. 
 - Never use git commands, that's entirely controlled by the user. 
-- I am running /viz using npm run dev, so no rebuild is necessary after changes, is done automatically. When do you changes to the viz/viz_service.py, you will need to restart though. 
+- I am running /viz using npm run dev, so no rebuild is necessary after changes, is done automatically. When do you changes to the viz/service_viz.py, you will need to restart though. 
 - Activate the environment .venv before running code. If not you will get errors such as ModuleNotFound.

@@ -5,6 +5,7 @@ from typing import List, Dict
 from lib.utils import get_approval_committee, list_members
 from lib.errors import ApprovalCommitteeError
 
+## IMPORTANT: We are using lib/probabilities_optimized.py. This file here is mostly deprecated. 
 
 class TransitionProbabilities:
     """ Translates the equilibrium strategies of countries into transition

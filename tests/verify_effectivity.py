@@ -3,6 +3,8 @@
 Verify that our generated effectivity matches the effectivity from existing strategy tables.
 
 This confirms that generate_effectivity_heyen_lehtomaa() implements the correct rules.
+
+May not be named "test_effectivity.py" to avoid pytest auto-discovery since this is a more complex test that requires manual review of results.
 """
 
 import pandas as pd

@@ -350,7 +350,7 @@ def _run_verification(xlsx_path: Path) -> Tuple[bool, str, Dict[str, Any]]:
         V.loc[:, player] = mdp.solve_value_func(payoffs.loc[:, player])
 
     result = {
-        "experiment_name": xlsx_path.stem,
+        "scenario_name": xlsx_path.stem,
         "V": V,
         "P": P,
         "geoengineering": geoengineering,

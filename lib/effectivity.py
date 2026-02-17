@@ -5,24 +5,24 @@ Effectivity determines which players must approve a proposed transition
 from one coalition structure to another.
 """
 
-from lib.utils import list_members, list_coalitions, get_player_coalition
+from lib.utils import list_members, list_coalitions, get_player_coalition, _exit_committee
 
 
 def heyen_lehtomaa_2021(players: list, states: list) -> dict:
     """
-    Generate effectivity correspondence based on Heyen & Lehtomaa (2021).
+    Generate effectivity correspondence based on Heyen & Lehtomaa (2021),
+    generalised to work for any number of players n >= 3.
 
-    Rules derived from strategy tables:
-    1. Status quo (x → x): Only proposer approves
-    2. Transitions to ( ):
-       - From grand coalition: all non-proposers approve
-       - Proposer in coalition: only proposer approves (unilateral exit)
-       - Proposer not in coalition: coalition members approve
-    3. From grand coalition to smaller coalition:
-       - Proposer not in result: only proposer approves (unilateral exit)
-       - Proposer stays in result: all non-proposers approve
-    4. Other transitions: Players whose coalition membership changes must approve,
-       EXCEPT the proposer (proposer makes the proposal, doesn't approve it)
+    Rules:
+    1. Status quo (x → x): Only proposer approves.
+    2. Exit-type transition (proposer leaves their current coalition, no cross-coalition
+       mergers occur):
+       a. Unilateral exit (proposer is the only player leaving): only proposer approves.
+       b. Multi-lateral exit (other players also become singletons from the same coalition):
+          "others approve, not proposer" — all co-exiters except the proposer must approve.
+          This covers grand-coalition full dissolution and partial multi-lateral exits.
+    3. Non-exit transitions (joining, merging, restructuring across coalitions):
+       Players whose coalition membership changed must approve, except the proposer.
 
     Args:
         players: List of player names
@@ -49,66 +49,41 @@ def heyen_lehtomaa_2021(players: list, states: list) -> dict:
                         effectivity[key] = 1 if responder == proposer else 0
                         continue
 
-                    # Rule 2: Transitions involving ( )
-                    if next_state == '( )':
-                        # Special case: From grand coalition (all in coalition)
-                        if len(current_members) == len(players):
-                            # Breaking up grand coalition: others approve, not proposer
-                            effectivity[key] = 1 if responder != proposer and responder in current_members else 0
-                            continue
-                        # Normal case: proposer in coalition - unilateral exit
-                        elif proposer in current_members:
-                            effectivity[key] = 1 if responder == proposer else 0
-                            continue
-                        # Proposer NOT in coalition: coalition members must approve
-                        else:
-                            effectivity[key] = 1 if responder in current_members else 0
-                            continue
+                    # Rules 2a/2b: Exit-type transition.
+                    # _exit_committee() returns the set of actively exiting players
+                    # (proposer + any co-exiters), or empty if not exit-type.
+                    committee = _exit_committee(proposer, current_state, next_state)
 
-                    # Rule 3: From grand coalition to smaller coalition
-                    # Grand coalition = single coalition containing all players (not full partition)
-                    current_coalitions = list_coalitions(current_state)
-                    is_grand_coalition = (len(current_coalitions) == 1 and
-                                         len(current_coalitions[0]) == len(players))
-                    if is_grand_coalition and next_state != '( )':
-                        # Two sub-cases:
-                        # 3a. Proposer NOT in resulting coalition: only proposer approves (unilateral exit)
-                        if proposer not in next_members:
+                    if committee:
+                        if len(committee) == 1:
+                            # 2a. Unilateral exit: only proposer approves
                             effectivity[key] = 1 if responder == proposer else 0
-                            continue
-                        # 3b. Proposer stays in resulting coalition: all non-proposers approve
                         else:
-                            effectivity[key] = 1 if responder != proposer else 0
-                            continue
+                            # 2b. Multi-lateral exit: others approve, not proposer
+                            effectivity[key] = 1 if (
+                                responder in committee and responder != proposer
+                            ) else 0
+                        continue
 
-                    # Rule 4: Non-status quo transitions (except special cases above)
+                    # Rule 3: Non-exit transitions (joining, merging, restructuring)
                     # Proposer never in approval committee
                     if responder == proposer:
                         effectivity[key] = 0
                         continue
 
-                    # Check if responder's coalition membership changed
+                    # Players whose coalition membership changed must approve
                     was_in_coalition = responder in current_members
                     is_in_coalition = responder in next_members
 
-                    # Joining: was not in coalition, now is
                     joining = is_in_coalition and not was_in_coalition
-
-                    # Leaving: was in coalition, now not
                     leaving = was_in_coalition and not is_in_coalition
 
-                    # Switching: Check if player's specific coalition changed
-                    # (not just whether the global member list changed)
                     current_coalition = get_player_coalition(responder, current_state)
                     next_coalition = get_player_coalition(responder, next_state)
                     switching = (was_in_coalition and is_in_coalition and
-                                current_coalition != next_coalition)
+                                 current_coalition != next_coalition)
 
-                    # Responder must approve if their membership changed
-                    if joining or leaving or switching:
-                        effectivity[key] = 1
-                    else:
-                        effectivity[key] = 0
+                    effectivity[key] = 1 if (joining or leaving or switching) else 0
 
     return effectivity
 

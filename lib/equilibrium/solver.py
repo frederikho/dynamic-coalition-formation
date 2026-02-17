@@ -482,7 +482,9 @@ class EquilibriumSolver:
             'r_acceptances': self.r_acceptances.copy(),
             'config_hash': config_hash,
             'random_seed': self.random_seed,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'states': self.states,
+            'players': self.players,
         }
 
         # Ensure directory exists
@@ -502,6 +504,27 @@ class EquilibriumSolver:
         try:
             with open(checkpoint_path, 'rb') as f:
                 checkpoint = pickle.load(f)
+
+            # Validate states and players match current solver configuration.
+            # A mismatch means the checkpoint was created with different state
+            # names (e.g. after a code change to coalition naming), making the
+            # stored r_acceptances keys incompatible with the current effectivity.
+            if 'states' in checkpoint and checkpoint['states'] != self.states:
+                if self.verbose:
+                    self._log(
+                        f"Warning: Checkpoint states {checkpoint['states']} do not match "
+                        f"current states {self.states}. Ignoring checkpoint.",
+                        level='warning'
+                    )
+                return None
+            if 'players' in checkpoint and checkpoint['players'] != self.players:
+                if self.verbose:
+                    self._log(
+                        f"Warning: Checkpoint players {checkpoint['players']} do not match "
+                        f"current players {self.players}. Ignoring checkpoint.",
+                        level='warning'
+                    )
+                return None
 
             if self.verbose:
                 self._log(f"Loaded checkpoint from iteration {checkpoint['outer_iter']}")
