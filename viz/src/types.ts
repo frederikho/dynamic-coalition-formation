@@ -51,6 +51,7 @@ export interface Profile {
   name: string;
   path: string;
   filename: string;
+  created_at?: number;
 }
 
 export interface ProfilesResponse {

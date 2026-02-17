@@ -990,14 +990,18 @@ async def list_profiles(profiles_dir: str = Query(DEFAULT_PROFILES_DIR, descript
         # Filter out lock files
         xlsx_files = [f for f in xlsx_files if not f.name.startswith(".~lock")]
 
-        profiles = [
-            {
-                "name": f.stem,
-                "path": str(f),
-                "filename": f.name
-            }
-            for f in sorted(xlsx_files)
-        ]
+        profiles = sorted(
+            [
+                {
+                    "name": f.stem,
+                    "path": str(f),
+                    "filename": f.name,
+                    "created_at": f.stat().st_mtime,
+                }
+                for f in xlsx_files
+            ],
+            key=lambda p: p["created_at"]
+        )
 
         return {"profiles": profiles}
 

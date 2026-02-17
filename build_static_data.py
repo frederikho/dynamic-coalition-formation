@@ -20,7 +20,7 @@ load_dotenv()
 # Add current directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from viz.viz_service import compute_transition_graph
+from viz.service_viz import compute_transition_graph
 
 
 def build_static_data(

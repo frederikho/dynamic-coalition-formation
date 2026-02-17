@@ -103,7 +103,9 @@ async function loadProfiles() {
       return;
     }
 
-    data.profiles.forEach(profile => {
+    const sortedProfiles = [...data.profiles].sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0));
+
+    sortedProfiles.forEach(profile => {
       const option = document.createElement('option');
       option.value = profile.path;
       option.textContent = profile.name;

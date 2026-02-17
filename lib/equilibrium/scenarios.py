@@ -195,6 +195,7 @@ SCENARIOS["very_dominant_warm_n4"] = {
     "power_rule": "power_threshold",
 }
 
+# Has not worked yet, does not converge. 
 SCENARIOS["dominant_cold_n4"] = {
     **get_base_config_n4(),
     "power": {"W": 0.2, "T": 0.2, "C": 0.5, "F": 0.1},

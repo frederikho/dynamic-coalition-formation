@@ -82,12 +82,19 @@ class State:
             # general, but simplifies things in the three-country model
             # considered in this paper.
             else:
-                msg = "Several winning coalitions not allowed"
-                assert self.coalition_powers.count(winner_power) == 1, msg
+                tied = self.coalition_powers.count(winner_power)
+                if tied > 1:
+                    raise ValueError(
+                        f"State '{self.name}' has {tied} coalitions tied at power "
+                        f"{winner_power:.4f}, all exceeding min_power={self.min_power}. "
+                        "The model requires a unique strongest coalition. "
+                        "Adjust min_power so that at most one coalition can exceed the threshold "
+                        "(e.g. use min_power=0.501 with equal power shares of 0.25 so that "
+                        "only 3+-member coalitions qualify)."
+                    )
 
-                msg = "Incorrect winner assignment"
-                assert all(i <= winner_power for i in self.coalition_powers),\
-                    msg
+                assert all(i <= winner_power for i in self.coalition_powers), \
+                    "Incorrect winner assignment"
 
         return G
 
