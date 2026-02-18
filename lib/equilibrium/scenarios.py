@@ -118,19 +118,41 @@ SCENARIOS["power_threshold_no_unanimity_n3"] = {
     "unanimity_required": False,
 }
 
-SCENARIOS["high_discounting_n3"] = {
+SCENARIOS["weak_governance_high_discounting_n3"] = {
     **get_base_config_n3(),
-    "scenario_description": "Weak governance with high discounting (δ=0.95).",
+    "scenario_description": "Weak governance with high discounting (δ=0.90).",
     "power_rule": "weak_governance",
-    "discounting": 0.95,
+    "discounting": 0.90,
 }
 
-SCENARIOS["unequal_power_n3"] = {
+SCENARIOS["power_threshold_unequal_power_n3"] = {
     **get_base_config_n3(),
     "scenario_description": "Asymmetric power: W dominant (50%), T moderate (30%), C weak (20%).",
     "power": {"W": 0.5, "T": 0.3, "C": 0.2},
     "power_rule": "power_threshold",
 }
+
+SCENARIOS["power_threshold_unequal_power2_n3"] = {
+    **get_base_config_n3(),
+    "scenario_description": "Asymmetric power: W (45%), T (35%), C (20%).",
+    "power": {"W": 0.45, "T": 0.35, "C": 0.2},
+    "power_rule": "power_threshold",
+}
+
+SCENARIOS["power_threshold_unequal_power3_n3"] = {
+    **get_base_config_n3(),
+    "scenario_description": "Asymmetric power: W (40%), T (30%), C (30%).",
+    "power": {"W": 0.4, "T": 0.3, "C": 0.3},
+    "power_rule": "power_threshold",
+}
+
+SCENARIOS["power_threshold_very_powerful_W_n3"] = {
+    **get_base_config_n3(),
+    "scenario_description": "Asymmetric power: W dominant (60%), T moderate (20%), C weak (20%).",
+    "power": {"W": 0.6, "T": 0.2, "C": 0.2},
+    "power_rule": "power_threshold",
+}
+
 
 # ========== 4-player scenarios ==========
 
@@ -202,12 +224,14 @@ SCENARIOS["dominant_cold_n4"] = {
     "power_rule": "power_threshold",
 }
 
+# Has not worked yet, does not converge. 
 SCENARIOS["very_dominant_cold_n4"] = {
     **get_base_config_n4(),
     "power": {"W": 0.1, "T": 0.2, "C": 0.6, "F": 0.1},
     "power_rule": "power_threshold",
 }
 
+# Does not work according to current rules as we may have only one deploying coalition. 
 SCENARIOS["lower_power_high_threshold_n4"] = {
     **get_base_config_n4(),
     "scenario_description": "Power threshold with a lower threshold (49%).",
@@ -215,6 +239,7 @@ SCENARIOS["lower_power_high_threshold_n4"] = {
     "min_power": 0.49,
 }
 
+# Has not worked yet, does not converge. 
 SCENARIOS["unequal_protocol_favouring_W_n4"] = {
     **get_base_config_n4(),
     "scenario_description": "Unequal proposal probabilities favouring W.",

@@ -2,7 +2,9 @@ import type { GraphData, ProfilesResponse } from './types';
 
 // Static data mode - fetch precomputed JSON files from /data directory
 // Use Vite's BASE_URL to handle GitHub Pages subdirectory deployment
-const DATA_BASE = `${import.meta.env.BASE_URL}data`;
+const DATA_BASE = import.meta.env.DEV
+  ? `${import.meta.env.BASE_URL}data`
+  : `${import.meta.env.BASE_URL}viz/data`;
 
 // Choose live API when running on localhost; otherwise use static data
 // (Hosted on GitHub Pages or similar should serve precomputed /data files.)

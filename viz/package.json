@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "cd .. && bash build_static.sh",
-    "build": "vite build && cd ../docs && echo 'Copying .nojekyll...' && touch .nojekyll",
+    "build": "vite build && cp dist/index.html ../index.html && rm -rf ../viz/assets ../viz/data ../data ../docs/assets ../docs/data ../viz/public/viz && mkdir -p ../viz && cp -r dist/viz/assets ../viz/assets && cp -r dist/data ../viz/data && rm -rf dist && cd .. && echo 'Ensuring .nojekyll at repository root...' && touch .nojekyll",
     "preview": "vite preview"
   },
   "dependencies": {

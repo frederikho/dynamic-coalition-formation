@@ -1,0 +1,265 @@
+{
+  "profiles": [
+    {
+      "name": "eq_n3_power_threshold_649999",
+      "filename": "eq_n3_power_threshold_649999.json",
+      "path": "strategy_tables/eq_n3_power_threshold_649999.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": "power_threshold_n3",
+      "scenario_description": "3-player power threshold requiring majority support (>50%)."
+    },
+    {
+      "name": "eq_n3_power_threshold_no_unanimity_1fe1f2",
+      "filename": "eq_n3_power_threshold_no_unanimity_1fe1f2.json",
+      "path": "strategy_tables/eq_n3_power_threshold_no_unanimity_1fe1f2.xlsx",
+      "num_states": 5,
+      "num_transitions": 10,
+      "scenario_name": "power_threshold_no_unanimity_n3",
+      "scenario_description": "Power threshold without unanimity; W less vulnerable (0.75), T more vulnerable (1.25)."
+    },
+    {
+      "name": "eq_n3_power_threshold_unequal_power2_e7ba5e",
+      "filename": "eq_n3_power_threshold_unequal_power2_e7ba5e.json",
+      "path": "strategy_tables/eq_n3_power_threshold_unequal_power2_e7ba5e.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": "power_threshold_unequal_power2_n3",
+      "scenario_description": "Asymmetric power: W dominant (50%), T moderate (30%), C weak (20%)."
+    },
+    {
+      "name": "eq_n3_power_threshold_unequal_power3_922380",
+      "filename": "eq_n3_power_threshold_unequal_power3_922380.json",
+      "path": "strategy_tables/eq_n3_power_threshold_unequal_power3_922380.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": "power_threshold_unequal_power3_n3",
+      "scenario_description": "Asymmetric power: W (40%), T (30%), C (30%)."
+    },
+    {
+      "name": "eq_n3_power_threshold_unequal_power_98a9f0",
+      "filename": "eq_n3_power_threshold_unequal_power_98a9f0.json",
+      "path": "strategy_tables/eq_n3_power_threshold_unequal_power_98a9f0.xlsx",
+      "num_states": 5,
+      "num_transitions": 10,
+      "scenario_name": "power_threshold_unequal_power_n3",
+      "scenario_description": "Asymmetric power: W dominant (50%), T moderate (30%), C weak (20%)."
+    },
+    {
+      "name": "eq_n3_power_threshold_very_powerful_W_6920ed",
+      "filename": "eq_n3_power_threshold_very_powerful_W_6920ed.json",
+      "path": "strategy_tables/eq_n3_power_threshold_very_powerful_W_6920ed.xlsx",
+      "num_states": 5,
+      "num_transitions": 10,
+      "scenario_name": "power_threshold_very_powerful_W_n3",
+      "scenario_description": "Asymmetric power: W dominant (50%), T moderate (30%), C weak (20%)."
+    },
+    {
+      "name": "eq_n3_weak_governance_974d28",
+      "filename": "eq_n3_weak_governance_974d28.json",
+      "path": "strategy_tables/eq_n3_weak_governance_974d28.xlsx",
+      "num_states": 5,
+      "num_transitions": 10,
+      "scenario_name": "weak_governance_n3",
+      "scenario_description": "Standard 3-player weak governance scenario."
+    },
+    {
+      "name": "eq_n3_weak_governance_high_discounting_cd4022",
+      "filename": "eq_n3_weak_governance_high_discounting_cd4022.json",
+      "path": "strategy_tables/eq_n3_weak_governance_high_discounting_cd4022.xlsx",
+      "num_states": 5,
+      "num_transitions": 10,
+      "scenario_name": "weak_governance_high_discounting_n3",
+      "scenario_description": "Weak governance with high discounting (\u03b4=0.90)."
+    },
+    {
+      "name": "eq_n4_dominant_warm_ad16a8",
+      "filename": "eq_n4_dominant_warm_ad16a8.json",
+      "path": "strategy_tables/eq_n4_dominant_warm_ad16a8.xlsx",
+      "num_states": 15,
+      "num_transitions": 40,
+      "scenario_name": "dominant_warm_n4",
+      "scenario_description": "W holds dominant power (50%) while others share the rest equally."
+    },
+    {
+      "name": "eq_n4_power_threshold_3c2861",
+      "filename": "eq_n4_power_threshold_3c2861.json",
+      "path": "strategy_tables/eq_n4_power_threshold_3c2861.xlsx",
+      "num_states": 15,
+      "num_transitions": 44,
+      "scenario_name": "power_threshold_n4",
+      "scenario_description": "4-player power threshold requiring majority support (>50%)."
+    },
+    {
+      "name": "eq_n4_power_threshold_equal_geoengineering_preferences_a12405",
+      "filename": "eq_n4_power_threshold_equal_geoengineering_preferences_a12405.json",
+      "path": "strategy_tables/eq_n4_power_threshold_equal_geoengineering_preferences_a12405.xlsx",
+      "num_states": 15,
+      "num_transitions": 15,
+      "scenario_name": "power_threshold_equal_geoengineering_preferences_n4",
+      "scenario_description": "All players want the same geoengineering level (ideal temp = base temp), power threshold."
+    },
+    {
+      "name": "eq_n4_power_threshold_high_damage_sensitivity_ad0902",
+      "filename": "eq_n4_power_threshold_high_damage_sensitivity_ad0902.json",
+      "path": "strategy_tables/eq_n4_power_threshold_high_damage_sensitivity_ad0902.xlsx",
+      "num_states": 15,
+      "num_transitions": 44,
+      "scenario_name": "power_threshold_high_damage_sensitivity_n4",
+      "scenario_description": "All countries highly sensitive to climate deviations (m_damage=2.0), power threshold."
+    },
+    {
+      "name": "eq_n4_power_threshold_high_discounting_7d810e",
+      "filename": "eq_n4_power_threshold_high_discounting_7d810e.json",
+      "path": "strategy_tables/eq_n4_power_threshold_high_discounting_7d810e.xlsx",
+      "num_states": 15,
+      "num_transitions": 42,
+      "scenario_name": "power_threshold_high_discounting_n4",
+      "scenario_description": "Power threshold with high discounting (\u03b4=0.90)."
+    },
+    {
+      "name": "eq_n4_power_threshold_low_damage_sensitivity_a470a2",
+      "filename": "eq_n4_power_threshold_low_damage_sensitivity_a470a2.json",
+      "path": "strategy_tables/eq_n4_power_threshold_low_damage_sensitivity_a470a2.xlsx",
+      "num_states": 15,
+      "num_transitions": 44,
+      "scenario_name": "power_threshold_low_damage_sensitivity_n4",
+      "scenario_description": "All countries less sensitive to climate impacts (m_damage=0.5), power threshold."
+    },
+    {
+      "name": "eq_n4_power_threshold_no_unanimity_7375e1",
+      "filename": "eq_n4_power_threshold_no_unanimity_7375e1.json",
+      "path": "strategy_tables/eq_n4_power_threshold_no_unanimity_7375e1.xlsx",
+      "num_states": 15,
+      "num_transitions": 44,
+      "scenario_name": "power_threshold_no_unanimity_n4",
+      "scenario_description": "Power threshold without unanimity."
+    },
+    {
+      "name": "eq_n4_power_threshold_similar_geoengineering_preferences_7b8c44",
+      "filename": "eq_n4_power_threshold_similar_geoengineering_preferences_7b8c44.json",
+      "path": "strategy_tables/eq_n4_power_threshold_similar_geoengineering_preferences_7b8c44.xlsx",
+      "num_states": 15,
+      "num_transitions": 36,
+      "scenario_name": "power_threshold_similar_geoengineering_preferences_n4",
+      "scenario_description": "Players have ideal temperatures close to their base temperature, power threshold."
+    },
+    {
+      "name": "eq_n4_unequal_protocol_favouring_F_99023a",
+      "filename": "eq_n4_unequal_protocol_favouring_F_99023a.json",
+      "path": "strategy_tables/eq_n4_unequal_protocol_favouring_F_99023a.xlsx",
+      "num_states": 15,
+      "num_transitions": 39,
+      "scenario_name": "unequal_protocol_favouring_F_n4",
+      "scenario_description": "Unequal proposal probabilities favouring F."
+    },
+    {
+      "name": "eq_n4_very_dominant_warm_6e3439",
+      "filename": "eq_n4_very_dominant_warm_6e3439.json",
+      "path": "strategy_tables/eq_n4_very_dominant_warm_6e3439.xlsx",
+      "num_states": 15,
+      "num_transitions": 38,
+      "scenario_name": "very_dominant_warm_n4",
+      "scenario_description": "W holds very dominant power (60%) while others share the rest equally."
+    },
+    {
+      "name": "eq_n4_weak_governance_b02e87",
+      "filename": "eq_n4_weak_governance_b02e87.json",
+      "path": "strategy_tables/eq_n4_weak_governance_b02e87.xlsx",
+      "num_states": 15,
+      "num_transitions": 49,
+      "scenario_name": "weak_governance_n4",
+      "scenario_description": "Standard 4-player weak governance."
+    },
+    {
+      "name": "eq_n4_weak_governance_equal_geoengineering_preferences_26df19",
+      "filename": "eq_n4_weak_governance_equal_geoengineering_preferences_26df19.json",
+      "path": "strategy_tables/eq_n4_weak_governance_equal_geoengineering_preferences_26df19.xlsx",
+      "num_states": 15,
+      "num_transitions": 225,
+      "scenario_name": "weak_governance_equal_geoengineering_preferences_n4",
+      "scenario_description": "All players want the same geoengineering level (ideal temp = base temp), weak governance."
+    },
+    {
+      "name": "eq_n4_weak_governance_high_damage_sensitivity_6790a9",
+      "filename": "eq_n4_weak_governance_high_damage_sensitivity_6790a9.json",
+      "path": "strategy_tables/eq_n4_weak_governance_high_damage_sensitivity_6790a9.xlsx",
+      "num_states": 15,
+      "num_transitions": 50,
+      "scenario_name": "weak_governance_high_damage_sensitivity_n4",
+      "scenario_description": "All countries highly sensitive to climate deviations (m_damage=2.0), weak governance."
+    },
+    {
+      "name": "eq_n4_weak_governance_high_discounting_4b499e",
+      "filename": "eq_n4_weak_governance_high_discounting_4b499e.json",
+      "path": "strategy_tables/eq_n4_weak_governance_high_discounting_4b499e.xlsx",
+      "num_states": 15,
+      "num_transitions": 50,
+      "scenario_name": "weak_governance_high_discounting_n4",
+      "scenario_description": "Weak governance with high discounting (\u03b4=0.90)."
+    },
+    {
+      "name": "eq_n4_weak_governance_low_damage_sensitivity_9b6d71",
+      "filename": "eq_n4_weak_governance_low_damage_sensitivity_9b6d71.json",
+      "path": "strategy_tables/eq_n4_weak_governance_low_damage_sensitivity_9b6d71.xlsx",
+      "num_states": 15,
+      "num_transitions": 50,
+      "scenario_name": "weak_governance_low_damage_sensitivity_n4",
+      "scenario_description": "All countries less sensitive to climate impacts (m_damage=0.5), weak governance."
+    },
+    {
+      "name": "eq_n4_weak_governance_low_discounting_54176c",
+      "filename": "eq_n4_weak_governance_low_discounting_54176c.json",
+      "path": "strategy_tables/eq_n4_weak_governance_low_discounting_54176c.xlsx",
+      "num_states": 15,
+      "num_transitions": 52,
+      "scenario_name": "weak_governance_low_discounting_n4",
+      "scenario_description": "Weak governance with very low discounting (\u03b4=0.999)."
+    },
+    {
+      "name": "eq_n4_weak_governance_no_unanimity_63a83f",
+      "filename": "eq_n4_weak_governance_no_unanimity_63a83f.json",
+      "path": "strategy_tables/eq_n4_weak_governance_no_unanimity_63a83f.xlsx",
+      "num_states": 15,
+      "num_transitions": 58,
+      "scenario_name": "weak_governance_no_unanimity_n4",
+      "scenario_description": "Standard 4-player weak governance without unanimity requirement."
+    },
+    {
+      "name": "eq_n4_weak_governance_similar_geoengineering_preferences_0f7a50",
+      "filename": "eq_n4_weak_governance_similar_geoengineering_preferences_0f7a50.json",
+      "path": "strategy_tables/eq_n4_weak_governance_similar_geoengineering_preferences_0f7a50.xlsx",
+      "num_states": 15,
+      "num_transitions": 54,
+      "scenario_name": "weak_governance_similar_geoengineering_preferences_n4",
+      "scenario_description": "Players have ideal temperatures close to their base temperature, weak governance."
+    },
+    {
+      "name": "power_threshold",
+      "filename": "power_threshold.json",
+      "path": "strategy_tables/power_threshold.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": null,
+      "scenario_description": null
+    },
+    {
+      "name": "power_threshold_no_unanimity",
+      "filename": "power_threshold_no_unanimity.json",
+      "path": "strategy_tables/power_threshold_no_unanimity.xlsx",
+      "num_states": 5,
+      "num_transitions": 10,
+      "scenario_name": null,
+      "scenario_description": null
+    },
+    {
+      "name": "weak_governance",
+      "filename": "weak_governance.json",
+      "path": "strategy_tables/weak_governance.xlsx",
+      "num_states": 5,
+      "num_transitions": 9,
+      "scenario_name": null,
+      "scenario_description": null
+    }
+  ]
+}

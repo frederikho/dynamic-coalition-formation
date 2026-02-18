@@ -1,0 +1,489 @@
+{
+  "nodes": [
+    {
+      "id": "( )",
+      "label": "( )",
+      "meta": {
+        "index": 0,
+        "geo_level": 0.0,
+        "deploying_coalition": "None"
+      }
+    },
+    {
+      "id": "(TC)",
+      "label": "(TC)",
+      "meta": {
+        "index": 1,
+        "geo_level": 2.75,
+        "deploying_coalition": "(TC)"
+      }
+    },
+    {
+      "id": "(WC)",
+      "label": "(WC)",
+      "meta": {
+        "index": 2,
+        "geo_level": 6.5,
+        "deploying_coalition": "(WC)"
+      }
+    },
+    {
+      "id": "(WT)",
+      "label": "(WT)",
+      "meta": {
+        "index": 3,
+        "geo_level": 7.749999999999999,
+        "deploying_coalition": "(WT)"
+      }
+    },
+    {
+      "id": "(WTC)",
+      "label": "(WTC)",
+      "meta": {
+        "index": 4,
+        "geo_level": 5.666666666666666,
+        "deploying_coalition": "(WTC)"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "source": "( )",
+      "target": "(TC)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "T",
+            "proposed_target": "(TC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "C"
+            ],
+            "not_in_committee": [
+              "W",
+              "T"
+            ],
+            "approvals": {
+              "C": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "C",
+            "proposed_target": "(TC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "T"
+            ],
+            "not_in_committee": [
+              "W",
+              "C"
+            ],
+            "approvals": {
+              "T": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e1",
+      "source": "( )",
+      "target": "(WT)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "W",
+            "proposed_target": "(WT)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "T"
+            ],
+            "not_in_committee": [
+              "W",
+              "C"
+            ],
+            "approvals": {
+              "T": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e2",
+      "source": "(TC)",
+      "target": "(TC)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "C",
+            "proposed_target": "(TC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "C"
+            ],
+            "not_in_committee": [
+              "W",
+              "T"
+            ],
+            "approvals": {
+              "C": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e3",
+      "source": "(TC)",
+      "target": "(WTC)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "W",
+            "proposed_target": "(WTC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "T",
+              "C"
+            ],
+            "not_in_committee": [
+              "W"
+            ],
+            "approvals": {
+              "T": 1.0,
+              "C": 0.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "T",
+            "proposed_target": "(WTC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W",
+              "C"
+            ],
+            "not_in_committee": [
+              "T"
+            ],
+            "approvals": {
+              "W": 1.0,
+              "C": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e4",
+      "source": "(WC)",
+      "target": "(TC)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "C",
+            "proposed_target": "(TC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W",
+              "T"
+            ],
+            "not_in_committee": [
+              "C"
+            ],
+            "approvals": {
+              "W": 0.0,
+              "T": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e5",
+      "source": "(WC)",
+      "target": "(WTC)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "W",
+            "proposed_target": "(WTC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "T",
+              "C"
+            ],
+            "not_in_committee": [
+              "W"
+            ],
+            "approvals": {
+              "T": 1.0,
+              "C": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "T",
+            "proposed_target": "(WTC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W",
+              "C"
+            ],
+            "not_in_committee": [
+              "T"
+            ],
+            "approvals": {
+              "W": 1.0,
+              "C": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e6",
+      "source": "(WT)",
+      "target": "(TC)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "C",
+            "proposed_target": "(TC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W",
+              "T"
+            ],
+            "not_in_committee": [
+              "C"
+            ],
+            "approvals": {
+              "W": 0.0,
+              "T": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e7",
+      "source": "(WT)",
+      "target": "(WT)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "W",
+            "proposed_target": "(WT)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W"
+            ],
+            "not_in_committee": [
+              "T",
+              "C"
+            ],
+            "approvals": {
+              "W": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e8",
+      "source": "(WT)",
+      "target": "(WTC)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "T",
+            "proposed_target": "(WTC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W",
+              "C"
+            ],
+            "not_in_committee": [
+              "T"
+            ],
+            "approvals": {
+              "W": 0.0,
+              "C": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e9",
+      "source": "(WTC)",
+      "target": "(WTC)",
+      "p": 1.0,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "W",
+            "proposed_target": "(WTC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W"
+            ],
+            "not_in_committee": [
+              "T",
+              "C"
+            ],
+            "approvals": {
+              "W": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "T",
+            "proposed_target": "(WTC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "T"
+            ],
+            "not_in_committee": [
+              "W",
+              "C"
+            ],
+            "approvals": {
+              "T": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "C",
+            "proposed_target": "(WTC)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "C"
+            ],
+            "not_in_committee": [
+              "W",
+              "T"
+            ],
+            "approvals": {
+              "C": 1.0
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "profile_path": "strategy_tables/power_threshold_no_unanimity.xlsx",
+    "num_players": 3,
+    "num_states": 5,
+    "num_transitions": 10,
+    "expected_geo_level": 5.666666666666666,
+    "stationary_distribution": {
+      "( )": 0.0,
+      "(TC)": 0.0,
+      "(WC)": 0.0,
+      "(WT)": 0.0,
+      "(WTC)": 1.0
+    },
+    "mixing_time": null,
+    "scenario_name": null,
+    "scenario_description": null,
+    "config": {
+      "power_rule": "power_threshold",
+      "unanimity_required": false,
+      "min_power": 0.5
+    },
+    "file_metadata": {
+      "n_players": "3",
+      "players": "W, T, C",
+      "n_states": "5",
+      "states": "( ), (TC), (WC), (WT), (WTC)",
+      "power_rule": "power_threshold",
+      "min_power": "0.5",
+      "unanimity_required": "False",
+      "discounting": "0.99"
+    },
+    "absorption_time": {
+      "max": 2.7499999999999996,
+      "mean": 1.9999999999999996,
+      "by_state": {
+        "( )": 2.7499999999999996,
+        "(TC)": 1.4999999999999998,
+        "(WC)": 1.5,
+        "(WT)": 2.2499999999999996
+      }
+    },
+    "chain_diagnostics": {
+      "is_ergodic": false,
+      "num_absorbing_sets": 1,
+      "absorbing_sets": [
+        [
+          "(WTC)"
+        ]
+      ]
+    }
+  }
+}

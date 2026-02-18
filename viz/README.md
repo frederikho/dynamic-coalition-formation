@@ -217,6 +217,16 @@ Modify colors, sizes, and styles in:
 - `index.html` (CSS styles)
 - `src/graph.ts` (node/edge rendering parameters)
 
-## License
+### Github pages
 
-Same as the parent repository.
+Test the github pages build: 
+```bash
+python3 -m http.server 8765
+```
+Then go to http://localhost:8765/. 
+
+Deployment:
+
+```bash
+build_static.sh
+```

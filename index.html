@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coalition Transition Graph Visualizer</title>
+  <script type="module" crossorigin src="./viz/assets/index-Hjqh1-3k.js"></script>
+  <link rel="stylesheet" crossorigin href="./viz/assets/index-CbUE1lnE.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Mobile menu toggle button -->
+    <button id="menu-toggle" aria-label="Toggle menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="3" y1="12" x2="21" y2="12"></line>
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <line x1="3" y1="18" x2="21" y2="18"></line>
+      </svg>
+    </button>
+
+    <!-- Backdrop overlay for mobile -->
+    <div id="sidebar-backdrop"></div>
+
+    <div id="sidebar">
+      <!-- Close button for mobile -->
+      <button id="sidebar-close" aria-label="Close menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      <div>
+        <h1>Coalition Formation<br>Transition Visualizer</h1>
+      </div>
+
+      <div id="status"></div>
+
+      <div class="control-group">
+        <label for="profile-select">Strategy Profile</label>
+        <select id="profile-select">
+          <option value="">Loading...</option>
+        </select>
+      </div>
+
+      <button type="button" class="collapsible">Visualisation Options</button>
+      <div class="collapsible-content">
+        <div class="control-group" style="margin-bottom:12px;">
+          <label>Node Coloring</label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="none" checked>
+            Default
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="absorbing">
+            By absorbing set (by filtered edges)
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="geoengineering">
+            By geoengineering level (G)
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="deployer">
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              By deploying coalition
+              <span class="info-icon" style="position:relative;">
+                i
+                <span class="tooltip tooltip-deploying">States with G=0 are grouped as "None" (no actual deployment)</span>
+              </span>
+            </span>
+          </label>
+
+          <!-- Legend for absorbing sets and geoengineering -->
+          <div id="absorbing-legend" style="font-size:12px; color:#666; margin-top:12px; padding:8px; background:#f8fafc; border-radius:4px;"></div>
+        </div>
+        <div class="control-group" style="margin-bottom:12px;">
+          <label>Layout Mode</label>
+          <label class="checkbox-group">
+            <input type="radio" name="layout-mode" value="default" checked>
+            Default (preset positions)
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="layout-mode" value="connections">
+            By connections (force-directed)
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="layout-mode" value="deployer">
+            By deploying coalition
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="layout-mode" value="geo-level">
+            By geoengineering level (rounded)
+          </label>
+        </div>
+        <div class="control-group" style="margin-bottom:12px;">
+          <label>Filter Mode</label>
+          <label class="checkbox-group">
+            <input type="radio" name="filter-mode" value="absolute" checked>
+            Absolute threshold
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="filter-mode" value="cumulative">
+            Cumulative tail (per node)
+          </label>
+        </div>
+        <div class="control-group">
+          <div class="label-with-info">
+            <label for="prob-threshold">Edge Probability Threshold</label>
+            <span class="info-icon">
+              i
+              <span class="tooltip tooltip-threshold" id="threshold-tooltip">Hide edges with probability below this value</span>
+            </span>
+          </div>
+          <input type="number" id="prob-threshold" min="0" max="1" step="0.01" value="0">
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button id="refresh-btn">Refresh</button>
+        <button id="reset-view-btn" class="secondary">Reset View</button>
+        <button id="download-xlsx-btn" class="download-xlsx-btn" title="Download XLSX file" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 3V16M12 16L7 11M12 16L17 11" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M3 21H21" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <div id="metadata"></div>
+
+      <div id="node-details" style="display: none;">
+        <h2>Selected State: <span id="selected-state-name"></span></h2>
+        <h3 style="font-size: 13px; font-weight: 600; margin: 12px 0 6px;">Transitions</h3>
+        <div id="outgoing-transitions" class="transition-list"></div>
+      </div>
+    </div>
+
+    <div id="graph-container"></div>
+    <div id="result-indicator" style="display: none;"></div>
+  </div>
+  <div id="global-tooltip"></div>
+
+  <script>
+    // Handle collapsible sections with dynamic height
+    document.addEventListener('DOMContentLoaded', () => {
+      const collapsibles = document.querySelectorAll('.collapsible');
+      collapsibles.forEach(coll => {
+        coll.addEventListener('click', function() {
+          this.classList.toggle('active');
+          const content = this.nextElementSibling;
+
+          if (content.classList.contains('active')) {
+            // Closing: set to 0
+            content.style.maxHeight = '0px';
+            content.classList.remove('active');
+          } else {
+            // Opening: set to scrollHeight (actual content height)
+            content.classList.add('active');
+            content.style.maxHeight = content.scrollHeight + 'px';
+          }
+        });
+      });
+
+      // Recalculate heights when content changes (e.g., legend appears)
+      const observer = new MutationObserver(() => {
+        document.querySelectorAll('.collapsible-content.active').forEach(content => {
+          content.style.maxHeight = content.scrollHeight + 'px';
+        });
+      });
+
+      // Observe changes in collapsible content
+      document.querySelectorAll('.collapsible-content').forEach(content => {
+        observer.observe(content, { childList: true, subtree: true, characterData: true });
+      });
+    });
+  </script>
+</body>
+</html>
