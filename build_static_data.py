@@ -48,6 +48,45 @@ def build_static_data(
         if not f.name.startswith(".~lock")
     ]
 
+    # Remove stale generated profile artifacts from prior runs.
+    # Keep unrelated static JSON files (e.g., eq_*.json) untouched.
+    previous_profile_json_files = set()
+    previous_profile_xlsx_files = set()
+    profiles_path = output_path / "profiles.json"
+    if profiles_path.exists():
+        try:
+            with open(profiles_path, 'r') as f:
+                previous_manifest = json.load(f)
+            for profile in previous_manifest.get("profiles", []):
+                filename = profile.get("filename")
+                if filename:
+                    previous_profile_json_files.add(filename)
+                path_from_manifest = profile.get("path")
+                if path_from_manifest:
+                    previous_profile_xlsx_files.add(Path(path_from_manifest).name)
+                elif filename:
+                    previous_profile_xlsx_files.add(f"{Path(filename).stem}.xlsx")
+        except Exception as e:
+            print(f"Warning: Could not read existing profiles manifest for cleanup: {e}")
+
+    current_profile_json_files = {f"{xlsx_file.stem}.json" for xlsx_file in xlsx_files}
+    current_profile_xlsx_files = {xlsx_file.name for xlsx_file in xlsx_files}
+
+    stale_json_files = previous_profile_json_files - current_profile_json_files
+    stale_xlsx_files = previous_profile_xlsx_files - current_profile_xlsx_files
+
+    for stale_json in sorted(stale_json_files):
+        stale_json_path = output_path / stale_json
+        if stale_json_path.exists():
+            stale_json_path.unlink()
+            print(f"Removed stale profile JSON: {stale_json}")
+
+    for stale_xlsx in sorted(stale_xlsx_files):
+        stale_xlsx_path = xlsx_output_path / stale_xlsx
+        if stale_xlsx_path.exists():
+            stale_xlsx_path.unlink()
+            print(f"Removed stale profile XLSX copy: {stale_xlsx}")
+
     print(f"Found {len(xlsx_files)} XLSX files in {strategy_tables_dir}/")
     print()
 
@@ -92,7 +131,6 @@ def build_static_data(
             traceback.print_exc()
 
     # Write profiles manifest
-    profiles_path = output_path / "profiles.json"
     with open(profiles_path, 'w') as f:
         json.dump({"profiles": profiles}, f, indent=2)
 

@@ -1,0 +1,747 @@
+{
+  "nodes": [
+    {
+      "id": "( )",
+      "label": "( )",
+      "meta": {
+        "index": 0,
+        "geo_level": 0.0,
+        "deploying_coalition": "None"
+      }
+    },
+    {
+      "id": "(CT)",
+      "label": "(CT)",
+      "meta": {
+        "index": 1,
+        "geo_level": 2.888888888888889,
+        "deploying_coalition": "(TC)"
+      }
+    },
+    {
+      "id": "(CW)",
+      "label": "(CW)",
+      "meta": {
+        "index": 2,
+        "geo_level": 5.7857142857142865,
+        "deploying_coalition": "(WC)"
+      }
+    },
+    {
+      "id": "(TW)",
+      "label": "(TW)",
+      "meta": {
+        "index": 3,
+        "geo_level": 6.812499999999999,
+        "deploying_coalition": "(WT)"
+      }
+    },
+    {
+      "id": "(CTW)",
+      "label": "(CTW)",
+      "meta": {
+        "index": 4,
+        "geo_level": 5.041666666666666,
+        "deploying_coalition": "(WTC)"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "source": "( )",
+      "target": "(CT)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "T",
+            "proposed_target": "(CT)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "C"
+            ],
+            "not_in_committee": [
+              "W",
+              "T"
+            ],
+            "approvals": {
+              "C": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "C",
+            "proposed_target": "(CT)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "T"
+            ],
+            "not_in_committee": [
+              "W",
+              "C"
+            ],
+            "approvals": {
+              "T": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e1",
+      "source": "( )",
+      "target": "(TW)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "W",
+            "proposed_target": "(TW)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "T"
+            ],
+            "not_in_committee": [
+              "W",
+              "C"
+            ],
+            "approvals": {
+              "T": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e2",
+      "source": "(CT)",
+      "target": "(CT)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "rejection",
+            "proposer": "C",
+            "proposed_target": "( )",
+            "prop_prob": 0.3333333333333333,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.1111111111111111,
+            "committee": [
+              "C"
+            ],
+            "not_in_committee": [
+              "W",
+              "T"
+            ],
+            "approvals": {
+              "C": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "C",
+            "proposed_target": "(TW)",
+            "prop_prob": 0.3333333333333333,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.1111111111111111,
+            "committee": [
+              "W",
+              "T"
+            ],
+            "not_in_committee": [
+              "C"
+            ],
+            "approvals": {
+              "W": 1.0,
+              "T": 0.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "C",
+            "proposed_target": "(CT)",
+            "prop_prob": 0.3333333333333333,
+            "approval_prob": 0.5,
+            "path_prob": 0.05555555555555555,
+            "committee": [
+              "C"
+            ],
+            "not_in_committee": [
+              "W",
+              "T"
+            ],
+            "approvals": {
+              "C": 0.5
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e3",
+      "source": "(CT)",
+      "target": "(CTW)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "W",
+            "proposed_target": "(CTW)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "T",
+              "C"
+            ],
+            "not_in_committee": [
+              "W"
+            ],
+            "approvals": {
+              "T": 1.0,
+              "C": 0.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "T",
+            "proposed_target": "(CTW)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W",
+              "C"
+            ],
+            "not_in_committee": [
+              "T"
+            ],
+            "approvals": {
+              "W": 1.0,
+              "C": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e4",
+      "source": "(CW)",
+      "target": "(CT)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "C",
+            "proposed_target": "(CT)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W",
+              "T"
+            ],
+            "not_in_committee": [
+              "C"
+            ],
+            "approvals": {
+              "W": 0.0,
+              "T": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e5",
+      "source": "(CW)",
+      "target": "(CTW)",
+      "p": 0.6666666666666666,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "W",
+            "proposed_target": "(CTW)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "T",
+              "C"
+            ],
+            "not_in_committee": [
+              "W"
+            ],
+            "approvals": {
+              "T": 1.0,
+              "C": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "T",
+            "proposed_target": "(CTW)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W",
+              "C"
+            ],
+            "not_in_committee": [
+              "T"
+            ],
+            "approvals": {
+              "W": 1.0,
+              "C": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e6",
+      "source": "(TW)",
+      "target": "(CT)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "C",
+            "proposed_target": "(CT)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W",
+              "T"
+            ],
+            "not_in_committee": [
+              "C"
+            ],
+            "approvals": {
+              "W": 0.0,
+              "T": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e7",
+      "source": "(TW)",
+      "target": "(TW)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "rejection",
+            "proposer": "W",
+            "proposed_target": "( )",
+            "prop_prob": 0.5,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.16666666666666666,
+            "committee": [
+              "W"
+            ],
+            "not_in_committee": [
+              "T",
+              "C"
+            ],
+            "approvals": {
+              "W": 0.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "W",
+            "proposed_target": "(TW)",
+            "prop_prob": 0.5,
+            "approval_prob": 0.5,
+            "path_prob": 0.08333333333333333,
+            "committee": [
+              "W"
+            ],
+            "not_in_committee": [
+              "T",
+              "C"
+            ],
+            "approvals": {
+              "W": 0.5
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e8",
+      "source": "(TW)",
+      "target": "(CTW)",
+      "p": 0.3333333333333333,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "T",
+            "proposed_target": "(CTW)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "W",
+              "C"
+            ],
+            "not_in_committee": [
+              "T"
+            ],
+            "approvals": {
+              "W": 0.0,
+              "C": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e9",
+      "source": "(CTW)",
+      "target": "(CTW)",
+      "p": 1.0,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "rejection",
+            "proposer": "T",
+            "proposed_target": "(CW)",
+            "prop_prob": 0.5,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.16666666666666666,
+            "committee": [
+              "T"
+            ],
+            "not_in_committee": [
+              "W",
+              "C"
+            ],
+            "approvals": {
+              "T": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "W",
+            "proposed_target": "(CT)",
+            "prop_prob": 0.25,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.08333333333333333,
+            "committee": [
+              "W"
+            ],
+            "not_in_committee": [
+              "T",
+              "C"
+            ],
+            "approvals": {
+              "W": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "W",
+            "proposed_target": "(CW)",
+            "prop_prob": 0.25,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.08333333333333333,
+            "committee": [
+              "T",
+              "C"
+            ],
+            "not_in_committee": [
+              "W"
+            ],
+            "approvals": {
+              "T": 0.0,
+              "C": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "W",
+            "proposed_target": "(TW)",
+            "prop_prob": 0.25,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.08333333333333333,
+            "committee": [
+              "T",
+              "C"
+            ],
+            "not_in_committee": [
+              "W"
+            ],
+            "approvals": {
+              "T": 0.0,
+              "C": 0.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "T",
+            "proposed_target": "(CTW)",
+            "prop_prob": 0.5,
+            "approval_prob": 0.5,
+            "path_prob": 0.08333333333333333,
+            "committee": [
+              "T"
+            ],
+            "not_in_committee": [
+              "W",
+              "C"
+            ],
+            "approvals": {
+              "T": 0.5
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "C",
+            "proposed_target": "( )",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "W",
+              "T"
+            ],
+            "not_in_committee": [
+              "C"
+            ],
+            "approvals": {
+              "W": 0.0,
+              "T": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "C",
+            "proposed_target": "(CT)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "W",
+              "T"
+            ],
+            "not_in_committee": [
+              "C"
+            ],
+            "approvals": {
+              "W": 0.0,
+              "T": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "C",
+            "proposed_target": "(CW)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "W",
+              "T"
+            ],
+            "not_in_committee": [
+              "C"
+            ],
+            "approvals": {
+              "W": 0.0,
+              "T": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "C",
+            "proposed_target": "(TW)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "C"
+            ],
+            "not_in_committee": [
+              "W",
+              "T"
+            ],
+            "approvals": {
+              "C": 0.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "W",
+            "proposed_target": "(CTW)",
+            "prop_prob": 0.25,
+            "approval_prob": 0.5,
+            "path_prob": 0.041666666666666664,
+            "committee": [
+              "W"
+            ],
+            "not_in_committee": [
+              "T",
+              "C"
+            ],
+            "approvals": {
+              "W": 0.5
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "C",
+            "proposed_target": "(CTW)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.5,
+            "path_prob": 0.03333333333333333,
+            "committee": [
+              "C"
+            ],
+            "not_in_committee": [
+              "W",
+              "T"
+            ],
+            "approvals": {
+              "C": 0.5
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "profile_path": "strategy_tables/eq_n3_power_threshold_no_unanimity_1fe1f2.xlsx",
+    "num_players": 3,
+    "num_states": 5,
+    "num_transitions": 10,
+    "expected_geo_level": 5.041666666666666,
+    "stationary_distribution": {
+      "( )": 0.0,
+      "(CT)": 0.0,
+      "(CW)": 0.0,
+      "(TW)": 0.0,
+      "(CTW)": 1.0
+    },
+    "mixing_time": null,
+    "scenario_name": "power_threshold_no_unanimity_n3",
+    "scenario_description": "Power threshold without unanimity; W less vulnerable (0.75), T more vulnerable (1.25).",
+    "config": {
+      "power_rule": "power_threshold",
+      "unanimity_required": false,
+      "min_power": 0.501
+    },
+    "file_metadata": {
+      "start_time": "2026-02-17 16:39:19",
+      "end_time": "2026-02-17 16:39:26",
+      "runtime_seconds": "7.62",
+      "runtime_formatted": "0m 7.6s",
+      "verification_success": "True",
+      "scenario_name": "power_threshold_no_unanimity_n3",
+      "scenario_description": "Power threshold without unanimity; W less vulnerable (0.75), T more vulnerable (1.25).",
+      "n_players": "3",
+      "players": "W, T, C",
+      "n_states": "5",
+      "states": "( ), (CT), (CW), (TW), (CTW)",
+      "power_rule": "power_threshold",
+      "min_power": "0.501",
+      "unanimity_required": "False",
+      "discounting": "0.99",
+      "base_temp_W": "21.5",
+      "ideal_temp_W": "13.0",
+      "delta_temp_W": "3.0",
+      "m_damage_W": "0.75",
+      "power_W": "0.3333333333333333",
+      "base_temp_T": "14.0",
+      "ideal_temp_T": "13.0",
+      "delta_temp_T": "3.0",
+      "m_damage_T": "1.25",
+      "power_T": "0.3333333333333333",
+      "base_temp_C": "11.5",
+      "ideal_temp_C": "13.0",
+      "delta_temp_C": "3.0",
+      "m_damage_C": "1.0",
+      "power_C": "0.3333333333333333",
+      "protocol_W": "0.3333333333333333",
+      "protocol_T": "0.3333333333333333",
+      "protocol_C": "0.3333333333333333",
+      "converged": "True",
+      "outer_iterations": "36",
+      "final_tau_p": "0.166083",
+      "final_tau_r": "0.166083",
+      "random_seed": "1603714670",
+      "solver_tau_p_init": "1.0",
+      "solver_tau_r_init": "1.0",
+      "solver_tau_decay": "0.95",
+      "solver_tau_min": "0.01",
+      "solver_max_outer_iter": "400",
+      "solver_max_inner_iter": "100",
+      "solver_damping": "0.5",
+      "solver_inner_tol": "1e-10",
+      "solver_outer_tol": "1e-09",
+      "solver_consecutive_tol": "1",
+      "solver_tau_margin": "0.01",
+      "solver_project_to_exact": "True",
+      "config_hash": "1fe1f27be5"
+    },
+    "absorption_time": {
+      "max": 2.7499999999999996,
+      "mean": 1.9999999999999996,
+      "by_state": {
+        "( )": 2.7499999999999996,
+        "(CT)": 1.4999999999999998,
+        "(CW)": 1.5,
+        "(TW)": 2.2499999999999996
+      }
+    },
+    "chain_diagnostics": {
+      "is_ergodic": false,
+      "num_absorbing_sets": 1,
+      "absorbing_sets": [
+        [
+          "(CTW)"
+        ]
+      ]
+    }
+  }
+}
