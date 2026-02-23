@@ -15,6 +15,7 @@ const statusDiv = document.getElementById('status') as HTMLDivElement;
 const metadataDiv = document.getElementById('metadata') as HTMLDivElement;
 const nodeDetailsDiv = document.getElementById('node-details') as HTMLDivElement;
 const selectedStateNameSpan = document.getElementById('selected-state-name') as HTMLSpanElement;
+const nodePayoffsDiv = document.getElementById('node-payoffs') as HTMLDivElement;
 const outgoingTransitionsDiv = document.getElementById('outgoing-transitions') as HTMLDivElement;
 const graphContainer = document.getElementById('graph-container') as HTMLDivElement;
 const nodeColoringRadios = document.querySelectorAll('input[name="node-coloring"]') as NodeListOf<HTMLInputElement>;
@@ -681,6 +682,38 @@ function handleNodeSelect(nodeId: string | null) {
     `;
   } else {
     selectedStateNameSpan.textContent = normalizedStateName;
+  }
+
+  // Render payoffs table
+  const payoffs: Record<string, number> | undefined = nodeData.data?.payoffs;
+  const values: Record<string, number> | undefined = nodeData.data?.values;
+  if (payoffs && values) {
+    const players = Object.keys(payoffs);
+    const rows = players.map(p => {
+      const u = payoffs[p];
+      const v = values[p];
+      const uStr = (u != null && isFinite(u)) ? u.toFixed(4) : '—';
+      const vStr = (v != null && isFinite(v)) ? v.toFixed(4) : '—';
+      return `<tr>
+        <td style="padding:3px 6px;font-weight:600;">${p}</td>
+        <td style="padding:3px 6px;text-align:right;font-variant-numeric:tabular-nums;">${uStr}</td>
+        <td style="padding:3px 6px;text-align:right;font-variant-numeric:tabular-nums;">${vStr}</td>
+      </tr>`;
+    }).join('');
+    nodePayoffsDiv.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr style="border-bottom:1px solid #e2e8f0;">
+            <th style="padding:3px 6px;text-align:left;color:#64748b;font-weight:600;">Player</th>
+            <th style="padding:3px 6px;text-align:right;color:#64748b;font-weight:600;">Current (u)</th>
+            <th style="padding:3px 6px;text-align:right;color:#64748b;font-weight:600;">Long-term (V)</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  } else {
+    nodePayoffsDiv.innerHTML = '<div style="color:#999;font-size:12px;">No payoff data available</div>';
   }
 
   // Helper to render transition breakdown grouped by proposer

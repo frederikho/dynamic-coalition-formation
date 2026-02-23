@@ -33,6 +33,7 @@ from lib.coalition import Coalition
 from lib.state import State
 from lib.probabilities_optimized import TransitionProbabilitiesOptimized
 from lib.utils import derive_effectivity
+from lib.mdp import MDP
 
 
 def generate_all_partitions(elements):
@@ -154,6 +155,7 @@ DEFAULT_CONFIG = {
     "min_power": None,
     "state_names": ['( )', '(TC)', '(WC)', '(WT)', '(WTC)'],
     "unanimity_required": True,
+    "discounting": 0.99,
 }
 
 
@@ -670,7 +672,33 @@ def compute_transition_graph(
         logger.error(traceback.format_exc())
         raise
 
-    # 6. Get geoengineering levels and deploying coalitions for metadata
+    # 6. Compute static payoffs and long-term value functions via MDP
+    discounting = config.get("discounting", 0.99)
+    static_payoffs = {state.name: state.payoffs for state in states}
+
+    # Build payoff matrix: shape (n_states, n_players) ordered by config["players"]
+    n_states_count = len(config["state_names"])
+    payoff_matrix = np.array([
+        [static_payoffs[sn][p] for p in config["players"]]
+        for sn in config["state_names"]
+    ])  # shape: (n_states, n_players)
+
+    mdp = MDP(n_states=n_states_count, transition_probs=P, discounting=discounting)
+    long_term_values: dict[str, dict[str, float]] = {}
+    for state_name in config["state_names"]:
+        long_term_values[state_name] = {}
+    for pi_idx, player in enumerate(config["players"]):
+        player_payoffs = payoff_matrix[:, pi_idx]
+        try:
+            V = mdp.solve_value_func(player_payoffs)
+            for si, state_name in enumerate(config["state_names"]):
+                long_term_values[state_name][player] = float(V[si])
+        except Exception as e:
+            logger.warning(f"Could not solve MDP for player {player}: {e}")
+            for state_name in config["state_names"]:
+                long_term_values[state_name][player] = None
+
+    # 7. Get geoengineering levels and deploying coalitions for metadata
     geo_levels = {state.name: state.geo_deployment_level for state in states}
 
     # Standard player order: H, W, T, C, F (and A, B, D, E, G if needed)
@@ -701,7 +729,7 @@ def compute_transition_graph(
 
         deploying_coalitions[state.name] = deployer_name
 
-    # 7. Convert to graph format
+    # 8. Convert to graph format
     nodes = []
     for i, state_name in enumerate(config["state_names"]):
         nodes.append({
@@ -710,10 +738,13 @@ def compute_transition_graph(
             "meta": {
                 "index": i,
                 "geo_level": geo_levels[state_name],
-                "deploying_coalition": deploying_coalitions[state_name]
+                "deploying_coalition": deploying_coalitions[state_name],
+                "payoffs": static_payoffs[state_name],
+                "values": long_term_values[state_name],
             }
         })
 
+    # 9. Build edges
     edges = []
     edge_id = 0
     for i, source_state in enumerate(config["state_names"]):
@@ -829,7 +860,7 @@ def compute_transition_graph(
                 })
                 edge_id += 1
 
-    # 8. Compute stationary distribution, mixing time, and expected geoengineering level
+    # 10. Compute stationary distribution, mixing time, and expected geoengineering level
     try:
         pi = compute_stationary_distribution(P)
         # E_π[G] = Σ π_i * G_i

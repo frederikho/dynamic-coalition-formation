@@ -431,7 +431,9 @@ export class GraphRenderer {
             label: label,
             geo_level: geoLevel,
             deploying_coalition: deployingCoalition,
-            has_deployment: hasDeploymentBorder
+            has_deployment: hasDeploymentBorder,
+            payoffs: node.meta?.payoffs,
+            values: node.meta?.values,
           }
         };
 
@@ -881,11 +883,15 @@ export class GraphRenderer {
       label: node.data('label'),
       data: {
         geo_level: node.data('geo_level'),
-        deploying_coalition: node.data('deploying_coalition')
+        deploying_coalition: node.data('deploying_coalition'),
+        payoffs: node.data('payoffs'),
+        values: node.data('values'),
       },
       meta: {
         geo_level: node.data('geo_level'),
-        deploying_coalition: node.data('deploying_coalition')
+        deploying_coalition: node.data('deploying_coalition'),
+        payoffs: node.data('payoffs'),
+        values: node.data('values'),
       }
     };
   }

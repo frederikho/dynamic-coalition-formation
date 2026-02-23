@@ -142,6 +142,11 @@ def build_static_data(
     total_size = sum((output_path / p["filename"]).stat().st_size for p in profiles)
     total_size += profiles_path.stat().st_size
     print(f"✓ Total size: {total_size/1024:.1f} KB")
+    print()
+    print("Tip: To test the static site locally, serve the repository root over HTTP:")
+    print("  python3 -m http.server 8765")
+    print("Then open http://127.0.0.1:8765/ in your browser.")
+    print("If you also built the frontend with --vite-build, this serves the production artifacts.")
 
 
 def run_vite_build(vite_base_path: str):
@@ -169,7 +174,7 @@ def run_vite_build(vite_base_path: str):
         )
         print()
         print(f"✓ Frontend build complete!")
-        print(f"✓ Output directory: docs/")
+        print(f"✓ Output directory: repository root (index.html) with assets/data in viz/")
         return True
     except subprocess.CalledProcessError as e:
         print(f"✗ Vite build failed: {e}")

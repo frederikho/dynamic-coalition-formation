@@ -7,6 +7,8 @@ export interface GraphNode {
     index?: number;
     geo_level?: number;
     deploying_coalition?: string;
+    payoffs?: Record<string, number>;
+    values?: Record<string, number>;
     [key: string]: any;
   };
 }
