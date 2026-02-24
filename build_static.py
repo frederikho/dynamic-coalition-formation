@@ -25,7 +25,7 @@ from viz.service_viz import compute_transition_graph
 
 def build_static_data(
     strategy_tables_dir: str = "strategy_tables",
-    output_dir: str = "viz/public/data"
+    output_dir: str = "viz/data"
 ):
     """
     Precompute all XLSX strategy profiles to JSON files.

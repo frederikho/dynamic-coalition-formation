@@ -6,7 +6,17 @@
       "meta": {
         "index": 0,
         "geo_level": 11.5,
-        "deploying_coalition": "W"
+        "deploying_coalition": "W",
+        "payoffs": {
+          "W": 132.25,
+          "T": -40.25,
+          "C": -97.75
+        },
+        "values": {
+          "W": 132.24999999999775,
+          "T": -40.249999999999304,
+          "C": -97.74999999999834
+        }
       }
     },
     {
@@ -15,7 +25,17 @@
       "meta": {
         "index": 1,
         "geo_level": 11.5,
-        "deploying_coalition": "W"
+        "deploying_coalition": "W",
+        "payoffs": {
+          "W": 132.25,
+          "T": -40.25,
+          "C": -97.75
+        },
+        "values": {
+          "W": 132.24999999999775,
+          "T": -40.249999999999304,
+          "C": -97.74999999999834
+        }
       }
     },
     {
@@ -24,7 +44,17 @@
       "meta": {
         "index": 2,
         "geo_level": 9.0,
-        "deploying_coalition": "(WC)"
+        "deploying_coalition": "(WC)",
+        "payoffs": {
+          "W": 126.0,
+          "T": -9.0,
+          "C": -54.0
+        },
+        "values": {
+          "W": 132.06617647058602,
+          "T": -39.33088235294049,
+          "C": -96.46323529411599
+        }
       }
     },
     {
@@ -33,7 +63,17 @@
       "meta": {
         "index": 3,
         "geo_level": 9.625,
-        "deploying_coalition": "(WT)"
+        "deploying_coalition": "(WT)",
+        "payoffs": {
+          "W": 128.734375,
+          "T": -15.640625,
+          "C": -63.765625
+        },
+        "values": {
+          "W": 132.14659926470367,
+          "T": -39.52619485294049,
+          "C": -96.75045955882187
+        }
       }
     },
     {
@@ -42,7 +82,17 @@
       "meta": {
         "index": 4,
         "geo_level": 8.0,
-        "deploying_coalition": "(WTC)"
+        "deploying_coalition": "(WTC)",
+        "payoffs": {
+          "W": 120.0,
+          "T": -0.0,
+          "C": -40.0
+        },
+        "values": {
+          "W": 131.8897058823507,
+          "T": -39.06617647058755,
+          "C": -96.05147058823364
+        }
       }
     }
   ],
