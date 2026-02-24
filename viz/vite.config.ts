@@ -41,9 +41,11 @@ export default defineConfig({
     allowedHosts: ['.ngrok-free.app']
   },
   build: {
-    outDir: 'dist',
+    // Output directly to repo root so built files are ready to commit for GitHub Pages.
+    // index.html → repo root, JS/CSS → viz/assets/
+    outDir: '../',
     assetsDir: 'viz/assets',
-    emptyOutDir: true,
+    emptyOutDir: false,
     sourcemap: true
   }
 })
