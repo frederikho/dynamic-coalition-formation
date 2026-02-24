@@ -245,8 +245,9 @@ def _get_solver_params(config, user_params=None):
     'inner_tol': 
     Convergence precision for the fixed-point iteration at a given temperature. Measures how well we solve "for this temperature τ, find strategies that satisfy the smoothed best-response conditions."
     
-    'outer_tol': max_change has be lower than this to trigger expensive early verification. 
-    'consecutive_tol': how many consecutive outer iterations must meet to trigger early verification   
+    'outer_tol': max_change has be lower than this to trigger expensive early verification.
+    'consecutive_tol': how many consecutive outer iterations must meet to trigger early verification
+    'verify_every_n': only run early verification every nth stable outer iteration (1 = every iter). Reduces runtime when verification dominates.
     'tau_margin': ,
     'project_to_exact': should always be True actually
     """
@@ -278,7 +279,6 @@ def _get_solver_params(config, user_params=None):
             'max_outer_iter': 1000,
             'inner_tol': 2e-2,
             'outer_tol': 2e-2,
-            'consecutive_tol': 2,
         }) 
         
     # for RICE case
@@ -287,14 +287,15 @@ def _get_solver_params(config, user_params=None):
             'tau_p_init': 1,
             'tau_r_init': 1,
             'tau_decay': 0.99,
-            'tau_min': 0.0001,
-            'damping': 0.6,
+            'tau_min': 0.000000000001,
+            'damping': 0.9,
             'max_inner_iter': 150,
-            'max_outer_iter': 1000,
+            'max_outer_iter': 10000,
             'inner_tol': 2e-2,
             'outer_tol': 2e-2,
             'consecutive_tol': 10,
-        }) 
+            'verify_every_n': 20,
+        })
         
     # Standard parameters for 4-player scenarios. Works well for some of them. Commented out, do not delete yet.
     # if len(config['players']) == 4:
@@ -350,7 +351,7 @@ def _print_solver_params(params, logger):
     """Print solver parameters in consistent order."""
     param_order = ['tau_p_init', 'tau_r_init', 'tau_decay', 'tau_min',
                   'max_outer_iter', 'max_inner_iter', 'damping',
-                  'inner_tol', 'outer_tol', 'consecutive_tol',
+                  'inner_tol', 'outer_tol', 'consecutive_tol', 'verify_every_n',
                   'tau_margin', 'project_to_exact']
 
     logger.info("Solver parameters:")
@@ -507,7 +508,7 @@ def _build_metadata(config, setup, solver_params, solver_result,
     metadata['--- SOLVER PARAMETERS ---'] = ''
     param_order = ['tau_p_init', 'tau_r_init', 'tau_decay', 'tau_min',
                   'max_outer_iter', 'max_inner_iter', 'damping',
-                  'inner_tol', 'outer_tol', 'consecutive_tol',
+                  'inner_tol', 'outer_tol', 'consecutive_tol', 'verify_every_n',
                   'tau_margin', 'project_to_exact']
     for key in param_order:
         if key in solver_params:
@@ -771,6 +772,12 @@ Available scenarios (use --list-scenarios to see all):
         help='Maximum number of inner (fixed-point) iterations (optional)'
     )
     parser.add_argument(
+        '--verify-every-n',
+        type=int,
+        default=None,
+        help='Run early verification only every nth stable outer iteration (default: scenario-specific, typically 1 or 10)'
+    )
+    parser.add_argument(
         '--quiet',
         action='store_true',
         help='Suppress verbose output'
@@ -831,6 +838,8 @@ Available scenarios (use --list-scenarios to see all):
         solver_params['max_outer_iter'] = args.max_outer_iter
     if args.max_inner_iter is not None:
         solver_params['max_inner_iter'] = args.max_inner_iter
+    if args.verify_every_n is not None:
+        solver_params['verify_every_n'] = args.verify_every_n
 
     results_summary = []
 

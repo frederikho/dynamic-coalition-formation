@@ -548,6 +548,7 @@ class EquilibriumSolver:
               inner_tol: float = 1e-6,
               outer_tol: Optional[float] = None,
               consecutive_tol: int = 2,
+              verify_every_n: int = 1,
               tau_margin: float = 0.01,
               project_to_exact: bool = True,
               checkpoint_dir: str = './checkpoints',
@@ -567,6 +568,9 @@ class EquilibriumSolver:
             inner_tol: Convergence tolerance for inner loop
             outer_tol: Convergence tolerance for outer loop (defaults to 10*inner_tol)
             consecutive_tol: Number of consecutive converged outer iterations required
+            verify_every_n: Only run early verification every nth stable outer iteration
+                            (1 = every iteration, 10 = every 10th). Reduces cost when
+                            verification dominates runtime.
             tau_margin: Margin for checking if tau is near tau_min (default 0.01 = 1%)
             project_to_exact: Whether to project to exact equilibrium at end
             checkpoint_dir: Directory to save checkpoints (default: './checkpoints')
@@ -589,6 +593,9 @@ class EquilibriumSolver:
 
         # Track convergence history for consecutive check
         recent_max_changes = []
+
+        # Counter for throttling early verification (reset after each attempt)
+        iters_since_verify = 0
 
         # Checkpoint setup
         checkpoint_path = None
@@ -724,6 +731,17 @@ class EquilibriumSolver:
 
             # Early termination: if strategies are stable, try projection and verification
             if consecutive_converged:
+                iters_since_verify += 1
+                run_verification = (iters_since_verify >= verify_every_n)
+            else:
+                iters_since_verify = 0
+                run_verification = False
+
+            if consecutive_converged and not run_verification and self.verbose:
+                self._log(f"\n  Strategies stable, skipping verification (next in {verify_every_n - iters_since_verify} iters)...")
+
+            if run_verification:
+                iters_since_verify = 0  # Reset counter after each attempt
                 t_verify_start = time.time()  # Time the entire verification block
 
                 if self.verbose:
