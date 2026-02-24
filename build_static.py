@@ -90,9 +90,9 @@ def build_static_data(
     print(f"Found {len(xlsx_files)} XLSX files in {strategy_tables_dir}/")
     print()
 
-    # Precompute each file
+    # Precompute each file (sorted by name descending = most recent first)
     profiles = []
-    for xlsx_file in sorted(xlsx_files):
+    for xlsx_file in sorted(xlsx_files, key=lambda f: f.stem, reverse=True):
         print(f"Processing {xlsx_file.name}...", end=" ")
 
         try:

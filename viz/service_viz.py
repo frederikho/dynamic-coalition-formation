@@ -1077,7 +1077,8 @@ async def list_profiles(profiles_dir: str = Query(DEFAULT_PROFILES_DIR, descript
                 }
                 for f in xlsx_files
             ],
-            key=lambda p: p["created_at"]
+            key=lambda p: p["created_at"],
+            reverse=True
         )
 
         return {"profiles": profiles}

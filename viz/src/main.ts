@@ -158,7 +158,7 @@ async function loadProfiles() {
       return;
     }
 
-    const sortedProfiles = [...data.profiles].sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0));
+    const sortedProfiles = [...data.profiles].sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
 
     sortedProfiles.forEach(profile => {
       const option = document.createElement('option');
@@ -704,7 +704,7 @@ function updateMetadata(data: GraphData) {
       </span>
     </div>
     ${fileMetadata.discounting ? `<div${highlight('discounting')}><strong>Discounting:</strong> ${fileMetadata.discounting}</div>` : ''}
-    ${fileMetadata.converged !== undefined ? `<div><strong>Converged:</strong> ${fileMetadata.converged ? 'Yes' : 'No'}</div>` : ''}
+    ${fileMetadata.verification_success !== undefined ? `<div><strong>Equilibrium verified:</strong> ${fileMetadata.verification_success === true || fileMetadata.verification_success === 'True' ? '<span style="color:#16a34a;font-weight:600;">Yes</span>' : '<span style="color:#dc2626;font-weight:600;">No</span>'}</div>` : ''}
     ${fileMetadata.outer_iterations ? `<div><strong>Iterations:</strong> ${fileMetadata.outer_iterations}</div>` : ''}
     ${fileMetadata.config_hash ? `<div style="font-size: 11px; color: #888;"><strong>Hash:</strong> ${fileMetadata.config_hash}</div>` : ''}
     ${fileMetadata.end_time ? `<div style="font-size: 11px; color: #888;"><strong>Computed:</strong> ${fileMetadata.end_time}</div>` : ''}
