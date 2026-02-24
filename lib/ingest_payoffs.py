@@ -45,6 +45,9 @@ SAI_SYMBOL = "W_SAI"
 # Year mapping symbol (parameter: period index → calendar year)
 YEAR_SYMBOL = "year"
 
+# Default input directory containing GDX files
+DEFAULT_INPUT_DIR = Path("/home/frederik/Code/RICE50x/results/Burke")
+
 # Default cutoff year for W_SAI summation
 DEFAULT_CUTOFF_YEAR = 2060
 
@@ -625,7 +628,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--input-dir",
-        default="/home/frederik/Code/RICE50x/results/Burke",
+        default=str(DEFAULT_INPUT_DIR),
         help="Directory containing .gdx files (default: %(default)s)",
     )
     parser.add_argument(

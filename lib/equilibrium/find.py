@@ -286,15 +286,15 @@ def _get_solver_params(config, user_params=None):
         default_params.update({
             'tau_p_init': 1,
             'tau_r_init': 1,
-            'tau_decay': 0.99,
-            'tau_min': 0.000000000001,
-            'damping': 0.9,
+            'tau_decay': 0.90,
+            'tau_min': 0.00000001,
+            'damping': 0.50,
             'max_inner_iter': 150,
             'max_outer_iter': 10000,
-            'inner_tol': 2e-2,
+            'inner_tol': 2e-4,
             'outer_tol': 2e-2,
-            'consecutive_tol': 10,
-            'verify_every_n': 20,
+            'consecutive_tol': 5,
+            'verify_every_n': 5,
         })
         
     # Standard parameters for 4-player scenarios. Works well for some of them. Commented out, do not delete yet.
@@ -804,8 +804,57 @@ Available scenarios (use --list-scenarios to see all):
             'State names in the table must match the scenario\'s state names exactly.'
         )
     )
+    parser.add_argument(
+        '--auto-ingest',
+        action='store_true',
+        help=(
+            'Run lib.ingest_payoffs with its default parameters before solving and use the '
+            'resulting payoff table as --payoff-table. '
+            'Output is placed in payoff_tables/<input_dir_name>_<cutoff_year>.xlsx. '
+            'Mutually exclusive with --payoff-table.'
+        )
+    )
 
     args = parser.parse_args()
+
+    # Handle --auto-ingest: create the payoff table if it doesn't exist yet.
+    # The cutoff year is inferred from the filename (e.g. burke_2060.xlsx → 2060).
+    if args.auto_ingest:
+        if args.payoff_table is None:
+            parser.error(
+                "--auto-ingest requires --payoff-table to name the target file; "
+                "the cutoff year is inferred from the filename (e.g. burke_2060.xlsx)"
+            )
+        # Resolve path the same way _load_payoff_table does
+        pt_path = Path(args.payoff_table)
+        if not pt_path.suffix:
+            pt_path = pt_path.with_suffix(".xlsx")
+        if pt_path.parent == Path("."):
+            repo_root = Path(__file__).parent.parent.parent
+            pt_path = repo_root / "payoff_tables" / pt_path
+
+        if pt_path.exists():
+            print(f"[auto-ingest] {pt_path.name} already exists — skipping ingest")
+        else:
+            # Extract cutoff year from stem, e.g. "burke_2060" → 2060
+            stem_parts = pt_path.stem.rsplit("_", 1)
+            if len(stem_parts) != 2 or not stem_parts[1].isdigit():
+                parser.error(
+                    f"Cannot infer cutoff year from '{pt_path.name}'. "
+                    "Encode the year in the stem, e.g. burke_2060.xlsx"
+                )
+            cutoff_year = int(stem_parts[1])
+            from lib.ingest_payoffs import ingest, DEFAULT_INPUT_DIR, DEFAULT_PLAYERS
+            print(f"[auto-ingest] {pt_path.name} not found — running ingest (cutoff year {cutoff_year})")
+            print(f"[auto-ingest] {DEFAULT_INPUT_DIR} → {pt_path}")
+            try:
+                ingest(input_dir=DEFAULT_INPUT_DIR, output_path=pt_path, players=DEFAULT_PLAYERS, cutoff_year=cutoff_year)
+            except FileNotFoundError as e:
+                parser.error(
+                    f"auto-ingest failed: {e}\n"
+                    f"  Update DEFAULT_INPUT_DIR in lib/ingest_payoffs.py to point to your GDX files."
+                )
+        args.payoff_table = str(pt_path)
 
     # Handle --list-scenarios flag
     if args.list_scenarios:
