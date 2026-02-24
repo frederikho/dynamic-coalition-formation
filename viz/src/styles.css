@@ -625,6 +625,14 @@ button.secondary:hover {
   opacity: 0.6;
 }
 
+/* Reusable block styling used in metadata sections (background via CSS so animation can override) */
+.metadata-block {
+  margin-bottom: 12px;
+  padding: 8px;
+  background-color: #f8fafc;
+  border-radius: 4px;
+}
+
 /* Highlight animation for changed metadata fields */
 .changed-field {
   animation: highlight-blink 5s ease-in-out;
@@ -632,7 +640,7 @@ button.secondary:hover {
 
 @keyframes highlight-blink {
   0%, 100% {
-    background-color: transparent;
+    background-color: #f8fafc;
   }
   50% {
     background-color: #fef08a;

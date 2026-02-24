@@ -21,6 +21,7 @@ Usage:
 """
 
 import argparse
+import math
 import re
 import subprocess
 from pathlib import Path
@@ -65,6 +66,7 @@ COLORS = {
     "data_odd":   "FFF5F5F5",  # Very light gray
     "sai_col":    "FFEBF5E8",  # Light green for SAI column
     "source_col": "FFE8F4F8",  # Pale blue for source filename column
+    "best_payoff": "FFFFEEBA", # Amber highlight for best (least negative) payoff per player
 }
 
 THIN = Side(style="thin", color="000000")
@@ -489,6 +491,21 @@ def write_payoff_table(
         src_cell.border = BORDER_ALL
 
         ws.row_dimensions[row_idx].height = 15
+
+    # ------------------------------------------------------------------
+    # Highlight best payoff (least negative) per player column
+    # ------------------------------------------------------------------
+    best_fill = PatternFill(
+        start_color=COLORS["best_payoff"],
+        end_color=COLORS["best_payoff"],
+        fill_type="solid",
+    )
+    for p_idx, player in enumerate(display_names):
+        col_idx = 2 + p_idx
+        max_val = df[player].max()
+        for row_offset, state in enumerate(states):
+            if math.isclose(df.loc[state, player], max_val, rel_tol=1e-13):
+                ws.cell(row=3 + row_offset, column=col_idx).fill = best_fill
 
     # ------------------------------------------------------------------
     # Metadata sheet

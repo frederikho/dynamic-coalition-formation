@@ -50,7 +50,7 @@ def _deployer_key(state) -> str:
     return "(" + "".join(members) + ")"
 
 
-def _load_payoff_table(path: Path, states: list, players: list) -> pd.DataFrame:
+def _load_payoff_table(path: Path, states: list, players: list) -> tuple:
     """
     Load a precomputed payoff table from an Excel file (as produced by lib.ingest_payoffs).
 
@@ -61,12 +61,15 @@ def _load_payoff_table(path: Path, states: list, players: list) -> pd.DataFrame:
 
     The file must have a 'Payoffs' sheet where:
     - Row 1 is a title (skipped)
-    - Row 2 is the header: State, <player1>, <player2>, ..., (other columns)
+    - Row 2 is the header: State, <player1>, <player2>, ..., W_SAI_sum_≤YYYY, (other columns)
     - Column A is the deployer key index
 
     Path resolution: tries the path as given first, then payoff_tables/<basename>.
 
-    Returns a DataFrame indexed by framework state names, columns=players, dtype float64.
+    Returns a tuple (payoffs, geo_levels) where:
+    - payoffs: DataFrame indexed by framework state names, columns=players, dtype float64
+    - geo_levels: DataFrame indexed by framework state names, column="G", with W_SAI values
+                  (or None if no W_SAI_sum_* column is found in the table)
     """
     # Resolve path: as given, or under payoff_tables/
     _default_dir = Path(__file__).parent.parent.parent / "payoff_tables"
@@ -93,9 +96,13 @@ def _load_payoff_table(path: Path, states: list, players: list) -> pd.DataFrame:
             f"Available columns: {df.columns.tolist()}"
         )
 
-    # Build result DataFrame indexed by framework state names
+    # Find W_SAI column (named W_SAI_sum_≤YYYY by ingest_payoffs)
+    sai_col = next((c for c in df.columns if str(c).startswith("W_SAI")), None)
+
+    # Build result DataFrames indexed by framework state names
     state_names = [s.name for s in states]
     payoffs = pd.DataFrame(index=state_names, columns=players, dtype=np.float64)
+    geo_levels = pd.DataFrame(index=state_names, columns=["G"], dtype=np.float64) if sai_col else None
 
     for state in states:
         key = _deployer_key(state)
@@ -106,8 +113,10 @@ def _load_payoff_table(path: Path, states: list, players: list) -> pd.DataFrame:
                 f"Available keys: {df.index.tolist()}"
             )
         payoffs.loc[state.name] = df.loc[key, players].values
+        if sai_col is not None:
+            geo_levels.loc[state.name, "G"] = float(df.loc[key, sai_col])
 
-    return payoffs
+    return payoffs, geo_levels
 
 
 def setup_experiment(config):
@@ -175,10 +184,11 @@ def setup_experiment(config):
     # Load payoffs: either from precomputed table or by computing from state parameters
     payoff_table_path = config.get("payoff_table", None)
     if payoff_table_path is not None:
-        payoffs = _load_payoff_table(Path(payoff_table_path), states, config["players"])
+        payoffs, table_geo_levels = _load_payoff_table(Path(payoff_table_path), states, config["players"])
+        geoengineering = table_geo_levels if table_geo_levels is not None else get_geoengineering_levels(states=states)
     else:
         payoffs = get_payoff_matrix(states=states, columns=config["players"])
-    geoengineering = get_geoengineering_levels(states=states)
+        geoengineering = get_geoengineering_levels(states=states)
     deploying_coalitions = get_deploying_coalitions(states=states)
 
     # Derive effectivity from template or generate
@@ -276,9 +286,9 @@ def _get_solver_params(config, user_params=None):
         default_params.update({
             'tau_p_init': 1,
             'tau_r_init': 1,
-            'tau_decay': 0.98,
+            'tau_decay': 0.99,
             'tau_min': 0.0001,
-            'damping': 0.9,
+            'damping': 0.6,
             'max_inner_iter': 150,
             'max_outer_iter': 1000,
             'inner_tol': 2e-2,

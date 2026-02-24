@@ -686,9 +686,10 @@ def compute_transition_graph(
     discounting = config.get("discounting", 0.99)
     static_payoffs = {state.name: state.payoffs for state in states}
 
-    # If the Results sheet has u_{player} columns, use those static payoffs instead
-    # of values computed from (possibly-fallback) country parameters.
-    # The u_* columns are written by find_equilibrium when --payoff-table is used.
+    # If the Results sheet has V columns for all players, read value functions directly
+    # from the file instead of recomputing via MDP. This is important when country
+    # parameters are from --payoff-table RICE runs because the MDP
+    # would use wrong static payoffs (u=0) and produce wrong V.
     _results_sheet = None
     try:
         _xl = pd.ExcelFile(xlsx_path)
@@ -696,17 +697,6 @@ def compute_transition_graph(
             _results_sheet = pd.read_excel(xlsx_path, sheet_name='Results', header=1, index_col=0)
     except Exception as _e:
         logger.warning(f"Could not read Results sheet: {_e}")
-
-    if _results_sheet is not None:
-        u_cols = [f'u_{p}' for p in config["players"]]
-        if all(col in _results_sheet.columns for col in u_cols):
-            logger.info("Using precomputed static payoffs (u) from Results sheet")
-            for state_name in config["state_names"]:
-                if state_name in _results_sheet.index:
-                    static_payoffs[state_name] = {
-                        p: float(_results_sheet.loc[state_name, f'u_{p}'])
-                        for p in config["players"]
-                    }
 
     # Build payoff matrix: shape (n_states, n_players) ordered by config["players"]
     n_states_count = len(config["state_names"])
@@ -729,6 +719,17 @@ def compute_transition_graph(
             logger.warning(f"Could not solve MDP for player {player}: {e}")
             for state_name in config["state_names"]:
                 long_term_values[state_name][player] = None
+
+    # Override V from Results sheet if present — more reliable than MDP-computed V
+    # when country parameters are fallback values (RICE / payoff-table scenarios).
+    if _results_sheet is not None:
+        v_players = [p for p in config["players"] if p in _results_sheet.columns]
+        if v_players:
+            logger.info("Using precomputed V from Results sheet")
+            for state_name in config["state_names"]:
+                if state_name in _results_sheet.index:
+                    for player in v_players:
+                        long_term_values[state_name][player] = float(_results_sheet.loc[state_name, player])
 
     # 7. Get geoengineering levels and deploying coalitions for metadata
     geo_levels = {state.name: state.geo_deployment_level for state in states}

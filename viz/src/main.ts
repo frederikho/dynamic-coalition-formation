@@ -510,6 +510,7 @@ function updateMetadata(data: GraphData) {
     if (prevMeta.discounting !== fileMetadata.discounting) changedFields.add('discounting');
     if (prevMeta.players !== fileMetadata.players) changedFields.add('players');
     if (previousMetadata.scenario_name !== data.metadata.scenario_name) changedFields.add('scenario');
+    if (prevMeta.payoff_table !== fileMetadata.payoff_table) changedFields.add('payoff_table');
 
     // Check player parameters (including derived ones)
     const players = typeof fileMetadata.players === 'string' ? fileMetadata.players.split(',').map(p => p.trim()) : [];
@@ -561,7 +562,7 @@ function updateMetadata(data: GraphData) {
   let scenarioSection = '';
   if (scenarioName) {
     scenarioSection = `
-      <div style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 4px;"${highlight('scenario')}>
+      <div class="metadata-block${changedFields.has('scenario') ? ' changed-field' : ''}">
         <div><strong>Scenario:</strong> ${scenarioName}</div>
         ${scenarioDescription ? `<div style="font-size: 12px; color: #64748b; margin-top: 4px;">${scenarioDescription}</div>` : ''}
       </div>
@@ -689,6 +690,7 @@ function updateMetadata(data: GraphData) {
   metadataDiv.innerHTML = `
     ${scenarioSection}
     <div><strong>Profile:</strong> ${data.metadata.profile_path.split('/').pop()}</div>
+    ${payoffFromTable ? `<div${highlight('payoff_table')}><strong>Payoff table:</strong> ${(fileMetadata.payoff_table as string)?.split('/').pop()}</div>` : ''}
     <div${highlight('players')}><strong>Players:</strong> ${playersStr}</div>
     <div><strong>States:</strong> ${data.metadata.num_states}</div>
     <div><strong>Transitions:</strong> ${data.metadata.num_transitions}</div>
@@ -757,6 +759,7 @@ function handleNodeSelect(nodeId: string | null) {
   // Render payoffs table
   const payoffs: Record<string, number> | undefined = nodeData.data?.payoffs;
   const values: Record<string, number> | undefined = nodeData.data?.values;
+  const hideStaticPayoffs = currentGraphData?.metadata?.file_metadata?.payoff_source === 'precomputed_table';
   if (payoffs && values) {
     const players = Object.keys(payoffs);
     const rows = players.map(p => {
@@ -764,18 +767,20 @@ function handleNodeSelect(nodeId: string | null) {
       const v = values[p];
       const uStr = (u != null && isFinite(u)) ? u.toFixed(4) : '—';
       const vStr = (v != null && isFinite(v)) ? v.toFixed(4) : '—';
+      const uCell = hideStaticPayoffs ? '' : `<td style="padding:3px 6px;text-align:right;font-variant-numeric:tabular-nums;">${uStr}</td>`;
       return `<tr>
         <td style="padding:3px 6px;font-weight:600;">${p}</td>
-        <td style="padding:3px 6px;text-align:right;font-variant-numeric:tabular-nums;">${uStr}</td>
+        ${uCell}
         <td style="padding:3px 6px;text-align:right;font-variant-numeric:tabular-nums;">${vStr}</td>
       </tr>`;
     }).join('');
+    const uHeader = hideStaticPayoffs ? '' : `<th style="padding:3px 6px;text-align:right;color:#64748b;font-weight:600;">Current (u)</th>`;
     nodePayoffsDiv.innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead>
           <tr style="border-bottom:1px solid #e2e8f0;">
             <th style="padding:3px 6px;text-align:left;color:#64748b;font-weight:600;">Player</th>
-            <th style="padding:3px 6px;text-align:right;color:#64748b;font-weight:600;">Current (u)</th>
+            ${uHeader}
             <th style="padding:3px 6px;text-align:right;color:#64748b;font-weight:600;">Long-term (V)</th>
           </tr>
         </thead>

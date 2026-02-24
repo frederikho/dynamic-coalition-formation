@@ -486,7 +486,7 @@ def verify_approvals(players: List[str], states: List[str],
                                     (current_state, 'Acceptance', approver),
                                     (f'Proposer {proposer}', next_state)]
 
-                    if np.isclose(V_next, V_current, atol=1e-12):
+                    if np.isclose(V_next, V_current, rtol=0, atol=1e-12):
                         passed = (0. <= p_approve <= 1.)
                     elif V_next > V_current:
                         passed = (p_approve == 1.)

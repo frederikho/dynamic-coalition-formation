@@ -28,6 +28,8 @@ from lib.mdp import MDP
 from lib.probabilities_optimized import (
     TransitionProbabilitiesOptimized as TransitionProbabilities,
 )
+import numpy as np
+
 from lib.utils import (
     derive_effectivity,
     get_payoff_matrix,
@@ -37,6 +39,53 @@ from lib.utils import (
 
 
 DEFAULT_STRATEGY_DIR = Path("./strategy_tables")
+DEFAULT_PAYOFF_TABLE_DIR = Path("./payoff_tables")
+
+
+def _deployer_key(state) -> str:
+    """Return the payoff-table row key for a state (mirrors find.py)."""
+    if state.geo_deployment_level == 0:
+        return "( )"
+    members = sorted(country.name for country in state.strongest_coalition.members)
+    return "(" + "".join(members) + ")"
+
+
+def _load_payoff_table(
+    path: Path, state_objects: List, players: List[str]
+) -> "pd.DataFrame":
+    """Load a precomputed payoff table and map rows to framework state names."""
+    if not path.exists():
+        fallback = DEFAULT_PAYOFF_TABLE_DIR / path.name
+        if fallback.exists():
+            path = fallback
+        else:
+            raise FileNotFoundError(
+                f"Payoff table '{path.name}' not found.\n"
+                f"Searched: {path.resolve()}, {fallback.resolve()}\n"
+                f"Tip: place the file in payoff_tables/ or provide the full path."
+            )
+
+    df = pd.read_excel(str(path), sheet_name="Payoffs", header=1, index_col=0)
+
+    missing = [p for p in players if p not in df.columns]
+    if missing:
+        raise ValueError(
+            f"Payoff table {path.name} is missing player columns: {missing}\n"
+            f"Available: {df.columns.tolist()}"
+        )
+
+    state_names = [s.name for s in state_objects]
+    payoffs = pd.DataFrame(index=state_names, columns=players, dtype=np.float64)
+    for state in state_objects:
+        key = _deployer_key(state)
+        if key not in df.index:
+            raise ValueError(
+                f"Payoff table {path.name} has no row for deployer key '{key}' "
+                f"(needed by state '{state.name}').\n"
+                f"Available keys: {df.index.tolist()}"
+            )
+        payoffs.loc[state.name] = df.loc[key, players].values
+    return payoffs
 
 
 def _read_metadata_from_xlsx(xlsx_path: Path) -> Dict[str, Any]:
@@ -253,12 +302,17 @@ def _build_config(xlsx_path: Path, strategy_df: pd.DataFrame) -> Dict[str, Any]:
 
 
 def _parse_coalition_structure(state_name: str, all_countries: List[Country]) -> List[Coalition]:
-    """Parse coalition state label like '(CT)(FW)' into Coalition objects."""
+    """Parse coalition state label like '(RUSUSA)' or '(CT)(FW)' into Coalition objects.
+
+    Handles both single-character names (W, T, C) and multi-character names
+    (NDE, USA, RUS) by greedy left-to-right matching of known player names.
+    """
     country_map = {c.name: c for c in all_countries}
 
     if state_name == "( )":
         return [Coalition([c]) for c in all_countries]
 
+    # Extract the text inside each pair of parentheses.
     coalition_parts: List[str] = []
     current = ""
     depth = 0
@@ -275,14 +329,29 @@ def _parse_coalition_structure(state_name: str, all_countries: List[Country]) ->
         elif depth == 1:
             current += char
 
-    countries_in_coalitions = set()
+    # Sort names longest-first so greedy matching never picks a short prefix
+    # when a longer name starts the same way.
+    sorted_names = sorted(country_map.keys(), key=len, reverse=True)
+
+    countries_in_coalitions: set = set()
     coalitions: List[Coalition] = []
     for part in coalition_parts:
         coalition_members = []
-        for country_name in part:
-            if country_name in country_map:
-                coalition_members.append(country_map[country_name])
-                countries_in_coalitions.add(country_name)
+        remaining = part
+        while remaining:
+            matched = False
+            for name in sorted_names:
+                if remaining.startswith(name):
+                    coalition_members.append(country_map[name])
+                    countries_in_coalitions.add(name)
+                    remaining = remaining[len(name):]
+                    matched = True
+                    break
+            if not matched:
+                raise ValueError(
+                    f"Cannot parse '{remaining}' in coalition part '{part}' "
+                    f"of state '{state_name}'. Known players: {list(country_map)}"
+                )
         if coalition_members:
             coalitions.append(Coalition(coalition_members))
 
@@ -325,7 +394,18 @@ def _run_verification(xlsx_path: Path) -> Tuple[bool, str, Dict[str, Any]]:
         for state_name in states
     ]
 
-    payoffs = get_payoff_matrix(states=state_objects, columns=players)
+    # Use precomputed payoff table if the profile was solved with one.
+    metadata = _read_metadata_from_xlsx(xlsx_path)
+    payoff_source = str(metadata.get("payoff_source", "")).strip()
+    payoff_table_name = str(metadata.get("payoff_table", "")).strip()
+
+    if payoff_source == "precomputed_table" and payoff_table_name:
+        payoff_table_path = Path(payoff_table_name)
+        payoffs = _load_payoff_table(payoff_table_path, state_objects, players)
+        print(f"Payoffs: loaded from '{payoff_table_path.name}'")
+    else:
+        payoffs = get_payoff_matrix(states=state_objects, columns=players)
+
     geoengineering = get_geoengineering_levels(states=state_objects)
 
     effectivity = derive_effectivity(df=strategy_df_raw, players=players, states=states)
