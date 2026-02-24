@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 from dotenv import load_dotenv
@@ -90,9 +91,9 @@ def build_static_data(
     print(f"Found {len(xlsx_files)} XLSX files in {strategy_tables_dir}/")
     print()
 
-    # Precompute each file (sorted by name descending = most recent first)
+    # Precompute each file
     profiles = []
-    for xlsx_file in sorted(xlsx_files, key=lambda f: f.stem, reverse=True):
+    for xlsx_file in sorted(xlsx_files):
         print(f"Processing {xlsx_file.name}...", end=" ")
 
         try:
@@ -111,11 +112,24 @@ def build_static_data(
             xlsx_copy_path = xlsx_output_path / xlsx_file.name
             shutil.copy2(xlsx_file, xlsx_copy_path)
 
+            # Extract end_time from file metadata as a stable created_at timestamp.
+            # Filesystem mtime is unreliable after git clone (all files get clone time),
+            # but end_time is embedded in the file content and survives git.
+            file_meta = graph_data["metadata"].get("file_metadata", {})
+            end_time_str = file_meta.get("end_time", "")
+            created_at = 0
+            if end_time_str:
+                try:
+                    created_at = datetime.strptime(str(end_time_str), "%Y-%m-%d %H:%M:%S").timestamp()
+                except ValueError:
+                    pass
+
             # Add to profiles list
             profiles.append({
                 "name": xlsx_file.stem,
                 "filename": json_filename,
                 "path": str(xlsx_file),
+                "created_at": created_at,
                 "num_states": graph_data["metadata"]["num_states"],
                 "num_transitions": graph_data["metadata"]["num_transitions"],
                 "scenario_name": graph_data["metadata"].get("scenario_name"),
@@ -129,6 +143,9 @@ def build_static_data(
             print(f"✗ Error: {e}")
             import traceback
             traceback.print_exc()
+
+    # Sort by created_at descending (most recently computed first) before writing manifest
+    profiles.sort(key=lambda p: p["created_at"], reverse=True)
 
     # Write profiles manifest
     with open(profiles_path, 'w') as f:
