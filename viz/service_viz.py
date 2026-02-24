@@ -686,6 +686,28 @@ def compute_transition_graph(
     discounting = config.get("discounting", 0.99)
     static_payoffs = {state.name: state.payoffs for state in states}
 
+    # If the Results sheet has u_{player} columns, use those static payoffs instead
+    # of values computed from (possibly-fallback) country parameters.
+    # The u_* columns are written by find_equilibrium when --payoff-table is used.
+    _results_sheet = None
+    try:
+        _xl = pd.ExcelFile(xlsx_path)
+        if 'Results' in _xl.sheet_names:
+            _results_sheet = pd.read_excel(xlsx_path, sheet_name='Results', header=1, index_col=0)
+    except Exception as _e:
+        logger.warning(f"Could not read Results sheet: {_e}")
+
+    if _results_sheet is not None:
+        u_cols = [f'u_{p}' for p in config["players"]]
+        if all(col in _results_sheet.columns for col in u_cols):
+            logger.info("Using precomputed static payoffs (u) from Results sheet")
+            for state_name in config["state_names"]:
+                if state_name in _results_sheet.index:
+                    static_payoffs[state_name] = {
+                        p: float(_results_sheet.loc[state_name, f'u_{p}'])
+                        for p in config["players"]
+                    }
+
     # Build payoff matrix: shape (n_states, n_players) ordered by config["players"]
     n_states_count = len(config["state_names"])
     payoff_matrix = np.array([
@@ -738,6 +760,19 @@ def compute_transition_graph(
                 deployer_name = f"({''.join(sorted_names)})"
 
         deploying_coalitions[state.name] = deployer_name
+
+    # Override geo_levels and deploying_coalitions from Results sheet if available
+    if _results_sheet is not None:
+        if 'G (°C cooling)' in _results_sheet.columns:
+            for sn in config["state_names"]:
+                if sn in _results_sheet.index:
+                    geo_levels[sn] = float(_results_sheet.loc[sn, 'G (°C cooling)'])
+        if 'Deployed by' in _results_sheet.columns:
+            for sn in config["state_names"]:
+                if sn in _results_sheet.index:
+                    val = _results_sheet.loc[sn, 'Deployed by']
+                    # pandas reads "None" as NaN; treat NaN as no deployment
+                    deploying_coalitions[sn] = "None" if pd.isna(val) else str(val)
 
     # 8. Convert to graph format
     nodes = []

@@ -92,6 +92,60 @@ function showStatus(message: string, type: 'info' | 'error' | 'success') {
   }, 5000);
 }
 
+function getProfileSlug(profilePath: string): string {
+  const filename = profilePath.split('/').pop() ?? profilePath;
+  return filename.replace(/\.(xlsx|json)$/i, '');
+}
+
+function normalizeProfileKey(raw: string): string {
+  const decoded = decodeURIComponent(raw.trim());
+  const withoutPrefix = decoded.replace(/^#/, '');
+  const withoutPath = withoutPrefix.includes('/') ? (withoutPrefix.split('/').pop() ?? withoutPrefix) : withoutPrefix;
+  return withoutPath.replace(/\.(xlsx|json)$/i, '').toLowerCase();
+}
+
+function getRequestedProfileKeyFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+
+  const hash = window.location.hash?.slice(1)?.trim();
+  if (hash) {
+    return normalizeProfileKey(hash);
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get('profile') || params.get('p') || params.get('xlsx');
+  if (!fromQuery) return null;
+
+  return normalizeProfileKey(fromQuery);
+}
+
+function findProfilePathByKey(requestedKey: string, profiles: Array<{ path: string; name: string; filename?: string }>): string | null {
+  const key = normalizeProfileKey(requestedKey);
+
+  for (const profile of profiles) {
+    const candidates = [
+      profile.name,
+      profile.path,
+      profile.filename || '',
+      getProfileSlug(profile.path)
+    ];
+    if (candidates.some(candidate => candidate && normalizeProfileKey(candidate) === key)) {
+      return profile.path;
+    }
+  }
+
+  return null;
+}
+
+function syncUrlToSelectedProfile() {
+  if (typeof window === 'undefined' || !profileSelect.value) return;
+
+  const slug = getProfileSlug(profileSelect.value);
+  const url = new URL(window.location.href);
+  url.hash = slug;
+  window.history.replaceState(null, '', url.toString());
+}
+
 // Load profiles list
 async function loadProfiles() {
   try {
@@ -112,6 +166,16 @@ async function loadProfiles() {
       option.textContent = profile.name;
       profileSelect.appendChild(option);
     });
+
+    const requestedKey = getRequestedProfileKeyFromUrl();
+    if (requestedKey) {
+      const matchedPath = findProfilePathByKey(requestedKey, sortedProfiles);
+      if (matchedPath) {
+        profileSelect.value = matchedPath;
+      } else {
+        showStatus(`Profile not found for URL key: ${requestedKey}`, 'error');
+      }
+    }
 
     // Auto-load first profile
     if (data.profiles.length > 0) {
@@ -508,8 +572,12 @@ function updateMetadata(data: GraphData) {
   const playersStr = fileMetadata.players || data.metadata.num_players || 'N/A';
   const players = typeof playersStr === 'string' ? playersStr.split(',').map(p => p.trim()) : [];
 
+  // When payoffs come from a precomputed table (e.g. RICE50x), the temperature/damage
+  // parameters stored in metadata are placeholder values and should not be shown.
+  const payoffFromTable = fileMetadata.payoff_source === 'precomputed_table';
+
   let playerParamsSection = '';
-  if (players.length > 0) {
+  if (players.length > 0 && !payoffFromTable) {
     const paramNames = ['base_temp', 'delta_temp', 'temp_before_sg', 'ideal_temp', 'ideal_g', 'm_damage', 'power', 'protocol'];
     const paramLabels: Record<string, string> = {
       'base_temp': 'Base Temp',
@@ -673,11 +741,13 @@ function handleNodeSelect(nodeId: string | null) {
   // Display state name with deploying coalition info if available
   const deployingCoalition = nodeData.data?.deploying_coalition;
   const geoLevel = nodeData.data?.geo_level;
+  const payoffFromTableNode = currentGraphData?.metadata?.file_metadata?.payoff_source === 'precomputed_table';
   if (deployingCoalition !== undefined && geoLevel !== undefined) {
+    const geoStr = payoffFromTableNode ? '' : ` (G = ${geoLevel.toFixed(3)}°C)`;
     selectedStateNameSpan.innerHTML = `
       ${normalizedStateName}
       <div style="font-size:11px;color:#64748b;margin-top:4px;">
-        Deployed by: <strong>${deployingCoalition}</strong> (G = ${geoLevel.toFixed(3)}°C)
+        Deployed by: <strong>${deployingCoalition}</strong>${geoStr}
       </div>
     `;
   } else {
@@ -913,6 +983,7 @@ probThresholdInput.addEventListener('change', () => {
 
 // Profile change should auto-refresh
 profileSelect.addEventListener('change', async () => {
+  syncUrlToSelectedProfile();
   await loadGraph();
 });
 
@@ -1108,6 +1179,18 @@ async function init() {
   // Initialize tooltip
   updateTooltip();
   setupGlobalTooltips();
+
+  window.addEventListener('hashchange', () => {
+    const requestedKey = getRequestedProfileKeyFromUrl();
+    if (!requestedKey) return;
+
+    const optionValues = Array.from(profileSelect.options).map(opt => opt.value);
+    const matched = optionValues.find(value => normalizeProfileKey(getProfileSlug(value)) === requestedKey);
+    if (matched && matched !== profileSelect.value) {
+      profileSelect.value = matched;
+      loadGraph();
+    }
+  });
 
   // Load profiles
   await loadProfiles();

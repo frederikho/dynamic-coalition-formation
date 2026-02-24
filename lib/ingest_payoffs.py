@@ -1,9 +1,11 @@
 """
 Ingest precomputed payoff values from GDX files into a formatted Excel payoff table.
 
-Reads `welfare_regional_farsighted` for a set of regions and `W_SAI` (global SAI
-deployment level, summed up to a cutoff year) from each GDX file in a directory,
-where each file corresponds to one coalition state (deployment scenario).
+Reads `welfare_regional_t` (welfare per region per time period, summed up to a cutoff
+year) and `W_SAI` (global SAI deployment level, also summed up to a cutoff year) from
+each GDX file in a directory, where each file corresponds to one coalition state
+(deployment scenario).  The period-to-year mapping is read from the `year` parameter
+in the same GDX file.
 
 State names in the output match the framework's coalition-structure notation exactly
 (e.g. '( )', '(INDUSA)', '(INDRUSUSA)'), so the table can be consumed directly by
@@ -33,8 +35,8 @@ from itertools import chain, combinations
 # Path to gdxdump binary
 GDXDUMP = Path("/opt/gams/gams52.4_linux_x64_64_sfx/gdxdump")
 
-# Welfare symbol to extract (one value per region)
-WELFARE_SYMBOL = "welfare_regional_farsighted"
+# Welfare symbol to extract (one value per region per time period, GAMS parameter)
+WELFARE_SYMBOL = "welfare_regional_t"
 
 # SAI deployment symbol (one value per time period, GAMS variable → use .L levels)
 SAI_SYMBOL = "W_SAI"
@@ -122,6 +124,31 @@ def parse_gdx_parameter(gdx_path: Path, symbol: str) -> dict[str, float]:
     return values
 
 
+def parse_gdx_parameter_2d(
+    gdx_path: Path, symbol: str
+) -> dict[tuple[str, str], float]:
+    """
+    Parse a 2-dimensional GAMS *parameter* from a GDX file.
+
+    Lines look like:  'dim1'.'dim2' numeric_value,
+    Returns dict mapping (dim1_lower, dim2_lower) → float value.
+    """
+    text = _gdxdump(gdx_path, symbol)
+    pattern = re.compile(r"'([^']+)'\.'([^']+)'\s+([-+\d.eE]+)")
+    values: dict[tuple[str, str], float] = {}
+    for line in text.splitlines():
+        m = pattern.search(line)
+        if m:
+            values[(m.group(1).strip().lower(), m.group(2).strip().lower())] = float(
+                m.group(3)
+            )
+    if not values:
+        raise RuntimeError(
+            f"Symbol '{symbol}' not found or has no values in {gdx_path.name}"
+        )
+    return values
+
+
 def parse_gdx_variable_levels(gdx_path: Path, symbol: str) -> dict[str, float]:
     """
     Parse the level values (.L) of a GAMS *variable* from a GDX file.
@@ -162,6 +189,38 @@ def compute_sai_sum(gdx_path: Path, cutoff_year: int) -> float:
             # Periods with no .L entry have level 0
             total += sai_levels.get(period_key, 0.0)
     return total
+
+
+def compute_welfare_sums(
+    gdx_path: Path,
+    region_codes: list[str],
+    cutoff_year: int,
+) -> dict[str, float]:
+    """
+    Sum `welfare_regional_t` for each region over all periods whose calendar year
+    <= cutoff_year.
+
+    Uses the `year` parameter from the same GDX file to map period indices to
+    calendar years.
+
+    Args:
+        gdx_path:     Path to the GDX file.
+        region_codes: List of lowercase GAMS region codes (e.g. ['nde', 'usa', 'rus']).
+        cutoff_year:  Only include periods with calendar year <= this value.
+
+    Returns:
+        Dict mapping region code (lowercase) → summed welfare float.
+    """
+    year_map = parse_gdx_parameter(gdx_path, YEAR_SYMBOL)
+    welfare_by_region_period = parse_gdx_parameter_2d(gdx_path, WELFARE_SYMBOL)
+
+    totals: dict[str, float] = {code.lower(): 0.0 for code in region_codes}
+    for period_key, calendar_year in year_map.items():
+        if calendar_year <= cutoff_year:
+            for code in region_codes:
+                key = (period_key.lower(), code.lower())  # gdxdump: 'period'.'region'
+                totals[code.lower()] += welfare_by_region_period.get(key, 0.0)
+    return totals
 
 
 def _build_token_map(players: list[tuple[str, str]]) -> dict[str, str]:
@@ -359,7 +418,7 @@ def write_payoff_table(
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
     title_cell = ws.cell(
         row=1, column=1,
-        value=f"Precomputed Payoffs — {WELFARE_SYMBOL}  |  {SAI_SYMBOL} sum ≤ {cutoff_year}",
+        value=f"Precomputed Payoffs — {WELFARE_SYMBOL} sum ≤ {cutoff_year}  |  {SAI_SYMBOL} sum ≤ {cutoff_year}",
     )
     title_cell.font = Font(name="Calibri", bold=True, size=12, color="FFFFFFFF")
     title_cell.fill = PatternFill(start_color=COLORS["title"],
@@ -507,13 +566,15 @@ def ingest(
     # Process rows in subset order (empty first, then singletons, pairs, grand)
     ordered_keys = [k for k in all_keys if k in key_to_file]
 
+    region_codes = [code for code, _ in players]
+
     # --- Extract payoffs from each GDX file -----------------------------------
     rows: list[dict] = []
     for state_name in ordered_keys:
         gdx_path = key_to_file[state_name]
         print(f"  {gdx_path.name}  →  deployer '{state_name}'")
 
-        welfare = parse_gdx_parameter(gdx_path, WELFARE_SYMBOL)
+        welfare = compute_welfare_sums(gdx_path, region_codes, cutoff_year)
         sai_sum = compute_sai_sum(gdx_path, cutoff_year)
 
         row: dict = {"state": state_name, "source_file": gdx_path.name}
@@ -552,8 +613,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default=str(repo_root / "payoff_tables" / "burke.xlsx"),
-        help="Output .xlsx path (default: %(default)s)",
+        default="burke",
+        help=(
+            "Output path or bare stem. A bare name (no directory) is placed in "
+            "payoff_tables/; .xlsx is appended if missing. (default: %(default)s)"
+        ),
     )
     parser.add_argument(
         "--cutoff-year",
@@ -579,9 +643,15 @@ def main() -> None:
     else:
         players = DEFAULT_PLAYERS
 
+    output = Path(args.output)
+    if not output.suffix:
+        output = output.with_suffix(".xlsx")
+    if not output.parent.parts or output.parent == Path("."):
+        output = repo_root / "payoff_tables" / output
+
     ingest(
         input_dir=Path(args.input_dir),
-        output_path=Path(args.output),
+        output_path=output,
         players=players,
         cutoff_year=args.cutoff_year,
     )

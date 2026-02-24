@@ -94,7 +94,7 @@ def generate_filename(config, description=None, output_dir='./strategy_tables'):
 def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: list,
                               effectivity: dict = None, states: list = None, metadata: dict = None,
                               value_functions: pd.DataFrame = None, geo_levels: dict = None,
-                              deploying_coalitions: dict = None):
+                              deploying_coalitions: dict = None, static_payoffs: pd.DataFrame = None):
     """
     Write a strategy DataFrame to Excel with exact formatting matching original files.
 
@@ -407,21 +407,22 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                 )
                 cell.border = final_border
 
+    # Precompute geo_dict (used in both Results and StaticPayoffs sheets)
+    geo_dict = None
+    if geo_levels is not None:
+        if isinstance(geo_levels, pd.DataFrame):
+            geo_dict = geo_levels['G'].to_dict()
+        else:
+            geo_dict = geo_levels
+
     # Add Results sheet if value functions or geo levels are provided
     if value_functions is not None or geo_levels is not None:
         ws_results = wb.create_sheet(title="Results")
 
-        # Convert geo_levels to dict if it's a DataFrame
-        geo_dict = None
-        if geo_levels is not None:
-            if isinstance(geo_levels, pd.DataFrame):
-                geo_dict = geo_levels['G'].to_dict()
-            else:
-                geo_dict = geo_levels
-
         # Set column widths
         ws_results.column_dimensions['A'].width = 12
-        num_cols = 1 + len(players) + (1 if geo_dict else 0) + (1 if deploying_coalitions else 0)
+        num_cols = (1 + len(players) + (1 if geo_dict else 0) + (1 if deploying_coalitions else 0)
+                   + (len(players) if static_payoffs is not None else 0))
         for i in range(1, num_cols):
             col_letter = get_column_letter(1 + i)
             ws_results.column_dimensions[col_letter].width = 12
@@ -473,6 +474,18 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                 start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
             )
             ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
+            col_idx += 1
+
+        # Static payoff (u) columns — machine-readable, used by service_viz.py
+        if static_payoffs is not None:
+            for player in players:
+                ws_results.cell(row=current_row, column=col_idx, value=f"u_{player}")
+                ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', bold=True, size=10)
+                ws_results.cell(row=current_row, column=col_idx).fill = PatternFill(
+                    start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+                )
+                ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
+                col_idx += 1
 
         # Data rows
         current_row = 3
@@ -512,6 +525,17 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                 ws_results.cell(row=current_row, column=col_idx, value=deployer)
                 ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', size=10)
                 ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
+                col_idx += 1
+
+            # Static payoff (u) values
+            if static_payoffs is not None:
+                for player in players:
+                    val = float(static_payoffs.loc[state, player])
+                    ws_results.cell(row=current_row, column=col_idx, value=val)
+                    ws_results.cell(row=current_row, column=col_idx).number_format = '0.000000'
+                    ws_results.cell(row=current_row, column=col_idx).font = Font(name='Calibri', size=10)
+                    ws_results.cell(row=current_row, column=col_idx).alignment = Alignment(horizontal='right', vertical='center')
+                    col_idx += 1
 
             current_row += 1
 

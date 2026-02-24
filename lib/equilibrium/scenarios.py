@@ -169,7 +169,7 @@ def get_base_config_rice_n3():
     return {
         "players": players,
         # Approximate representative temperatures (°C); only used when no payoff table
-        "base_temp": {"NDE": 28.0, "USA": 14.0, "RUS": 5.0},
+        "base_temp": {"NDE": 13.0, "USA": 13.0, "RUS": 13.0},
         "ideal_temp": {player: 13.0 for player in players},
         "delta_temp": {player: 3.0 for player in players},
         "power": {player: 1/3 for player in players},
@@ -179,7 +179,7 @@ def get_base_config_rice_n3():
     }
 
 
-SCENARIOS["power_threshold_rice_n3"] = {
+SCENARIOS["power_threshold_RICE_n3"] = {
     **get_base_config_rice_n3(),
     "scenario_description": (
         "3-player power threshold for NDE (India), USA, RUS (Russia) with equal power (1/3 each). "
@@ -188,7 +188,7 @@ SCENARIOS["power_threshold_rice_n3"] = {
     "power_rule": "power_threshold",
 }
 
-SCENARIOS["power_threshold_no_unanimity_rice_n3"] = {
+SCENARIOS["power_threshold_no_unanimity_RICE_n3"] = {
     **get_base_config_rice_n3(),
     "scenario_description": (
         "3-player power threshold for NDE (India), USA, RUS (Russia), no unanimity. "

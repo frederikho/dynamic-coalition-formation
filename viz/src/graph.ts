@@ -8,28 +8,33 @@ import { computeAbsorbingSets } from './absorbing';
 cytoscape.use(coseBilkent);
 cytoscape.use(cola);
 
-// Standard player order for normalization
+// Standard player order for normalization (single-character player names only)
 const STANDARD_ORDER = ['H', 'W', 'T', 'C', 'F', 'A', 'B', 'D', 'E', 'G'];
 
 function normalizeStateName(stateName: string): string {
   /**
    * Normalize state name to use standard player order (H, W, T, C, F, ...).
    * E.g., "(CTW)" -> "(WTC)", "(CF)(TW)" -> "(CF)(TW)"
+   *
+   * For multi-character player names (e.g. NDE, USA, RUS) the backend already
+   * produces canonical names sorted alphabetically, so we return them unchanged.
+   * Detection: if any character inside the parens is NOT in STANDARD_ORDER, the
+   * coalition uses multi-char names and must not be re-split.
    */
   if (stateName === '( )') return stateName;
 
-  // Extract all coalitions from the state name
-  const coalitionMatches = stateName.match(/\([A-Z]+\)/g);
+  // Match coalitions including those with digits (e.g. GOLF57)
+  const coalitionMatches = stateName.match(/\([A-Z0-9]+\)/g);
   if (!coalitionMatches) return stateName;
 
-  // Normalize each coalition
   const normalizedCoalitions = coalitionMatches.map(coalition => {
-    const members = coalition.slice(1, -1).split(''); // Remove parens and split
-    const sorted = members.sort((a, b) => {
-      const indexA = STANDARD_ORDER.indexOf(a);
-      const indexB = STANDARD_ORDER.indexOf(b);
-      return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
-    });
+    const content = coalition.slice(1, -1);
+    const chars = content.split('');
+    // Only re-sort if every character is a known single-char player
+    if (!chars.every(c => STANDARD_ORDER.includes(c))) {
+      return coalition; // Multi-char names: already canonical, return unchanged
+    }
+    const sorted = chars.sort((a, b) => STANDARD_ORDER.indexOf(a) - STANDARD_ORDER.indexOf(b));
     return `(${sorted.join('')})`;
   });
 

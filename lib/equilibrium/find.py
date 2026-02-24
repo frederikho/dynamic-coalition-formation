@@ -64,10 +64,23 @@ def _load_payoff_table(path: Path, states: list, players: list) -> pd.DataFrame:
     - Row 2 is the header: State, <player1>, <player2>, ..., (other columns)
     - Column A is the deployer key index
 
+    Path resolution: tries the path as given first, then payoff_tables/<basename>.
+
     Returns a DataFrame indexed by framework state names, columns=players, dtype float64.
     """
+    # Resolve path: as given, or under payoff_tables/
+    _default_dir = Path(__file__).parent.parent.parent / "payoff_tables"
     if not path.exists():
-        raise FileNotFoundError(f"Payoff table not found: {path}")
+        fallback = _default_dir / path.name
+        if fallback.exists():
+            path = fallback
+        else:
+            searched = [str(path.resolve()), str(fallback.resolve())]
+            raise FileNotFoundError(
+                f"Payoff table '{path.name}' not found.\n"
+                f"Searched:\n" + "\n".join(f"  {p}" for p in searched) + "\n"
+                f"Tip: place the file in payoff_tables/ or provide the full path."
+            )
 
     # header=1 uses the second row (0-indexed) as column names; index_col=0 uses State column as index
     df = pd.read_excel(str(path), sheet_name="Payoffs", header=1, index_col=0)
@@ -523,7 +536,8 @@ def _save_to_file(strategy_df, output_file, setup, metadata, V=None, verbose=Tru
         strategy_df, output_file, setup['players'],
         setup['effectivity'], setup['state_names'], metadata=metadata,
         value_functions=V, geo_levels=setup['geoengineering'],
-        deploying_coalitions=setup.get('deploying_coalitions', None)
+        deploying_coalitions=setup.get('deploying_coalitions', None),
+        static_payoffs=setup['payoffs']
     )
 
     if verbose and logger:
