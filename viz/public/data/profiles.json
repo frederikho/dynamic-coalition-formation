@@ -19,6 +19,15 @@
       "scenario_description": "Power threshold without unanimity; W less vulnerable (0.75), T more vulnerable (1.25)."
     },
     {
+      "name": "eq_n3_power_threshold_rice_de0b0b",
+      "filename": "eq_n3_power_threshold_rice_de0b0b.json",
+      "path": "strategy_tables/eq_n3_power_threshold_rice_de0b0b.xlsx",
+      "num_states": 5,
+      "num_transitions": 8,
+      "scenario_name": "power_threshold_rice_n3",
+      "scenario_description": "3-player power threshold for NDE (India), USA, RUS (Russia) with equal power (1/3 each). Intended for use with --payoff-table to load RICE50x welfare payoffs."
+    },
+    {
       "name": "eq_n3_power_threshold_unequal_power2_e7ba5e",
       "filename": "eq_n3_power_threshold_unequal_power2_e7ba5e.json",
       "path": "strategy_tables/eq_n3_power_threshold_unequal_power2_e7ba5e.xlsx",

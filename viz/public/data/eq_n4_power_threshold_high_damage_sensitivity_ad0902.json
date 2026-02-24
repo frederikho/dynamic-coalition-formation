@@ -6,7 +6,19 @@
       "meta": {
         "index": 0,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        },
+        "values": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        }
       }
     },
     {
@@ -15,7 +27,19 @@
       "meta": {
         "index": 1,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        },
+        "values": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        }
       }
     },
     {
@@ -24,7 +48,19 @@
       "meta": {
         "index": 2,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        },
+        "values": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        }
       }
     },
     {
@@ -33,7 +69,19 @@
       "meta": {
         "index": 3,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        },
+        "values": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        }
       }
     },
     {
@@ -42,7 +90,19 @@
       "meta": {
         "index": 4,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        },
+        "values": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        }
       }
     },
     {
@@ -51,7 +111,19 @@
       "meta": {
         "index": 5,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        },
+        "values": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        }
       }
     },
     {
@@ -60,7 +132,19 @@
       "meta": {
         "index": 6,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        },
+        "values": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        }
       }
     },
     {
@@ -69,7 +153,19 @@
       "meta": {
         "index": 7,
         "geo_level": 1.5,
-        "deploying_coalition": "(TCF)"
+        "deploying_coalition": "(TCF)",
+        "payoffs": {
+          "W": 64.5,
+          "T": 19.5,
+          "C": 4.5,
+          "F": -10.5
+        },
+        "values": {
+          "W": 2.504854368932047,
+          "T": 0.7572815533980607,
+          "C": 0.17475728155339862,
+          "F": -0.40776699029126345
+        }
       }
     },
     {
@@ -78,7 +174,19 @@
       "meta": {
         "index": 8,
         "geo_level": 4.0,
-        "deploying_coalition": "(WCF)"
+        "deploying_coalition": "(WCF)",
+        "payoffs": {
+          "W": 152.0,
+          "T": 32.0,
+          "C": -8.0,
+          "F": -48.0
+        },
+        "values": {
+          "W": 3.009900990099013,
+          "T": 0.6336633663366343,
+          "C": -0.15841584158415858,
+          "F": -0.9504950495049516
+        }
       }
     },
     {
@@ -87,7 +195,19 @@
       "meta": {
         "index": 9,
         "geo_level": 5.666666666666667,
-        "deploying_coalition": "(WTC)"
+        "deploying_coalition": "(WTC)",
+        "payoffs": {
+          "W": 196.44444444444446,
+          "T": 26.444444444444443,
+          "C": -30.22222222222223,
+          "F": -86.8888888888889
+        },
+        "values": {
+          "W": 7.628910463861942,
+          "T": 1.0269687162891075,
+          "C": -1.1736785329018373,
+          "F": -3.3743257820927823
+        }
       }
     },
     {
@@ -96,7 +216,19 @@
       "meta": {
         "index": 10,
         "geo_level": 4.833333333333333,
-        "deploying_coalition": "(WTF)"
+        "deploying_coalition": "(WTF)",
+        "payoffs": {
+          "W": 175.6111111111111,
+          "T": 30.61111111111111,
+          "C": -17.722222222222218,
+          "F": -66.05555555555554
+        },
+        "values": {
+          "W": 6.819848975188802,
+          "T": 1.1887810140237363,
+          "C": -0.6882416396979525,
+          "F": -2.565264293419641
+        }
       }
     },
     {
@@ -105,7 +237,19 @@
       "meta": {
         "index": 11,
         "geo_level": 4.0,
-        "deploying_coalition": "(WTCF)"
+        "deploying_coalition": "(WTCF)",
+        "payoffs": {
+          "W": 152.0,
+          "T": 32.0,
+          "C": -8.0,
+          "F": -48.0
+        },
+        "values": {
+          "W": 3.009900990099012,
+          "T": 0.6336633663366342,
+          "C": -0.15841584158415856,
+          "F": -0.9504950495049512
+        }
       }
     },
     {
@@ -114,7 +258,19 @@
       "meta": {
         "index": 12,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        },
+        "values": {
+          "W": 0.0,
+          "T": 0.0,
+          "C": 0.0,
+          "F": 0.0
+        }
       }
     },
     {
@@ -123,7 +279,19 @@
       "meta": {
         "index": 13,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        },
+        "values": {
+          "W": 0.0,
+          "T": 0.0,
+          "C": 0.0,
+          "F": 0.0
+        }
       }
     },
     {
@@ -132,7 +300,19 @@
       "meta": {
         "index": 14,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        },
+        "values": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0,
+          "F": -0.0
+        }
       }
     }
   ],

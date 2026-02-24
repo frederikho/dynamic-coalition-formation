@@ -6,7 +6,17 @@
       "meta": {
         "index": 0,
         "geo_level": 0.0,
-        "deploying_coalition": "None"
+        "deploying_coalition": "None",
+        "payoffs": {
+          "W": -0.0,
+          "T": -0.0,
+          "C": -0.0
+        },
+        "values": {
+          "W": 55.130625,
+          "T": 14.293125000000003,
+          "C": 0.680625
+        }
       }
     },
     {
@@ -15,7 +25,17 @@
       "meta": {
         "index": 1,
         "geo_level": 2.75,
-        "deploying_coalition": "(TC)"
+        "deploying_coalition": "(TC)",
+        "payoffs": {
+          "W": 55.6875,
+          "T": 14.4375,
+          "C": 0.6875
+        },
+        "values": {
+          "W": 55.6875,
+          "T": 14.437500000000004,
+          "C": 0.6875
+        }
       }
     },
     {
@@ -24,7 +44,17 @@
       "meta": {
         "index": 2,
         "geo_level": 6.5,
-        "deploying_coalition": "(WC)"
+        "deploying_coalition": "(WC)",
+        "payoffs": {
+          "W": 107.25,
+          "T": 9.75,
+          "C": -22.75
+        },
+        "values": {
+          "W": 56.663547794117626,
+          "T": 14.159503676470587,
+          "C": -0.008511029411765418
+        }
       }
     },
     {
@@ -33,7 +63,17 @@
       "meta": {
         "index": 3,
         "geo_level": 7.749999999999999,
-        "deploying_coalition": "(WT)"
+        "deploying_coalition": "(WT)",
+        "payoffs": {
+          "W": 118.1875,
+          "T": 1.937500000000007,
+          "C": -36.812499999999986
+        },
+        "values": {
+          "W": 56.98523897058822,
+          "T": 13.92972426470588,
+          "C": -0.4221139705882359
+        }
       }
     },
     {
@@ -42,7 +82,17 @@
       "meta": {
         "index": 4,
         "geo_level": 5.666666666666666,
-        "deploying_coalition": "(WTC)"
+        "deploying_coalition": "(WTC)",
+        "payoffs": {
+          "W": 98.22222222222221,
+          "T": 13.222222222222225,
+          "C": -15.111111111111107
+        },
+        "values": {
+          "W": 57.442271424739026,
+          "T": 14.032339466881275,
+          "C": -0.4376378524046442
+        }
       }
     }
   ],
