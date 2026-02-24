@@ -154,6 +154,51 @@ SCENARIOS["power_threshold_very_powerful_W_n3"] = {
 }
 
 
+# ========== RICE50x scenarios (payoffs from RICE model) ==========
+
+def get_base_config_rice_n3():
+    """
+    Base configuration for 3-player RICE50x games (NDE=India, USA, RUS=Russia).
+
+    Player names are the uppercase RICE50x region codes (see lib/rice50x_regions.py).
+    Temperature parameters are placeholders; actual payoffs are loaded from a
+    precomputed RICE50x table via --payoff-table.  Power is set to 1/3 each
+    (equal); adjust per-scenario as needed.
+    """
+    players = ["NDE", "USA", "RUS"]
+    return {
+        "players": players,
+        # Approximate representative temperatures (°C); only used when no payoff table
+        "base_temp": {"NDE": 28.0, "USA": 14.0, "RUS": 5.0},
+        "ideal_temp": {player: 13.0 for player in players},
+        "delta_temp": {player: 3.0 for player in players},
+        "power": {player: 1/3 for player in players},
+        "protocol": {player: 1/3 for player in players},
+        "discounting": 0.99,
+        "state_names": None,  # Will be generated automatically
+    }
+
+
+SCENARIOS["power_threshold_rice_n3"] = {
+    **get_base_config_rice_n3(),
+    "scenario_description": (
+        "3-player power threshold for NDE (India), USA, RUS (Russia) with equal power (1/3 each). "
+        "Intended for use with --payoff-table to load RICE50x welfare payoffs."
+    ),
+    "power_rule": "power_threshold",
+}
+
+SCENARIOS["power_threshold_no_unanimity_rice_n3"] = {
+    **get_base_config_rice_n3(),
+    "scenario_description": (
+        "3-player power threshold for NDE (India), USA, RUS (Russia), no unanimity. "
+        "Intended for use with --payoff-table to load RICE50x welfare payoffs."
+    ),
+    "power_rule": "power_threshold",
+    "unanimity_required": False,
+}
+
+
 # ========== 4-player scenarios ==========
 
 SCENARIOS["weak_governance_n4"] = {

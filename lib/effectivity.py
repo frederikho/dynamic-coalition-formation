@@ -36,10 +36,10 @@ def heyen_lehtomaa_2021(players: list, states: list) -> dict:
 
     for proposer in players:
         for current_state in states:
-            current_members = list_members(current_state)
+            current_members = list_members(current_state, players)
 
             for next_state in states:
-                next_members = list_members(next_state)
+                next_members = list_members(next_state, players)
 
                 for responder in players:
                     key = (proposer, current_state, next_state, responder)
@@ -52,7 +52,7 @@ def heyen_lehtomaa_2021(players: list, states: list) -> dict:
                     # Rules 2a/2b: Exit-type transition.
                     # _exit_committee() returns the set of actively exiting players
                     # (proposer + any co-exiters), or empty if not exit-type.
-                    committee = _exit_committee(proposer, current_state, next_state)
+                    committee = _exit_committee(proposer, current_state, next_state, players)
 
                     if committee:
                         if len(committee) == 1:
@@ -78,8 +78,8 @@ def heyen_lehtomaa_2021(players: list, states: list) -> dict:
                     joining = is_in_coalition and not was_in_coalition
                     leaving = was_in_coalition and not is_in_coalition
 
-                    current_coalition = get_player_coalition(responder, current_state)
-                    next_coalition = get_player_coalition(responder, next_state)
+                    current_coalition = get_player_coalition(responder, current_state, players)
+                    next_coalition = get_player_coalition(responder, next_state, players)
                     switching = (was_in_coalition and is_in_coalition and
                                  current_coalition != next_coalition)
 

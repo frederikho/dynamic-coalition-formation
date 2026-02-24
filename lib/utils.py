@@ -112,25 +112,59 @@ def get_deploying_coalitions(states: List[State]) -> Dict[str, str]:
     return deployers
 
 
-def list_members(state: str) -> List[str]:
+def _parse_coalition_members(coalition_str: str, players: List[str]) -> List[str]:
+    """Parse a concatenated coalition string into individual player names.
+
+    Uses greedy left-to-right matching against the known player list (longest
+    names tried first) so that multi-character names like 'IND', 'USA', 'RUS'
+    are handled correctly.
+
+    Examples (players = ['IND', 'USA', 'RUS']):
+        'INDRUS'    → ['IND', 'RUS']
+        'INDRUSUSA' → ['IND', 'RUS', 'USA']
+        ''          → []
+    """
+    sorted_players = sorted(players, key=len, reverse=True)
+    remaining = coalition_str
+    result: List[str] = []
+    while remaining:
+        for p in sorted_players:
+            if remaining.startswith(p):
+                result.append(p)
+                remaining = remaining[len(p):]
+                break
+        else:
+            raise ValueError(
+                f"Cannot parse coalition string '{coalition_str}' "
+                f"using players {players}: stuck at '{remaining}'"
+            )
+    return result
+
+
+def list_members(state: str, players: List[str] = None) -> List[str]:
     """ Lists all the member countries of all existing coalitions.
 
     For instance:
         list_members('(WTC)') returns ['W', 'T', 'C']
         list_members('(CT)(FW)') returns ['C', 'T', 'F', 'W']
         list_members('( )') returns []
+
+    When *players* is provided, uses greedy multi-character name matching so
+    that names like 'IND', 'USA', 'RUS' are parsed correctly from strings like
+    '(INDRUS)'.
     """
     import re
-    # Find all parenthesized groups and extract letters
-    coalitions = re.findall(r'\(([A-Z]*)\)', state)
-    # Flatten and return all members from all coalitions
+    coalition_strs = re.findall(r'\(([A-Z0-9]*)\)', state)
     members = []
-    for coalition in coalitions:
-        members.extend(list(coalition))
+    for coalition_str in coalition_strs:
+        if players is not None:
+            members.extend(_parse_coalition_members(coalition_str, players))
+        else:
+            members.extend(list(coalition_str))
     return members
 
 
-def list_coalitions(state: str) -> List[List[str]]:
+def list_coalitions(state: str, players: List[str] = None) -> List[List[str]]:
     """Lists all non-singleton coalitions in a state as lists of members.
 
     For instance:
@@ -138,14 +172,25 @@ def list_coalitions(state: str) -> List[List[str]]:
         list_coalitions('(CT)(FW)') returns [['C', 'T'], ['F', 'W']]
         list_coalitions('( )') returns []
         list_coalitions('(CT)') returns [['C', 'T']]
+
+    When *players* is provided, uses greedy multi-character name matching and
+    filters coalitions with 2+ parsed players (rather than 2+ characters).
     """
     import re
-    # Find all parenthesized groups with at least 2 letters
-    coalitions = re.findall(r'\(([A-Z]{2,})\)', state)
-    return [list(coal) for coal in coalitions]
+    coalition_strs = re.findall(r'\(([A-Z0-9]*)\)', state)
+    result = []
+    for coalition_str in coalition_strs:
+        if players is not None:
+            parsed = _parse_coalition_members(coalition_str, players)
+            if len(parsed) >= 2:
+                result.append(parsed)
+        else:
+            if len(coalition_str) >= 2:
+                result.append(list(coalition_str))
+    return result
 
 
-def get_player_coalition(player: str, state: str) -> List[str]:
+def get_player_coalition(player: str, state: str, players: List[str] = None) -> List[str]:
     """Returns the coalition that a player belongs to in a given state.
 
     Returns a sorted list of all members in the player's coalition,
@@ -156,14 +201,20 @@ def get_player_coalition(player: str, state: str) -> List[str]:
         get_player_coalition('C', '(CFTW)') returns ['C', 'F', 'T', 'W']
         get_player_coalition('C', '( )') returns ['C']
         get_player_coalition('W', '(CF)') returns ['W']
+
+    When *players* is provided, uses greedy multi-character name matching.
     """
     import re
-    # Find all parenthesized groups
-    coalitions = re.findall(r'\(([A-Z]*)\)', state)
+    coalition_strs = re.findall(r'\(([A-Z0-9]*)\)', state)
 
-    for coalition in coalitions:
-        if player in coalition:
-            return sorted(list(coalition))
+    for coalition_str in coalition_strs:
+        if players is not None:
+            parsed = _parse_coalition_members(coalition_str, players)
+            if player in parsed:
+                return sorted(parsed)
+        else:
+            if player in coalition_str:
+                return sorted(list(coalition_str))
 
     # Player is a singleton
     return [player]
@@ -237,7 +288,7 @@ def derive_effectivity(df: pd.DataFrame, players: List[str],
     return effectivity
 
 
-def _coalition_structure_as_frozensets(state: str) -> frozenset:
+def _coalition_structure_as_frozensets(state: str, players: List[str] = None) -> frozenset:
     """Represent a coalition structure as a frozenset of frozensets for semantic comparison.
 
     Singletons are not listed in state names but every player is implicitly
@@ -248,10 +299,11 @@ def _coalition_structure_as_frozensets(state: str) -> frozenset:
     '(WTC)'    -> frozenset({frozenset({'W','T','C'})})
     '( )'      -> frozenset()
     """
-    return frozenset(frozenset(c) for c in list_coalitions(state))
+    return frozenset(frozenset(c) for c in list_coalitions(state, players))
 
 
-def _exit_committee(proposer: str, current_state: str, next_state: str) -> set:
+def _exit_committee(proposer: str, current_state: str, next_state: str,
+                    players: List[str] = None) -> set:
     """Return the set of players who actively exit in this transition, or an
     empty set if the transition is not exit-type.
 
@@ -274,8 +326,8 @@ def _exit_committee(proposer: str, current_state: str, next_state: str) -> set:
     which fail for multi-coalition states such as (CT)(FW) → (CT) and for
     non-canonical state-name orderings like '(CT)' vs '(TC)'.
     """
-    current_sets = _coalition_structure_as_frozensets(current_state)
-    next_sets    = _coalition_structure_as_frozensets(next_state)
+    current_sets = _coalition_structure_as_frozensets(current_state, players)
+    next_sets    = _coalition_structure_as_frozensets(next_state, players)
 
     # Condition 1: no cross-coalition mergers.
     for ns in next_sets:
@@ -283,11 +335,11 @@ def _exit_committee(proposer: str, current_state: str, next_state: str) -> set:
             return set()   # merger detected → not exit-type
 
     # Condition 2: proposer must leave a non-singleton coalition.
-    proposer_current = frozenset(get_player_coalition(proposer, current_state))
+    proposer_current = frozenset(get_player_coalition(proposer, current_state, players))
     if len(proposer_current) < 2:
         return set()   # proposer already singleton
 
-    proposer_next = frozenset(get_player_coalition(proposer, next_state))
+    proposer_next = frozenset(get_player_coalition(proposer, next_state, players))
     if len(proposer_next) > 1:
         return set()   # proposer stays in a coalition → not exiting
 
@@ -296,7 +348,7 @@ def _exit_committee(proposer: str, current_state: str, next_state: str) -> set:
     committee = {proposer}
     if len(proposer_current) >= 3:
         for member in proposer_current - {proposer}:
-            if len(frozenset(get_player_coalition(member, next_state))) == 1:
+            if len(frozenset(get_player_coalition(member, next_state, players))) == 1:
                 committee.add(member)
 
     return committee

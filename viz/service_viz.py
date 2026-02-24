@@ -597,6 +597,16 @@ def compute_transition_graph(
                     if param not in config:
                         config[param] = {}
                     config[param][player] = float(file_metadata[key])
+
+        # Fill in 0 for temperature/damage params that are absent from metadata.
+        # (Files generated with --payoff-table omit these since payoffs come from
+        # an external table; 0 makes it obvious the value was not provided.)
+        for player in config['players']:
+            for param in ['base_temp', 'ideal_temp', 'delta_temp', 'm_damage']:
+                if param not in config:
+                    config[param] = {}
+                if player not in config[param]:
+                    config[param][player] = 0.0
     
     # 1. Read strategy profile first to get actual state names from columns
     strategy_df = pd.read_excel(xlsx_path, header=[0, 1], index_col=[0, 1, 2])

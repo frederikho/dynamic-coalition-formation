@@ -40,37 +40,38 @@ function normalizeStateName(stateName: string): string {
 (window as any).normalizeStateName = normalizeStateName;
 
 // Preset positions for 5-state case (3-country model)
-// Pentagon layout matching the paper's figure
-// Exact layout: ( ) top, (TC) upper-right, (WT) lower-right, (WTC) lower-left, (WC) upper-left
+// Pentagon layout: ( ) top, pair upper-right, pair lower-right,
+//                  grand coalition lower-left, pair upper-left
 function getPentagonPositions(stateNames: string[]): Record<string, { x: number; y: number }> {
   if (stateNames.length !== 5) return {};
-  
-  // Pentagon coordinates - hardcoded for n=3
-  const positions: Record<string, { x: number; y: number }> = {
-    '( )': { x: 0, y: -180 },        // Top center
-    '(TC)': { x: 171, y: -55 },      // Upper right
-    '(WT)': { x: 106, y: 145 },      // Lower right
-    '(WTC)': { x: -106, y: 145 },    // Lower left
-    '(WC)': { x: -171, y: -55 },     // Upper left
-    
-    // Also support alternative orderings (CT, TW, CTW, CW, etc.)
-    '(CT)': { x: 171, y: -55 },      // Upper right
-    '(TW)': { x: 106, y: 145 },      // Lower right
-    '(CTW)': { x: -106, y: 145 },    // Lower left
-    '(TWC)': { x: -106, y: 145 },    // Lower left
-    '(WCT)': { x: -106, y: 145 },    // Lower left
-    '(CW)': { x: -171, y: -55 },     // Upper left
-  };
-  
-  // Check if all states are in our predefined positions
-  const allStatesKnown = stateNames.every(s => s in positions);
-  if (!allStatesKnown) return {};
-  
+
+  const COORDS = [
+    { x: 0,    y: -180 },   // 0: top         → '( )'
+    { x: 171,  y: -55  },   // 1: upper-right  → pair
+    { x: 106,  y:  145 },   // 2: lower-right  → pair
+    { x: -106, y:  145 },   // 3: lower-left   → grand coalition
+    { x: -171, y: -55  },   // 4: upper-left   → pair
+  ];
+
+  const emptyState = stateNames.find(s => s === '( )');
+  if (!emptyState) return {};
+
+  const others = stateNames.filter(s => s !== '( )');
+
+  // Grand coalition = longest state name (contains all players concatenated)
+  const maxLen = Math.max(...others.map(s => s.length));
+  const grandCoalition = others.find(s => s.length === maxLen);
+  if (!grandCoalition) return {};
+
+  // Remaining are 2-player pairs — sort alphabetically for deterministic layout
+  const pairs = others.filter(s => s !== grandCoalition).sort();
+  if (pairs.length !== 3) return {};
+
+  // Arrange: ( ) top, pairs at upper-right / lower-right / upper-left,
+  //          grand coalition at lower-left (matches original paper layout)
+  const ordered = [emptyState, pairs[0], pairs[1], grandCoalition, pairs[2]];
   const positionMap: Record<string, { x: number; y: number }> = {};
-  stateNames.forEach(state => {
-    positionMap[state] = positions[state];
-  });
-  
+  ordered.forEach((state, i) => { positionMap[state] = COORDS[i]; });
   return positionMap;
 }
 

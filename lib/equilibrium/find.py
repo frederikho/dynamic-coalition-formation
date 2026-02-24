@@ -37,6 +37,66 @@ from lib.mdp import MDP
 from lib.coalition_structures import generate_coalition_structures, generate_all_coalition_maps
 
 
+def _deployer_key(state) -> str:
+    """
+    Compute the payoff table lookup key for a state.
+
+    Returns '( )' when G=0 (no deployment), or '(MEMBERS)' with members
+    sorted alphabetically for the coalition that actually deploys.
+    """
+    if state.geo_deployment_level == 0:
+        return "( )"
+    members = sorted(country.name for country in state.strongest_coalition.members)
+    return "(" + "".join(members) + ")"
+
+
+def _load_payoff_table(path: Path, states: list, players: list) -> pd.DataFrame:
+    """
+    Load a precomputed payoff table from an Excel file (as produced by lib.ingest_payoffs).
+
+    Rows in the table are keyed by deployer set (e.g. '( )', '(IND)', '(INDRUS)').
+    For each framework state, the deploying coalition is determined from the State
+    object (via strongest_coalition / geo_deployment_level) and used as the lookup key.
+    This works for both power_threshold and weak_governance scenarios.
+
+    The file must have a 'Payoffs' sheet where:
+    - Row 1 is a title (skipped)
+    - Row 2 is the header: State, <player1>, <player2>, ..., (other columns)
+    - Column A is the deployer key index
+
+    Returns a DataFrame indexed by framework state names, columns=players, dtype float64.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"Payoff table not found: {path}")
+
+    # header=1 uses the second row (0-indexed) as column names; index_col=0 uses State column as index
+    df = pd.read_excel(str(path), sheet_name="Payoffs", header=1, index_col=0)
+
+    # Verify all required players are present
+    missing_players = [p for p in players if p not in df.columns]
+    if missing_players:
+        raise ValueError(
+            f"Payoff table {path.name} is missing player columns: {missing_players}\n"
+            f"Available columns: {df.columns.tolist()}"
+        )
+
+    # Build result DataFrame indexed by framework state names
+    state_names = [s.name for s in states]
+    payoffs = pd.DataFrame(index=state_names, columns=players, dtype=np.float64)
+
+    for state in states:
+        key = _deployer_key(state)
+        if key not in df.index:
+            raise ValueError(
+                f"Payoff table {path.name} has no row for deployer key '{key}' "
+                f"(needed by framework state '{state.name}').\n"
+                f"Available keys: {df.index.tolist()}"
+            )
+        payoffs.loc[state.name] = df.loc[key, players].values
+
+    return payoffs
+
+
 def setup_experiment(config):
     """
     Setup experiment configuration.
@@ -99,7 +159,12 @@ def setup_experiment(config):
         )
         states.append(state)
 
-    payoffs = get_payoff_matrix(states=states, columns=config["players"])
+    # Load payoffs: either from precomputed table or by computing from state parameters
+    payoff_table_path = config.get("payoff_table", None)
+    if payoff_table_path is not None:
+        payoffs = _load_payoff_table(Path(payoff_table_path), states, config["players"])
+    else:
+        payoffs = get_payoff_matrix(states=states, columns=config["players"])
     geoengineering = get_geoengineering_levels(states=states)
     deploying_coalitions = get_deploying_coalitions(states=states)
 
@@ -179,17 +244,35 @@ def _get_solver_params(config, user_params=None):
         'project_to_exact': True
     }
 
-    # Special parameters for non-unanimity scenarios (more complex, needs more smoothing)
-    if not config['unanimity_required']:
+    if len(config['players']) == 3:
         default_params.update({
-            'tau_p_init': 1.0,
-            'tau_r_init': 1.0,
-            'tau_decay': 0.95,
-            'tau_min': 0.01,
-            'damping': 0.5,
-            'max_inner_iter': 100,
-        })
-
+            'tau_p_init': 0.2,
+            'tau_r_init': 0.2,
+            'tau_decay': 0.99,
+            'tau_min': 0.001,
+            'damping': 0.95,
+            'max_inner_iter': 150,
+            'max_outer_iter': 1000,
+            'inner_tol': 2e-2,
+            'outer_tol': 2e-2,
+            'consecutive_tol': 2,
+        }) 
+        
+    # for RICE case
+    if len(config['players']) == 3:
+        default_params.update({
+            'tau_p_init': 1,
+            'tau_r_init': 1,
+            'tau_decay': 0.98,
+            'tau_min': 0.0001,
+            'damping': 0.9,
+            'max_inner_iter': 150,
+            'max_outer_iter': 1000,
+            'inner_tol': 2e-2,
+            'outer_tol': 2e-2,
+            'consecutive_tol': 10,
+        }) 
+        
     # Standard parameters for 4-player scenarios. Works well for some of them. Commented out, do not delete yet.
     # if len(config['players']) == 4:
     #     default_params.update({
@@ -210,10 +293,10 @@ def _get_solver_params(config, user_params=None):
         default_params.update({
             'tau_p_init': 0.2,
             'tau_r_init': 0.2,
-            'tau_decay': 0.98,
+            'tau_decay': 0.99,
             'tau_min': 0.001,
-            'damping': 0.9,
-            'max_inner_iter': 300,
+            'damping': 0.95,
+            'max_inner_iter': 150,
             'max_outer_iter': 1000,
             'inner_tol': 2e-2,
             'outer_tol': 2e-2,
@@ -369,6 +452,10 @@ def _build_metadata(config, setup, solver_params, solver_result,
     }
 
     # Add player-specific parameters
+    payoff_table_path = config.get("payoff_table", None)
+    if payoff_table_path is not None:
+        metadata['payoff_source'] = 'precomputed_table'
+        metadata['payoff_table'] = str(payoff_table_path)
     for player in setup['players']:
         metadata[f'base_temp_{player}'] = config['base_temp'][player]
         metadata[f'ideal_temp_{player}'] = config['ideal_temp'][player]
@@ -675,6 +762,17 @@ Available scenarios (use --list-scenarios to see all):
         action='store_true',
         help='Force starting from scratch, ignoring any existing checkpoints (default: auto-resume from checkpoint if exists)'
     )
+    parser.add_argument(
+        '--payoff-table',
+        type=str,
+        default=None,
+        help=(
+            'Path to a precomputed payoff table Excel file (as produced by lib.ingest_payoffs). '
+            'When provided, payoffs are loaded from this file instead of being computed from '
+            'the scenario\'s temperature/damage parameters. '
+            'State names in the table must match the scenario\'s state names exactly.'
+        )
+    )
 
     args = parser.parse_args()
 
@@ -719,6 +817,10 @@ Available scenarios (use --list-scenarios to see all):
         except KeyError as e:
             parser.error(str(e))
 
+        # Inject payoff table path into config if provided
+        if args.payoff_table is not None:
+            config['payoff_table'] = args.payoff_table
+
         # Setup logger with scenario-specific log file
         log_file = Path('./logs') / f"{config['scenario_name']}.log"
         logger = get_logger(log_file=log_file)
@@ -731,6 +833,8 @@ Available scenarios (use --list-scenarios to see all):
         logger.info(f"  Minimum power: {config.get('min_power', 'N/A')}")
         logger.info(f"  Unanimity required: {config['unanimity_required']}")
         logger.info(f"  Discounting: {config['discounting']}")
+        if config.get('payoff_table'):
+            logger.info(f"  Payoff source: precomputed table ({config['payoff_table']})")
         if args.description:
             logger.info(f"  Description: {args.description}")
 
