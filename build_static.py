@@ -51,8 +51,10 @@ def build_static_data(
 
     # Remove stale generated profile artifacts from prior runs.
     # Keep unrelated static JSON files (e.g., eq_*.json) untouched.
+    # Also preserve any manual flags (e.g. "hidden": true) set in the previous manifest.
     previous_profile_json_files = set()
     previous_profile_xlsx_files = set()
+    previous_profile_flags = {}   # filename -> dict of flags to preserve (e.g. {"hidden": True})
     profiles_path = output_path / "profiles.json"
     if profiles_path.exists():
         try:
@@ -62,6 +64,10 @@ def build_static_data(
                 filename = profile.get("filename")
                 if filename:
                     previous_profile_json_files.add(filename)
+                    # Preserve hidden flag (and any future manual flags)
+                    flags = {k: v for k, v in profile.items() if k == "hidden"}
+                    if flags:
+                        previous_profile_flags[filename] = flags
                 path_from_manifest = profile.get("path")
                 if path_from_manifest:
                     previous_profile_xlsx_files.add(Path(path_from_manifest).name)
@@ -124,8 +130,8 @@ def build_static_data(
                 except ValueError:
                     pass
 
-            # Add to profiles list
-            profiles.append({
+            # Add to profiles list, restoring any manual flags from the previous manifest
+            entry = {
                 "name": xlsx_file.stem,
                 "filename": json_filename,
                 "path": str(xlsx_file),
@@ -134,7 +140,10 @@ def build_static_data(
                 "num_transitions": graph_data["metadata"]["num_transitions"],
                 "scenario_name": graph_data["metadata"].get("scenario_name"),
                 "scenario_description": graph_data["metadata"].get("scenario_description")
-            })
+            }
+            if json_filename in previous_profile_flags:
+                entry.update(previous_profile_flags[json_filename])
+            profiles.append(entry)
 
             file_size = json_path.stat().st_size
             print(f"✓ ({file_size/1024:.1f} KB)")

@@ -13,9 +13,9 @@
           "RUS": -0.0
         },
         "values": {
-          "NDE": -507.6060172895927,
-          "USA": -48.89600608670872,
-          "RUS": -30.73488485338837
+          "NDE": -577.1381229730795,
+          "USA": -56.69016174460779,
+          "RUS": -33.16425032921519
         }
       }
     },
@@ -24,7 +24,7 @@
       "label": "(NDERUS)",
       "meta": {
         "index": 1,
-        "geo_level": 141.194455394678,
+        "geo_level": 246.789497819903,
         "deploying_coalition": "(NDERUS)",
         "payoffs": {
           "NDE": -0.0,
@@ -32,9 +32,9 @@
           "RUS": -0.0
         },
         "values": {
-          "NDE": -507.5862883114519,
-          "USA": -48.9082678518897,
-          "RUS": -30.75084469361048
+          "NDE": -576.7221346755417,
+          "USA": -56.75772352608062,
+          "RUS": -33.26276989159744
         }
       }
     },
@@ -43,7 +43,7 @@
       "label": "(NDEUSA)",
       "meta": {
         "index": 2,
-        "geo_level": 200.8381191729637,
+        "geo_level": 297.9492960993468,
         "deploying_coalition": "(NDEUSA)",
         "payoffs": {
           "NDE": -0.0,
@@ -51,9 +51,9 @@
           "RUS": -0.0
         },
         "values": {
-          "NDE": -507.590671934752,
-          "USA": -48.92782806727889,
-          "RUS": -30.77258160123196
+          "NDE": -576.358382357079,
+          "USA": -56.80843234167201,
+          "RUS": -33.36861551588184
         }
       }
     },
@@ -62,7 +62,7 @@
       "label": "(RUSUSA)",
       "meta": {
         "index": 3,
-        "geo_level": 37.82777936200618,
+        "geo_level": 77.57412633179678,
         "deploying_coalition": "(RUSUSA)",
         "payoffs": {
           "NDE": -0.0,
@@ -70,9 +70,9 @@
           "RUS": -0.0
         },
         "values": {
-          "NDE": -507.5720234907811,
-          "USA": -48.89658903370147,
-          "RUS": -30.737299553491
+          "NDE": -577.0235270619239,
+          "USA": -56.69058981990698,
+          "RUS": -33.1696347195294
         }
       }
     },
@@ -81,7 +81,7 @@
       "label": "(NDERUSUSA)",
       "meta": {
         "index": 4,
-        "geo_level": 141.1993481746011,
+        "geo_level": 242.0564053752817,
         "deploying_coalition": "(NDERUSUSA)",
         "payoffs": {
           "NDE": -0.0,
@@ -89,9 +89,9 @@
           "RUS": -0.0
         },
         "values": {
-          "NDE": -507.5761227789759,
-          "USA": -48.91333528905366,
-          "RUS": -30.75399157110663
+          "NDE": -576.2942352582257,
+          "USA": -56.82226340520235,
+          "RUS": -33.34792165591669
         }
       }
     }
@@ -101,7 +101,7 @@
       "id": "e0",
       "source": "( )",
       "target": "( )",
-      "p": 1.0,
+      "p": 1.0000000000000002,
       "meta": {
         "is_self_loop": true,
         "breakdown": [
@@ -303,38 +303,38 @@
           },
           {
             "type": "direct",
-            "proposer": "USA",
+            "proposer": "RUS",
             "proposed_target": "( )",
             "prop_prob": 0.25,
-            "approval_prob": 0.5,
-            "path_prob": 0.041666666666666664,
+            "approval_prob": 0.5000000000000002,
+            "path_prob": 0.041666666666666685,
             "committee": [
-              "USA"
+              "RUS"
             ],
             "not_in_committee": [
               "NDE",
-              "RUS"
+              "USA"
             ],
             "approvals": {
-              "USA": 0.5
+              "RUS": 0.5000000000000002
             }
           },
           {
             "type": "direct",
-            "proposer": "RUS",
+            "proposer": "USA",
             "proposed_target": "( )",
             "prop_prob": 0.25,
-            "approval_prob": 0.5,
-            "path_prob": 0.041666666666666664,
+            "approval_prob": 0.4999999999999999,
+            "path_prob": 0.04166666666666666,
             "committee": [
-              "RUS"
+              "USA"
             ],
             "not_in_committee": [
               "NDE",
-              "USA"
+              "RUS"
             ],
             "approvals": {
-              "RUS": 0.5
+              "USA": 0.4999999999999999
             }
           },
           {
@@ -383,6 +383,43 @@
             "approvals": {
               "RUS": 1.0
             }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "( )",
+            "prop_prob": 0.25,
+            "approval_prob": 0.0,
+            "path_prob": 0.0,
+            "committee": [
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA",
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "( )",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "path_prob": 0.0,
+            "committee": [
+              "NDE",
+              "RUS"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "NDE": 0.0,
+              "RUS": 1.0
+            }
           }
         ]
       }
@@ -390,18 +427,38 @@
     {
       "id": "e2",
       "source": "(NDERUS)",
-      "target": "(RUSUSA)",
+      "target": "(NDERUS)",
       "p": 0.6666666666666666,
       "meta": {
-        "is_self_loop": false,
+        "is_self_loop": true,
         "breakdown": [
           {
-            "type": "direct",
+            "type": "rejection",
             "proposer": "NDE",
-            "proposed_target": "(RUSUSA)",
-            "prop_prob": 1.0,
-            "approval_prob": 1.0,
-            "path_prob": 0.3333333333333333,
+            "proposed_target": "( )",
+            "prop_prob": 0.25,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.08333333333333333,
+            "committee": [
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA",
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "NDE",
+            "proposed_target": "(NDEUSA)",
+            "prop_prob": 0.25,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.08333333333333333,
             "committee": [
               "USA",
               "RUS"
@@ -410,17 +467,58 @@
               "NDE"
             ],
             "approvals": {
-              "USA": 1.0,
+              "USA": 0.0,
+              "RUS": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "NDE",
+            "proposed_target": "(NDERUSUSA)",
+            "prop_prob": 0.25,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.08333333333333333,
+            "committee": [
+              "USA",
+              "RUS"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "USA": 0.0,
+              "RUS": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "USA",
+            "proposed_target": "( )",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "NDE",
+              "RUS"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "NDE": 0.0,
               "RUS": 1.0
             }
           },
           {
-            "type": "direct",
+            "type": "rejection",
             "proposer": "USA",
-            "proposed_target": "(RUSUSA)",
-            "prop_prob": 1.0,
-            "approval_prob": 1.0,
-            "path_prob": 0.3333333333333333,
+            "proposed_target": "(NDEUSA)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
             "committee": [
               "NDE",
               "RUS"
@@ -430,7 +528,83 @@
             ],
             "approvals": {
               "NDE": 1.0,
+              "RUS": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "USA",
+            "proposed_target": "(RUSUSA)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "NDE",
+              "RUS"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "NDE": 0.0,
               "RUS": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "USA",
+            "proposed_target": "(NDERUSUSA)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "NDE",
+              "RUS"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "NDE": 1.0,
+              "RUS": 0.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(NDERUS)",
+            "prop_prob": 0.25,
+            "approval_prob": 0.4999999999999999,
+            "path_prob": 0.04166666666666666,
+            "committee": [
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA",
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.4999999999999999
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(NDERUS)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.4999999999999999,
+            "path_prob": 0.033333333333333326,
+            "committee": [
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE",
+              "RUS"
+            ],
+            "approvals": {
+              "USA": 0.4999999999999999
             }
           }
         ]
@@ -461,6 +635,43 @@
             "approvals": {
               "USA": 1.0
             }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "( )",
+            "prop_prob": 0.3333333333333333,
+            "approval_prob": 0.0,
+            "path_prob": 0.0,
+            "committee": [
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA",
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "RUS",
+            "proposed_target": "( )",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "path_prob": 0.0,
+            "committee": [
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0,
+              "USA": 1.0
+            }
           }
         ]
       }
@@ -468,18 +679,118 @@
     {
       "id": "e4",
       "source": "(NDEUSA)",
-      "target": "(RUSUSA)",
-      "p": 0.5,
+      "target": "(NDEUSA)",
+      "p": 0.6666666666666666,
       "meta": {
-        "is_self_loop": false,
+        "is_self_loop": true,
         "breakdown": [
           {
-            "type": "direct",
+            "type": "rejection",
+            "proposer": "NDE",
+            "proposed_target": "( )",
+            "prop_prob": 0.3333333333333333,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.1111111111111111,
+            "committee": [
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA",
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "NDE",
+            "proposed_target": "(NDERUSUSA)",
+            "prop_prob": 0.3333333333333333,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.1111111111111111,
+            "committee": [
+              "USA",
+              "RUS"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "USA": 0.0,
+              "RUS": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "RUS",
+            "proposed_target": "( )",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "RUS",
+            "proposed_target": "(NDERUS)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "rejection",
             "proposer": "RUS",
             "proposed_target": "(RUSUSA)",
-            "prop_prob": 1.0,
-            "approval_prob": 1.0,
-            "path_prob": 0.3333333333333333,
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "RUS",
+            "proposed_target": "(NDERUSUSA)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
             "committee": [
               "NDE",
               "USA"
@@ -489,26 +800,43 @@
             ],
             "approvals": {
               "NDE": 1.0,
-              "USA": 1.0
+              "USA": 0.0
             }
           },
           {
             "type": "direct",
             "proposer": "NDE",
-            "proposed_target": "(RUSUSA)",
-            "prop_prob": 0.5,
-            "approval_prob": 1.0,
-            "path_prob": 0.16666666666666666,
+            "proposed_target": "(NDEUSA)",
+            "prop_prob": 0.3333333333333333,
+            "approval_prob": 0.4999999999999999,
+            "path_prob": 0.05555555555555554,
             "committee": [
+              "NDE"
+            ],
+            "not_in_committee": [
               "USA",
               "RUS"
             ],
+            "approvals": {
+              "NDE": 0.4999999999999999
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "RUS",
+            "proposed_target": "(NDEUSA)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.4999999999999999,
+            "path_prob": 0.033333333333333326,
+            "committee": [
+              "RUS"
+            ],
             "not_in_committee": [
-              "NDE"
+              "NDE",
+              "USA"
             ],
             "approvals": {
-              "USA": 1.0,
-              "RUS": 1.0
+              "RUS": 0.4999999999999999
             }
           }
         ]
@@ -516,36 +844,6 @@
     },
     {
       "id": "e5",
-      "source": "(NDEUSA)",
-      "target": "(NDERUSUSA)",
-      "p": 0.16666666666666666,
-      "meta": {
-        "is_self_loop": false,
-        "breakdown": [
-          {
-            "type": "direct",
-            "proposer": "NDE",
-            "proposed_target": "(NDERUSUSA)",
-            "prop_prob": 0.5,
-            "approval_prob": 1.0,
-            "path_prob": 0.16666666666666666,
-            "committee": [
-              "USA",
-              "RUS"
-            ],
-            "not_in_committee": [
-              "NDE"
-            ],
-            "approvals": {
-              "USA": 1.0,
-              "RUS": 1.0
-            }
-          }
-        ]
-      }
-    },
-    {
-      "id": "e6",
       "source": "(RUSUSA)",
       "target": "( )",
       "p": 0.6666666666666666,
@@ -592,7 +890,7 @@
       }
     },
     {
-      "id": "e7",
+      "id": "e6",
       "source": "(RUSUSA)",
       "target": "(RUSUSA)",
       "p": 0.3333333333333333,
@@ -681,77 +979,58 @@
       }
     },
     {
-      "id": "e8",
+      "id": "e7",
       "source": "(NDERUSUSA)",
-      "target": "(RUSUSA)",
-      "p": 0.7436254461768617,
+      "target": "(NDERUS)",
+      "p": 0.3333333333333333,
       "meta": {
         "is_self_loop": false,
         "breakdown": [
           {
             "type": "direct",
             "proposer": "USA",
-            "proposed_target": "(RUSUSA)",
+            "proposed_target": "(NDERUS)",
             "prop_prob": 1.0,
-            "approval_prob": 0.9560898593702507,
-            "path_prob": 0.31869661979008357,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
             "committee": [
-              "NDE",
-              "RUS"
-            ],
-            "not_in_committee": [
-              "USA"
-            ],
-            "approvals": {
-              "NDE": 0.9560898593702507,
-              "RUS": 1.0
-            }
-          },
-          {
-            "type": "direct",
-            "proposer": "RUS",
-            "proposed_target": "(RUSUSA)",
-            "prop_prob": 1.0,
-            "approval_prob": 0.9560898593702507,
-            "path_prob": 0.31869661979008357,
-            "committee": [
-              "NDE",
               "USA"
             ],
             "not_in_committee": [
+              "NDE",
               "RUS"
             ],
             "approvals": {
-              "NDE": 0.9560898593702507,
               "USA": 1.0
             }
           },
           {
             "type": "direct",
-            "proposer": "NDE",
-            "proposed_target": "(RUSUSA)",
-            "prop_prob": 0.3333333333333333,
-            "approval_prob": 0.9560898593702507,
-            "path_prob": 0.10623220659669452,
+            "proposer": "RUS",
+            "proposed_target": "(NDERUS)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "path_prob": 0.0,
             "committee": [
-              "NDE"
+              "NDE",
+              "USA"
             ],
             "not_in_committee": [
-              "USA",
               "RUS"
             ],
             "approvals": {
-              "NDE": 0.9560898593702507
+              "NDE": 0.0,
+              "USA": 1.0
             }
           }
         ]
       }
     },
     {
-      "id": "e9",
+      "id": "e8",
       "source": "(NDERUSUSA)",
       "target": "(NDERUSUSA)",
-      "p": 0.25637455382313834,
+      "p": 0.6666666666666666,
       "meta": {
         "is_self_loop": true,
         "breakdown": [
@@ -771,8 +1050,106 @@
               "NDE"
             ],
             "approvals": {
-              "USA": 0.0,
+              "USA": 1.0,
               "RUS": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "NDE",
+            "proposed_target": "(RUSUSA)",
+            "prop_prob": 0.3333333333333333,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.1111111111111111,
+            "committee": [
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA",
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "RUS",
+            "proposed_target": "( )",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "RUS",
+            "proposed_target": "(NDERUS)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "RUS",
+            "proposed_target": "(NDEUSA)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "RUS"
+            ],
+            "not_in_committee": [
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "RUS": 0.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "RUS",
+            "proposed_target": "(RUSUSA)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.0,
+            "rejection_prob": 1.0,
+            "path_prob": 0.06666666666666667,
+            "committee": [
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 0.0,
+              "USA": 1.0
             }
           },
           {
@@ -780,8 +1157,8 @@
             "proposer": "NDE",
             "proposed_target": "(NDERUSUSA)",
             "prop_prob": 0.3333333333333333,
-            "approval_prob": 0.4999999999999999,
-            "path_prob": 0.05555555555555554,
+            "approval_prob": 0.5000000000000002,
+            "path_prob": 0.05555555555555558,
             "committee": [
               "NDE"
             ],
@@ -790,66 +1167,25 @@
               "RUS"
             ],
             "approvals": {
-              "NDE": 0.4999999999999999
+              "NDE": 0.5000000000000002
             }
           },
           {
-            "type": "rejection",
-            "proposer": "USA",
-            "proposed_target": "(RUSUSA)",
-            "prop_prob": 1.0,
-            "approval_prob": 0.9560898593702507,
-            "rejection_prob": 0.043910140629749295,
-            "path_prob": 0.014636713543249764,
-            "committee": [
-              "NDE",
-              "RUS"
-            ],
-            "not_in_committee": [
-              "USA"
-            ],
-            "approvals": {
-              "NDE": 0.9560898593702507,
-              "RUS": 1.0
-            }
-          },
-          {
-            "type": "rejection",
+            "type": "direct",
             "proposer": "RUS",
-            "proposed_target": "(RUSUSA)",
-            "prop_prob": 1.0,
-            "approval_prob": 0.9560898593702507,
-            "rejection_prob": 0.043910140629749295,
-            "path_prob": 0.014636713543249764,
+            "proposed_target": "(NDERUSUSA)",
+            "prop_prob": 0.2,
+            "approval_prob": 0.4999999999999999,
+            "path_prob": 0.033333333333333326,
             "committee": [
+              "RUS"
+            ],
+            "not_in_committee": [
               "NDE",
               "USA"
             ],
-            "not_in_committee": [
-              "RUS"
-            ],
             "approvals": {
-              "NDE": 0.9560898593702507,
-              "USA": 1.0
-            }
-          },
-          {
-            "type": "rejection",
-            "proposer": "NDE",
-            "proposed_target": "(RUSUSA)",
-            "prop_prob": 0.3333333333333333,
-            "approval_prob": 0.9560898593702507,
-            "rejection_prob": 0.043910140629749295,
-            "path_prob": 0.004878904514416588,
-            "committee": [
-              "NDE"
-            ],
-            "not_in_committee": [
-              "USA",
-              "RUS"
-            ],
-            "approvals": {
-              "NDE": 0.9560898593702507
+              "RUS": 0.4999999999999999
             }
           }
         ]
@@ -857,10 +1193,10 @@
     }
   ],
   "metadata": {
-    "profile_path": "strategy_tables/eq_n3_power_threshold_RICE_ea5d0a.xlsx",
+    "profile_path": "strategy_tables/eq_n3_power_threshold_RICE_a2f568.xlsx",
     "num_players": 3,
     "num_states": 5,
-    "num_transitions": 10,
+    "num_transitions": 9,
     "expected_geo_level": 0.0,
     "stationary_distribution": {
       "( )": 1.0,
@@ -878,10 +1214,10 @@
       "min_power": 0.501
     },
     "file_metadata": {
-      "start_time": "2026-02-24 16:02:38",
-      "end_time": "2026-02-24 16:02:48",
-      "runtime_seconds": "9.90",
-      "runtime_formatted": "0m 9.9s",
+      "start_time": "2026-02-25 16:33:07",
+      "end_time": "2026-02-25 16:33:15",
+      "runtime_seconds": "8.50",
+      "runtime_formatted": "0m 8.5s",
       "verification_success": "True",
       "scenario_name": "power_threshold_RICE_n3",
       "scenario_description": "3-player power threshold for NDE (India), USA, RUS (Russia) with equal power (1/3 each). Intended for use with --payoff-table to load RICE50x welfare payoffs.",
@@ -894,7 +1230,7 @@
       "unanimity_required": "True",
       "discounting": "0.99",
       "payoff_source": "precomputed_table",
-      "payoff_table": "burke_2065.xlsx",
+      "payoff_table": "/mnt/data1/Code/Heyen & Lehtomaa 2021  - Dynamic coalition formation/payoff_tables/burke_2080.xlsx",
       "base_temp_NDE": "13.0",
       "ideal_temp_NDE": "13.0",
       "delta_temp_NDE": "3.0",
@@ -914,32 +1250,33 @@
       "protocol_USA": "0.3333333333333333",
       "protocol_RUS": "0.3333333333333333",
       "converged": "True",
-      "outer_iterations": "78",
-      "final_tau_p": "0.001628",
-      "final_tau_r": "0.001628",
-      "random_seed": "1442124620",
+      "outer_iterations": "104",
+      "final_tau_p": "0.005076",
+      "final_tau_r": "0.005076",
+      "random_seed": "659983939",
       "solver_tau_p_init": "1",
       "solver_tau_r_init": "1",
-      "solver_tau_decay": "0.92",
-      "solver_tau_min": "0.0001",
-      "solver_max_outer_iter": "1000",
+      "solver_tau_decay": "0.95",
+      "solver_tau_min": "1e-13",
+      "solver_max_outer_iter": "10000",
       "solver_max_inner_iter": "150",
-      "solver_damping": "0.6",
-      "solver_inner_tol": "0.02",
+      "solver_damping": "0.7",
+      "solver_inner_tol": "0.002",
       "solver_outer_tol": "0.02",
-      "solver_consecutive_tol": "10",
+      "solver_consecutive_tol": "5",
+      "solver_verify_every_n": "20",
       "solver_tau_margin": "0.01",
       "solver_project_to_exact": "True",
-      "config_hash": "ea5d0a7ec2"
+      "config_hash": "a2f568aed6"
     },
     "absorption_time": {
-      "max": 2.844763018991906,
-      "mean": 2.1422225472059724,
+      "max": 5.999999999999998,
+      "mean": 3.374999999999999,
       "by_state": {
-        "(NDERUS)": 2.0,
-        "(NDEUSA)": 2.224127169831984,
-        "(RUSUSA)": 1.5,
-        "(NDERUSUSA)": 2.844763018991906
+        "(NDERUS)": 2.9999999999999996,
+        "(NDEUSA)": 2.9999999999999996,
+        "(RUSUSA)": 1.4999999999999998,
+        "(NDERUSUSA)": 5.999999999999998
       }
     },
     "chain_diagnostics": {

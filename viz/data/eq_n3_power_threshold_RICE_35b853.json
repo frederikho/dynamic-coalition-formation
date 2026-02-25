@@ -13,9 +13,9 @@
           "RUS": -0.0
         },
         "values": {
-          "NDE": -451.7271572898302,
-          "USA": -42.71124607189135,
-          "RUS": -28.25431402223327
+          "NDE": -480.8126175663931,
+          "USA": -45.91431509660847,
+          "RUS": -29.60450507348322
         }
       }
     },
@@ -24,7 +24,7 @@
       "label": "(NDERUS)",
       "meta": {
         "index": 1,
-        "geo_level": 79.47371057243865,
+        "geo_level": 108.2499347321719,
         "deploying_coalition": "(NDERUS)",
         "payoffs": {
           "NDE": -0.0,
@@ -32,9 +32,9 @@
           "RUS": -0.0
         },
         "values": {
-          "NDE": -451.7477599931549,
-          "USA": -42.71687681011095,
-          "RUS": -28.26068664956042
+          "NDE": -480.8238221424506,
+          "USA": -45.92277332147653,
+          "RUS": -29.61467183020766
         }
       }
     },
@@ -43,7 +43,7 @@
       "label": "(NDEUSA)",
       "meta": {
         "index": 2,
-        "geo_level": 136.8311585715145,
+        "geo_level": 168.6215821061315,
         "deploying_coalition": "(NDEUSA)",
         "payoffs": {
           "NDE": -0.0,
@@ -51,9 +51,9 @@
           "RUS": -0.0
         },
         "values": {
-          "NDE": -451.8276611105784,
-          "USA": -42.73086292448133,
-          "RUS": -28.27048688201821
+          "NDE": -480.8722857058075,
+          "USA": -45.93864430906275,
+          "RUS": -29.62881486514971
         }
       }
     },
@@ -62,7 +62,7 @@
       "label": "(RUSUSA)",
       "meta": {
         "index": 3,
-        "geo_level": 19.84594564448769,
+        "geo_level": 28.02432296567002,
         "deploying_coalition": "(RUSUSA)",
         "payoffs": {
           "NDE": -0.0,
@@ -70,9 +70,9 @@
           "RUS": -0.0
         },
         "values": {
-          "NDE": -451.7189798844743,
-          "USA": -42.71165474020292,
-          "RUS": -28.25517671634006
+          "NDE": -480.7940557003842,
+          "USA": -45.91482401531078,
+          "RUS": -29.60603965693317
         }
       }
     },
@@ -81,7 +81,7 @@
       "label": "(NDERUSUSA)",
       "meta": {
         "index": 4,
-        "geo_level": 79.47535731333,
+        "geo_level": 108.252926214685,
         "deploying_coalition": "(NDERUSUSA)",
         "payoffs": {
           "NDE": -0.0,
@@ -89,9 +89,9 @@
           "RUS": -0.0
         },
         "values": {
-          "NDE": -451.7477633692122,
-          "USA": -42.71723777643128,
-          "RUS": -28.25948929045699
+          "NDE": -480.8115781092569,
+          "USA": -45.92359304408831,
+          "RUS": -29.61416303494152
         }
       }
     }
@@ -257,7 +257,7 @@
               "USA"
             ],
             "approvals": {
-              "NDE": 0.0,
+              "NDE": 1.0,
               "RUS": 0.0
             }
           },
@@ -335,26 +335,8 @@
               "RUS"
             ],
             "approvals": {
-              "NDE": 0.0,
+              "NDE": 1.0,
               "USA": 0.0
-            }
-          },
-          {
-            "type": "direct",
-            "proposer": "USA",
-            "proposed_target": "( )",
-            "prop_prob": 0.2,
-            "approval_prob": 0.5,
-            "path_prob": 0.03333333333333333,
-            "committee": [
-              "USA"
-            ],
-            "not_in_committee": [
-              "NDE",
-              "RUS"
-            ],
-            "approvals": {
-              "USA": 0.5
             }
           },
           {
@@ -362,8 +344,8 @@
             "proposer": "NDE",
             "proposed_target": "( )",
             "prop_prob": 0.2,
-            "approval_prob": 0.4999999999999999,
-            "path_prob": 0.033333333333333326,
+            "approval_prob": 0.5000000000000002,
+            "path_prob": 0.03333333333333335,
             "committee": [
               "NDE"
             ],
@@ -372,7 +354,25 @@
               "RUS"
             ],
             "approvals": {
-              "NDE": 0.4999999999999999
+              "NDE": 0.5000000000000002
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "( )",
+            "prop_prob": 0.2,
+            "approval_prob": 0.5000000000000002,
+            "path_prob": 0.03333333333333335,
+            "committee": [
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE",
+              "RUS"
+            ],
+            "approvals": {
+              "USA": 0.5000000000000002
             }
           },
           {
@@ -691,57 +691,8 @@
     {
       "id": "e7",
       "source": "(NDERUSUSA)",
-      "target": "( )",
-      "p": 0.6666666666666666,
-      "meta": {
-        "is_self_loop": false,
-        "breakdown": [
-          {
-            "type": "direct",
-            "proposer": "USA",
-            "proposed_target": "( )",
-            "prop_prob": 1.0,
-            "approval_prob": 1.0,
-            "path_prob": 0.3333333333333333,
-            "committee": [
-              "NDE",
-              "RUS"
-            ],
-            "not_in_committee": [
-              "USA"
-            ],
-            "approvals": {
-              "NDE": 1.0,
-              "RUS": 1.0
-            }
-          },
-          {
-            "type": "direct",
-            "proposer": "RUS",
-            "proposed_target": "( )",
-            "prop_prob": 1.0,
-            "approval_prob": 1.0,
-            "path_prob": 0.3333333333333333,
-            "committee": [
-              "NDE",
-              "USA"
-            ],
-            "not_in_committee": [
-              "RUS"
-            ],
-            "approvals": {
-              "NDE": 1.0,
-              "USA": 1.0
-            }
-          }
-        ]
-      }
-    },
-    {
-      "id": "e8",
-      "source": "(NDERUSUSA)",
       "target": "(RUSUSA)",
-      "p": 0.3333333333333333,
+      "p": 1.0,
       "meta": {
         "is_self_loop": false,
         "breakdown": [
@@ -762,16 +713,54 @@
             "approvals": {
               "NDE": 1.0
             }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(RUSUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "NDE",
+              "RUS"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "NDE": 1.0,
+              "RUS": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "RUS",
+            "proposed_target": "(RUSUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.3333333333333333,
+            "committee": [
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "RUS"
+            ],
+            "approvals": {
+              "NDE": 1.0,
+              "USA": 1.0
+            }
           }
         ]
       }
     }
   ],
   "metadata": {
-    "profile_path": "strategy_tables/eq_n3_power_threshold_RICE_a7e9a7.xlsx",
+    "profile_path": "strategy_tables/eq_n3_power_threshold_RICE_35b853.xlsx",
     "num_players": 3,
     "num_states": 5,
-    "num_transitions": 9,
+    "num_transitions": 8,
     "expected_geo_level": 0.0,
     "stationary_distribution": {
       "( )": 1.0,
@@ -789,10 +778,10 @@
       "min_power": 0.501
     },
     "file_metadata": {
-      "start_time": "2026-02-24 16:02:26",
-      "end_time": "2026-02-24 16:02:32",
-      "runtime_seconds": "6.13",
-      "runtime_formatted": "0m 6.1s",
+      "start_time": "2026-02-25 16:32:45",
+      "end_time": "2026-02-25 16:32:56",
+      "runtime_seconds": "10.79",
+      "runtime_formatted": "0m 10.8s",
       "verification_success": "True",
       "scenario_name": "power_threshold_RICE_n3",
       "scenario_description": "3-player power threshold for NDE (India), USA, RUS (Russia) with equal power (1/3 each). Intended for use with --payoff-table to load RICE50x welfare payoffs.",
@@ -805,7 +794,7 @@
       "unanimity_required": "True",
       "discounting": "0.99",
       "payoff_source": "precomputed_table",
-      "payoff_table": "burke_2055.xlsx",
+      "payoff_table": "/mnt/data1/Code/Heyen & Lehtomaa 2021  - Dynamic coalition formation/payoff_tables/burke_2060.xlsx",
       "base_temp_NDE": "13.0",
       "ideal_temp_NDE": "13.0",
       "delta_temp_NDE": "3.0",
@@ -825,32 +814,33 @@
       "protocol_USA": "0.3333333333333333",
       "protocol_RUS": "0.3333333333333333",
       "converged": "True",
-      "outer_iterations": "51",
-      "final_tau_p": "0.015466",
-      "final_tau_r": "0.015466",
-      "random_seed": "1134383192",
+      "outer_iterations": "164",
+      "final_tau_p": "0.000234",
+      "final_tau_r": "0.000234",
+      "random_seed": "1153287828",
       "solver_tau_p_init": "1",
       "solver_tau_r_init": "1",
-      "solver_tau_decay": "0.92",
-      "solver_tau_min": "0.0001",
-      "solver_max_outer_iter": "1000",
+      "solver_tau_decay": "0.95",
+      "solver_tau_min": "1e-13",
+      "solver_max_outer_iter": "10000",
       "solver_max_inner_iter": "150",
-      "solver_damping": "0.6",
-      "solver_inner_tol": "0.02",
+      "solver_damping": "0.7",
+      "solver_inner_tol": "0.002",
       "solver_outer_tol": "0.02",
-      "solver_consecutive_tol": "10",
+      "solver_consecutive_tol": "5",
+      "solver_verify_every_n": "20",
       "solver_tau_margin": "0.01",
       "solver_project_to_exact": "True",
-      "config_hash": "a7e9a75917"
+      "config_hash": "35b8531d85"
     },
     "absorption_time": {
-      "max": 1.5,
-      "mean": 1.5,
+      "max": 2.5,
+      "mean": 1.75,
       "by_state": {
         "(NDERUS)": 1.5,
         "(NDEUSA)": 1.5,
         "(RUSUSA)": 1.4999999999999998,
-        "(NDERUSUSA)": 1.5
+        "(NDERUSUSA)": 2.5
       }
     },
     "chain_diagnostics": {
