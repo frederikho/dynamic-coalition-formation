@@ -377,6 +377,48 @@ The solver integrates seamlessly with the existing framework:
 - Outputs standard Excel strategy tables
 - Works with existing visualization tools
 
+## Numerical Tolerances
+
+The solver and verifier compare floating-point value functions V in two places: deciding whether a player is **indifferent** between two states (approve either way), and deciding whether two expected values are **equal enough** to both be in a proposer's argmax. Both use `np.isclose`, but the right settings differ.
+
+### Why any tolerance at all?
+
+Value functions V are computed by solving a linear system `V = (I − γP)⁻¹ (1−γ) u`. Floating-point matrix inversion introduces rounding errors on the order of `|V| × 2⁻⁵²`. For V ≈ −7.4, that is roughly `7.4 × 10⁻¹⁶`. When two states are mathematically indifferent — V(s₁) = V(s₂) exactly — the computed values will differ by a few ULPs (units in the last place). Without any tolerance these would be incorrectly treated as a strict preference, demanding approve or reject when the player has no reason to choose.
+
+### `atol` vs `rtol`
+
+`np.isclose(a, b, rtol=..., atol=...)` checks `|a − b| ≤ atol + rtol × |b|`.
+
+- **`atol`** sets an absolute floor. Values closer than `atol` regardless of magnitude are treated as equal. This is what catches floating-point noise.
+- **`rtol`** scales the threshold with the magnitude of `b`. Useful when comparing numbers whose natural scale varies — for example, comparing cash flows in billions vs. thousands. It fails here because all V values share a large common offset (e.g. −7.4) that is irrelevant to the incentive differences, causing `rtol × |V|` to create a spuriously wide indifference zone.
+
+**In this codebase, `rtol=0` with `atol=1e-12` is always the right choice for V comparisons.**
+
+Concretely: for V ≈ −7.4, `rtol=1e-5` (the numpy default) gives a threshold of `1e-5 × 7.4 = 7.4e-5`. Real incentive differences found in near-indifferent scenarios (e.g. RICE payoffs that vary by < 0.01% across coalition structures) can be smaller than this, causing the solver to incorrectly treat a genuine preference as indifference and leave the acceptance at its smoothed value (e.g. `1.9e-22`) instead of snapping it to 0. The verifier, which uses `rtol=0`, then correctly flags this as an error — a mismatch that prevents equilibrium verification from passing.
+
+For **argmax comparisons of expected values** (proposals), `rtol=1e-5` is also present but less critical because expected values of the form `p_approved × V(y) + p_rejected × V(x)` tend to differ by the same small incentive differences, and both projection and verification apply the same tolerance there, keeping them consistent with each other.
+
+### Where to change tolerances
+
+There are four tolerance calls in the codebase:
+
+| File | Location | What it controls | Current setting |
+|------|-----------|-----------------|-----------------|
+| `lib/equilibrium/solver.py` | `_project_to_exact_equilibrium` line ~432 | Acceptance indifference threshold during projection | `rtol=0, atol=1e-12` |
+| `lib/utils.py` | `verify_approvals` line ~489 | Acceptance indifference threshold during verification | `rtol=0, atol=1e-12` |
+| `lib/equilibrium/solver.py` | `_project_to_exact_equilibrium` line ~464 | Proposal argmax threshold during projection | `atol=1e-12` (rtol=1e-5 default) |
+| `lib/utils.py` | `verify_proposals` line ~440 | Proposal argmax threshold during verification | `atol=1e-12` (rtol=1e-5 default) |
+
+**Critical rule**: the acceptance projection (solver.py) and acceptance verification (utils.py) **must use identical settings**, otherwise the projection will snap to one value while the verifier demands another. The current `rtol=0, atol=1e-12` in both is correct.
+
+The proposal argmax calls also use the same settings in both projection and verification, keeping them consistent. You could tighten these to `rtol=0` as well without harm; the default `rtol=1e-5` is benign there because the same tolerance is applied on both sides.
+
+**When might you need to adjust `atol`?**
+
+- If payoffs are very large in magnitude (e.g. welfare in trillions of dollars), floating-point noise scales up proportionally and `atol=1e-12` may be too tight. Set `atol` to a few multiples of `|V| × 2⁻⁵²`. For `|V| ≈ 1e6`, use `atol=1e-9`.
+- If payoffs are extremely small, `1e-12` is more than sufficient and can be relaxed further without consequence.
+- Never set `atol` large enough to cover real incentive differences. If your scenario has V differences of `1e-4` across states, keep `atol ≪ 1e-4`.
+
 ## Troubleshooting
 
 ### Common Issues

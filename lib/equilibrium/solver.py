@@ -15,6 +15,7 @@ import time
 from lib.probabilities_optimized import TransitionProbabilitiesOptimized
 from lib.mdp import MDP
 from lib.utils import derive_effectivity, get_approval_committee, verify_equilibrium
+from lib.equilibrium.cycle_analysis import detect_cycle, format_cycle_report
 import copy
 
 
@@ -429,7 +430,7 @@ class EquilibriumSolver:
 
                         key = (proposer, current_state, next_state, approver)
 
-                        if np.isclose(V_next, V_current, atol=1e-12):
+                        if np.isclose(V_next, V_current, rtol=0, atol=1e-12):
                             # Indifferent: keep current value (could be anything in [0,1])
                             pass
                         elif V_next > V_current:
@@ -537,6 +538,51 @@ class EquilibriumSolver:
                 self._log(f"Warning: Could not load checkpoint: {e}", level='warning')
             return None
 
+    def _print_timing_report(self, timing_stats: Dict):
+        """Print timing analysis to log."""
+        self._log("\n" + "="*80)
+        self._log("TIMING ANALYSIS")
+        self._log("="*80)
+
+        inner_ops = ['create_df', 'compute_transitions', 'solve_values',
+                     'update_acceptances', 'update_proposals', 'damping']
+        outer_ops = ['inner_total', 'checkpoint_save', 'cycle_analysis', 'early_verification', 'outer_total']
+
+        self._log("Inner loop operations (per iteration):")
+        for op_name in inner_ops:
+            timings = timing_stats.get(op_name, [])
+            if timings:
+                total_time = sum(timings)
+                avg_time = total_time / len(timings)
+                self._log(f"  {op_name:23s}: {total_time:8.3f}s total, {avg_time*1000:7.3f}ms avg ({len(timings)} calls)")
+
+        self._log("\nOuter loop operations (per outer iteration):")
+        for op_name in outer_ops:
+            timings = timing_stats.get(op_name, [])
+            if timings:
+                total_time = sum(timings)
+                avg_time = total_time / len(timings)
+                self._log(f"  {op_name:23s}: {total_time:8.3f}s total, {avg_time*1000:7.3f}ms avg ({len(timings)} calls)")
+
+        total_outer = sum(timing_stats.get('outer_total', []))
+        total_inner = sum(timing_stats.get('inner_total', []))
+        total_checkpoint = sum(timing_stats.get('checkpoint_save', []))
+        total_cycle = sum(timing_stats.get('cycle_analysis', []))
+        total_verification = sum(timing_stats.get('early_verification', []))
+        overhead = total_outer - total_inner - total_checkpoint - total_cycle - total_verification
+
+        self._log("\nBreakdown:")
+        if total_outer > 0:
+            self._log(f"  {'Total outer time':23s}: {total_outer:8.3f}s (100.0%)")
+            self._log(f"  {'  Inner loops':23s}: {total_inner:8.3f}s ({100*total_inner/total_outer:5.1f}%)")
+            self._log(f"  {'  Checkpoint saves':23s}: {total_checkpoint:8.3f}s ({100*total_checkpoint/total_outer:5.1f}%)")
+            self._log(f"  {'  Cycle analysis':23s}: {total_cycle:8.3f}s ({100*total_cycle/total_outer:5.1f}%)")
+            self._log(f"  {'  Early verifications':23s}: {total_verification:8.3f}s ({100*total_verification/total_outer:5.1f}%)")
+            self._log(f"  {'  Other overhead':23s}: {overhead:8.3f}s ({100*overhead/total_outer:5.1f}%)")
+        else:
+            self._log("  No outer iteration timing data available")
+        self._log("="*80)
+
     def solve(self,
               tau_p_init: float = 1.0,
               tau_r_init: float = 1.0,
@@ -639,11 +685,13 @@ class EquilibriumSolver:
             'damping': [],
             'checkpoint_save': [],
             'early_verification': [],
+            'cycle_analysis': [],
             'outer_total': [],  # Total time per outer iteration
             'inner_total': []   # Total time for inner loop per outer iteration
         }
 
-        while outer_iter < max_outer_iter:
+        try:
+          while outer_iter < max_outer_iter:
             outer_iter_start = time.time()  # Track total outer iteration time
 
             if self.verbose:
@@ -654,6 +702,8 @@ class EquilibriumSolver:
             # Inner fixed-point iteration
             inner_loop_start = time.time()
             max_change = float('inf')  # Track final max_change from inner loop
+            inner_history = []         # Full per-iteration max_change history
+            inner_converged = False
             for inner_iter in range(max_inner_iter):
                 # Save old strategies
                 old_proposals = self.p_proposals.copy()
@@ -699,6 +749,7 @@ class EquilibriumSolver:
                     for k in old_acceptances
                 ])
                 max_change = max(proposal_change, acceptance_change)
+                inner_history.append(max_change)
 
                 if inner_iter % 10 == 0 and self.verbose:
                     self._log(f"    Inner iter {inner_iter}: max_change={max_change:.6f}")
@@ -706,7 +757,19 @@ class EquilibriumSolver:
                 if max_change < inner_tol:
                     if self.verbose:
                         self._log(f"    Converged after {inner_iter + 1} iterations")
+                    inner_converged = True
                     break
+
+            # Report oscillation when inner loop fails to converge
+            if not inner_converged:
+                t0 = time.time()
+                period = detect_cycle(inner_history)
+                timing_stats['cycle_analysis'].append(time.time() - t0)
+                if self.verbose and period is not None:
+                    report = format_cycle_report(inner_history, period, cycles_to_show=1)
+                    self._log(f"    ↺ No convergence after {max_inner_iter} iterations.")
+                    for line in report.split('\n'):
+                        self._log(f"      {line}")
 
             inner_loop_time = time.time() - inner_loop_start
             timing_stats['inner_total'].append(inner_loop_time)
@@ -817,6 +880,13 @@ class EquilibriumSolver:
 
             outer_iter += 1
 
+        except KeyboardInterrupt:
+            self._log("\n\n" + "="*80, level='warning')
+            self._log("INTERRUPTED BY USER", level='warning')
+            self._log("="*80, level='warning')
+            self._print_timing_report(timing_stats)
+            raise
+
         # Determine the stopping reason
         early_stop_via_verification = False
         if converged and tau_p > tau_min * (1 + tau_margin):
@@ -871,47 +941,7 @@ class EquilibriumSolver:
 
         if self.verbose:
             self._log("\nSolver complete!")
-            self._log("\n" + "="*80)
-            self._log("TIMING ANALYSIS")
-            self._log("="*80)
-
-            # Order for display: inner loop operations first, then outer loop operations
-            inner_ops = ['create_df', 'compute_transitions', 'solve_values',
-                        'update_acceptances', 'update_proposals', 'damping']
-            outer_ops = ['inner_total', 'checkpoint_save', 'early_verification', 'outer_total']
-
-            self._log("Inner loop operations (per iteration):")
-            for op_name in inner_ops:
-                timings = timing_stats.get(op_name, [])
-                if timings:
-                    total_time = sum(timings)
-                    avg_time = total_time / len(timings)
-                    self._log(f"  {op_name:23s}: {total_time:8.3f}s total, {avg_time*1000:7.3f}ms avg ({len(timings)} calls)")
-
-            self._log("\nOuter loop operations (per outer iteration):")
-            for op_name in outer_ops:
-                timings = timing_stats.get(op_name, [])
-                if timings:
-                    total_time = sum(timings)
-                    avg_time = total_time / len(timings)
-                    self._log(f"  {op_name:23s}: {total_time:8.3f}s total, {avg_time*1000:7.3f}ms avg ({len(timings)} calls)")
-
-            # Compute overhead
-            total_outer = sum(timing_stats.get('outer_total', []))
-            total_inner = sum(timing_stats.get('inner_total', []))
-            total_checkpoint = sum(timing_stats.get('checkpoint_save', []))
-            total_verification = sum(timing_stats.get('early_verification', []))
-            overhead = total_outer - total_inner - total_checkpoint - total_verification
-
-            self._log("\nBreakdown:")
-            if total_outer > 0:
-                self._log(f"  {'Total outer time':23s}: {total_outer:8.3f}s (100.0%)")
-                self._log(f"  {'  Inner loops':23s}: {total_inner:8.3f}s ({100*total_inner/total_outer:5.1f}%)")
-                self._log(f"  {'  Checkpoint saves':23s}: {total_checkpoint:8.3f}s ({100*total_checkpoint/total_outer:5.1f}%)")
-                self._log(f"  {'  Early verifications':23s}: {total_verification:8.3f}s ({100*total_verification/total_outer:5.1f}%)")
-                self._log(f"  {'  Other overhead':23s}: {overhead:8.3f}s ({100*overhead/total_outer:5.1f}%)")
-            else:
-                self._log("  No outer iteration timing data available")
+            self._print_timing_report(timing_stats)
 
             self._log("="*80)
 

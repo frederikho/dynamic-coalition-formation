@@ -708,6 +708,59 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     return result
 
 
+def _run_auto_ingest(payoff_table_arg, parser) -> str:
+    """
+    Produce a payoff table file via lib.ingest_payoffs if it does not already exist.
+
+    The cutoff year is inferred from the filename stem (e.g. burke_2060.xlsx → 2060).
+    Path resolution mirrors _load_payoff_table: a bare filename is looked up under
+    payoff_tables/ in the repo root.
+
+    Args:
+        payoff_table_arg: Value of --payoff-table (filename or path).
+        parser: ArgumentParser instance used for error reporting.
+
+    Returns:
+        Resolved absolute path to the payoff table file as a string.
+    """
+    if payoff_table_arg is None:
+        parser.error(
+            "--auto-ingest requires --payoff-table to name the target file; "
+            "the cutoff year is inferred from the filename (e.g. burke_2060.xlsx)"
+        )
+
+    pt_path = Path(payoff_table_arg)
+    if not pt_path.suffix:
+        pt_path = pt_path.with_suffix(".xlsx")
+    if pt_path.parent == Path("."):
+        repo_root = Path(__file__).parent.parent.parent
+        pt_path = repo_root / "payoff_tables" / pt_path
+
+    if pt_path.exists():
+        print(f"[auto-ingest] {pt_path.name} already exists — skipping ingest")
+    else:
+        stem_parts = pt_path.stem.rsplit("_", 1)
+        if len(stem_parts) != 2 or not stem_parts[1].isdigit():
+            parser.error(
+                f"Cannot infer cutoff year from '{pt_path.name}'. "
+                "Encode the year in the stem, e.g. burke_2060.xlsx"
+            )
+        cutoff_year = int(stem_parts[1])
+        from lib.ingest_payoffs import ingest, DEFAULT_INPUT_DIR, DEFAULT_PLAYERS
+        print(f"[auto-ingest] {pt_path.name} not found — running ingest (cutoff year {cutoff_year})")
+        print(f"[auto-ingest] {DEFAULT_INPUT_DIR} → {pt_path}")
+        try:
+            ingest(input_dir=DEFAULT_INPUT_DIR, output_path=pt_path,
+                   players=DEFAULT_PLAYERS, cutoff_year=cutoff_year)
+        except FileNotFoundError as e:
+            parser.error(
+                f"auto-ingest failed: {e}\n"
+                f"  Update DEFAULT_INPUT_DIR in lib/ingest_payoffs.py to point to your GDX files."
+            )
+
+    return str(pt_path)
+
+
 def main():
     """Command-line interface for finding equilibria."""
     # Setup logger early so it's available for all output
@@ -817,8 +870,6 @@ Available scenarios (use --list-scenarios to see all):
 
     args = parser.parse_args()
 
-    # Handle --auto-ingest: create the payoff table if it doesn't exist yet.
-    # The cutoff year is inferred from the filename (e.g. burke_2060.xlsx → 2060).
     if args.auto_ingest:
         if args.payoff_table is None:
             parser.error(
