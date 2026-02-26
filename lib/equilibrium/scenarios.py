@@ -32,12 +32,33 @@ class _ScenarioRegistry(dict):
 
 def _apply_defaults(config):
     """Fill in default values for fields omitted from a scenario dict."""
-    if "m_damage" not in config:
-        config["m_damage"] = {p: 1.0 for p in config["players"]}
+    if config.get("players") is not None:
+        if "m_damage" not in config:
+            config["m_damage"] = {p: 1.0 for p in config["players"]}
     if "unanimity_required" not in config:
         config["unanimity_required"] = True
     if "min_power" not in config:
         config["min_power"] = 0.501 if config["power_rule"] == "power_threshold" else None
+    return config
+
+
+def fill_players(config, players: list[str]) -> dict:
+    """
+    Inject a concrete player list into a config that was defined with players=None.
+
+    Sets players and fills in all per-player fields with sensible defaults
+    (placeholder temperatures, equal power, equal protocol).  Existing per-player
+    fields (power, m_damage, etc.) are not overwritten if already present.
+    """
+    config = config.copy()
+    config["players"] = players
+    n = len(players)
+    config.setdefault("base_temp",  {p: 13.0 for p in players})
+    config.setdefault("ideal_temp", {p: 13.0 for p in players})
+    config.setdefault("delta_temp", {p: 3.0  for p in players})
+    config.setdefault("power",      {p: 1/n  for p in players})
+    config.setdefault("protocol",   {p: 1/n  for p in players})
+    config.setdefault("m_damage",   {p: 1.0  for p in players})
     return config
 
 
@@ -155,44 +176,37 @@ SCENARIOS["power_threshold_very_powerful_W_n3"] = {
 
 
 # ========== RICE50x scenarios (payoffs from RICE model) ==========
+#
+# Players are NOT hardcoded here.  Instead, pass a payoff table whose filename
+# encodes the player codes (e.g. burke_usachnnde_2060.xlsx → CHN, NDE, USA).
+# The CLI parses the codes from the filename and injects them at runtime.
+# Use fill_players() if you need to inject players programmatically.
 
-def get_base_config_rice_n3():
-    """
-    Base configuration for 3-player RICE50x games (NDE=India, USA, RUS=Russia).
-
-    Player names are the uppercase RICE50x region codes (see lib/rice50x_regions.py).
-    Temperature parameters are placeholders; actual payoffs are loaded from a
-    precomputed RICE50x table via --payoff-table.  Power is set to 1/3 each
-    (equal); adjust per-scenario as needed.
-    """
-    players = ["NDE", "USA", "RUS"]
+def _base_rice():
+    """Minimal base for generic RICE50x scenarios (players derived at runtime)."""
     return {
-        "players": players,
-        # Approximate representative temperatures (°C); only used when no payoff table
-        "base_temp": {"NDE": 13.0, "USA": 13.0, "RUS": 13.0},
-        "ideal_temp": {player: 13.0 for player in players},
-        "delta_temp": {player: 3.0 for player in players},
-        "power": {player: 1/3 for player in players},
-        "protocol": {player: 1/3 for player in players},
+        "players": None,   # filled from payoff table filename at runtime
         "discounting": 0.99,
-        "state_names": None,  # Will be generated automatically
+        "state_names": None,
     }
 
 
 SCENARIOS["power_threshold_RICE_n3"] = {
-    **get_base_config_rice_n3(),
+    **_base_rice(),
     "scenario_description": (
-        "3-player power threshold for NDE (India), USA, RUS (Russia) with equal power (1/3 each). "
+        "3-player power threshold with equal power (1/3 each). "
+        "Players are inferred from the --payoff-table filename "
+        "(e.g. burke_usachnnde_2060.xlsx → CHN, NDE, USA). "
         "Intended for use with --payoff-table to load RICE50x welfare payoffs."
     ),
     "power_rule": "power_threshold",
 }
 
 SCENARIOS["power_threshold_no_unanimity_RICE_n3"] = {
-    **get_base_config_rice_n3(),
+    **_base_rice(),
     "scenario_description": (
-        "3-player power threshold for NDE (India), USA, RUS (Russia), no unanimity. "
-        "Intended for use with --payoff-table to load RICE50x welfare payoffs."
+        "3-player power threshold, no unanimity, equal power (1/3 each). "
+        "Players inferred from --payoff-table filename."
     ),
     "power_rule": "power_threshold",
     "unanimity_required": False,

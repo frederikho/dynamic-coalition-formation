@@ -45,8 +45,11 @@ SAI_SYMBOL = "W_SAI"
 # Year mapping symbol (parameter: period index → calendar year)
 YEAR_SYMBOL = "year"
 
-# Default input directory containing GDX files
-DEFAULT_INPUT_DIR = Path("/home/frederik/Code/RICE50x/results/Burke")
+# Base directory containing all RICE50x result folders
+DEFAULT_RESULTS_DIR = Path("/home/frederik/Code/RICE50x/results")
+
+# Default input directory containing GDX files (used when running ingest_payoffs directly)
+DEFAULT_INPUT_DIR = DEFAULT_RESULTS_DIR / "burke"
 
 # Default cutoff year for W_SAI summation
 DEFAULT_CUTOFF_YEAR = 2060
@@ -228,18 +231,23 @@ def compute_welfare_sums(
     return totals
 
 
-def _build_token_map(players: list[tuple[str, str]]) -> dict[str, str]:
+def _build_global_token_map() -> dict[str, str]:
     """
-    Build a mapping from known filename tokens (lowercase) to UPPERCASE display names.
+    Build a mapping from all known RICE50x filename tokens (lowercase) to UPPERCASE
+    display names, using the full RICE50X_REGIONS registry.
 
-    Both the GDX region code and the lowercase display name are registered so that
-    e.g. 'nde' and 'ind' both map to 'IND'.
+    Display names are the uppercase GDX codes (e.g. 'chn' → 'CHN').
     """
+    from lib.rice50x_regions import RICE50X_REGIONS
     token_map: dict[str, str] = {}
-    for gdx_code, display_name in players:
-        token_map[gdx_code.lower()] = display_name.upper()
-        token_map[display_name.lower()] = display_name.upper()
+    for gdx_code in RICE50X_REGIONS:
+        display_name = gdx_code.upper()
+        token_map[gdx_code.lower()] = display_name
     return token_map
+
+
+# Module-level token map built once from all known RICE50x regions
+_GLOBAL_TOKEN_MAP: dict[str, str] = _build_global_token_map()
 
 
 def _parse_deployers(raw_token: str, token_map: dict[str, str]) -> set[str]:
@@ -310,10 +318,12 @@ def _detect_common_prefix(stems: list[str]) -> str:
 
 def discover_state_files(
     input_dir: Path,
-    players: list[tuple[str, str]],
 ) -> tuple[dict[str, Path], list[tuple[Path, str]]]:
     """
     Scan GDX files in input_dir and map each to a deployer key.
+
+    Uses the full RICE50X_REGIONS registry to parse any known country combination
+    from filenames, regardless of the players list passed to ingest().
 
     Strategy:
       1. Strip '_deployed' / '_deploy' suffix from each stem.
@@ -331,7 +341,7 @@ def discover_state_files(
     if not gdx_files:
         raise FileNotFoundError(f"No .gdx files found in {input_dir}")
 
-    token_map = _build_token_map(players)
+    token_map = _GLOBAL_TOKEN_MAP
 
     # Strip deployment suffix from stems
     deploy_suffixes = ["_deployed", "_deploy"]
@@ -552,17 +562,35 @@ def write_payoff_table(
 def ingest(
     input_dir: Path,
     output_path: Path,
-    players: list[tuple[str, str]],
+    players: list[tuple[str, str]] | None,
     cutoff_year: int,
 ) -> None:
-    display_names = [name.upper() for _, name in players]
-    # Normalise players list so display names are always uppercase
-    players = [(code, name.upper()) for code, name in players]
-
     sai_col = f"W_SAI_sum_≤{cutoff_year}"
 
     # --- Discover which GDX files map to which deployer keys ------------------
-    key_to_file, skipped = discover_state_files(input_dir, players)
+    key_to_file, skipped = discover_state_files(input_dir)
+
+    # --- Auto-detect players from discovered deployers if not provided --------
+    if players is None:
+        all_names: set[str] = set()
+        for key in key_to_file:
+            if key != "( )":
+                # key is like '(CHN)', '(CHNNDE)', '(CHNNDEUSA)' etc.
+                inner = key[1:-1]  # strip parentheses
+                # Re-parse inner string using global token map to get individual names
+                all_names.update(_parse_deployers(inner, _GLOBAL_TOKEN_MAP))
+        if not all_names:
+            raise ValueError(
+                f"Could not auto-detect players from GDX files in {input_dir}. "
+                "No deployer states found."
+            )
+        # GDX code = lowercase of display name (RICE50x convention)
+        players = sorted([(name.lower(), name) for name in all_names], key=lambda x: x[1])
+        print(f"Auto-detected players: {[name for _, name in players]}")
+
+    # Normalise players list so display names are always uppercase
+    players = [(code, name.upper()) for code, name in players]
+    display_names = [name for _, name in players]
 
     total_gdx = len(list(input_dir.glob("*.gdx")))
     print(f"Found {total_gdx} GDX file(s) in {input_dir}")

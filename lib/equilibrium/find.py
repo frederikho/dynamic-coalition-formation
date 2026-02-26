@@ -286,15 +286,15 @@ def _get_solver_params(config, user_params=None):
         default_params.update({
             'tau_p_init': 1,
             'tau_r_init': 1,
-            'tau_decay': 0.90,
-            'tau_min': 0.00000001,
-            'damping': 0.50,
+            'tau_decay': 0.95,
+            'tau_min': 0.000001,
+            'damping': 0.70,
             'max_inner_iter': 150,
             'max_outer_iter': 10000,
-            'inner_tol': 2e-4,
+            'inner_tol': 2e-2,
             'outer_tol': 2e-2,
             'consecutive_tol': 5,
-            'verify_every_n': 5,
+            'verify_every_n': 20,
         })
         
     # Standard parameters for 4-player scenarios. Works well for some of them. Commented out, do not delete yet.
@@ -385,9 +385,6 @@ def _run_solver(solver, params, checkpoint_dir='./checkpoints', load_from_checkp
         )
     except KeyboardInterrupt:
         if logger:
-            logger.warning("\n\n" + "="*80)
-            logger.warning("INTERRUPTED BY USER")
-            logger.warning("="*80)
             logger.warning("Solver stopped. No output file saved.")
         import sys
         sys.exit(0)
@@ -525,7 +522,7 @@ def _build_metadata(config, setup, solver_params, solver_result,
     return metadata
 
 
-def _save_to_file(strategy_df, output_file, setup, metadata, V=None, verbose=True, logger=None):
+def _save_to_file(strategy_df, output_file, setup, metadata, V=None, transition_matrix=None, verbose=True, logger=None):
     """
     Save strategy profile to Excel file with metadata.
 
@@ -535,6 +532,7 @@ def _save_to_file(strategy_df, output_file, setup, metadata, V=None, verbose=Tru
         setup: Setup dictionary
         metadata: Metadata dictionary
         V: Value functions DataFrame (optional)
+        transition_matrix: Transition probability matrix DataFrame (optional)
         verbose: Whether to print status
         logger: Logger instance
     """
@@ -548,7 +546,8 @@ def _save_to_file(strategy_df, output_file, setup, metadata, V=None, verbose=Tru
         setup['effectivity'], setup['state_names'], metadata=metadata,
         value_functions=V, geo_levels=setup['geoengineering'],
         deploying_coalitions=setup.get('deploying_coalitions', None),
-        static_payoffs=setup['payoffs']
+        static_payoffs=setup['payoffs'],
+        transition_matrix=transition_matrix
     )
 
     if verbose and logger:
@@ -702,10 +701,45 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
             random_seed=solver.random_seed
         )
 
-        # Save to file with value functions and geo levels
-        _save_to_file(found_strategy_df, output_file, setup, metadata, V, verbose, logger)
+        # Save to file with value functions, transition matrix, and geo levels
+        _save_to_file(found_strategy_df, output_file, setup, metadata, V, P, verbose, logger)
 
     return result
+
+
+def _parse_players_from_payoff_table(path: Path) -> list[str]:
+    """
+    Parse RICE50x player codes from a payoff table filename.
+
+    Strategy:
+      - Strip extension and year suffix (trailing _YYYY segment).
+      - Split the remainder by '_'.
+      - Try to parse each segment as a concatenation of RICE50x codes.
+      - Return the sorted union of all successfully parsed player names.
+
+    Example: 'burke_usachnnde_2060.xlsx' → ['CHN', 'NDE', 'USA']
+    """
+    from lib.ingest_payoffs import _GLOBAL_TOKEN_MAP, _parse_deployers
+
+    stem = path.stem  # e.g. 'burke_usachnnde_2060'
+    parts = stem.rsplit("_", 1)
+    if len(parts) == 2 and parts[1].isdigit():
+        stem = parts[0]  # strip year → 'burke_usachnnde'
+
+    players: set[str] = set()
+    for segment in stem.split("_"):
+        try:
+            players.update(_parse_deployers(segment, _GLOBAL_TOKEN_MAP))
+        except ValueError:
+            pass  # segment is not a country combination (e.g. 'burke'), skip
+
+    if not players:
+        raise ValueError(
+            f"Could not parse any RICE50x player codes from filename '{path.name}'. "
+            "Encode player codes in the stem, e.g. burke_usachnnde_2060.xlsx → CHN, NDE, USA."
+        )
+
+    return sorted(players)
 
 
 def _run_auto_ingest(payoff_table_arg, parser) -> str:
@@ -746,16 +780,18 @@ def _run_auto_ingest(payoff_table_arg, parser) -> str:
                 "Encode the year in the stem, e.g. burke_2060.xlsx"
             )
         cutoff_year = int(stem_parts[1])
-        from lib.ingest_payoffs import ingest, DEFAULT_INPUT_DIR, DEFAULT_PLAYERS
+        folder_name = stem_parts[0]
+        from lib.ingest_payoffs import ingest, DEFAULT_RESULTS_DIR
+        input_dir = DEFAULT_RESULTS_DIR / folder_name
         print(f"[auto-ingest] {pt_path.name} not found — running ingest (cutoff year {cutoff_year})")
-        print(f"[auto-ingest] {DEFAULT_INPUT_DIR} → {pt_path}")
+        print(f"[auto-ingest] {input_dir} → {pt_path}")
         try:
-            ingest(input_dir=DEFAULT_INPUT_DIR, output_path=pt_path,
-                   players=DEFAULT_PLAYERS, cutoff_year=cutoff_year)
+            ingest(input_dir=input_dir, output_path=pt_path,
+                   players=None, cutoff_year=cutoff_year)
         except FileNotFoundError as e:
             parser.error(
                 f"auto-ingest failed: {e}\n"
-                f"  Update DEFAULT_INPUT_DIR in lib/ingest_payoffs.py to point to your GDX files."
+                f"  Expected GDX files in {input_dir}"
             )
 
     return str(pt_path)
@@ -895,15 +931,17 @@ Available scenarios (use --list-scenarios to see all):
                     "Encode the year in the stem, e.g. burke_2060.xlsx"
                 )
             cutoff_year = int(stem_parts[1])
-            from lib.ingest_payoffs import ingest, DEFAULT_INPUT_DIR, DEFAULT_PLAYERS
+            folder_name = stem_parts[0]
+            from lib.ingest_payoffs import ingest, DEFAULT_RESULTS_DIR
+            input_dir = DEFAULT_RESULTS_DIR / folder_name
             print(f"[auto-ingest] {pt_path.name} not found — running ingest (cutoff year {cutoff_year})")
-            print(f"[auto-ingest] {DEFAULT_INPUT_DIR} → {pt_path}")
+            print(f"[auto-ingest] {input_dir} → {pt_path}")
             try:
-                ingest(input_dir=DEFAULT_INPUT_DIR, output_path=pt_path, players=DEFAULT_PLAYERS, cutoff_year=cutoff_year)
+                ingest(input_dir=input_dir, output_path=pt_path, players=None, cutoff_year=cutoff_year)
             except FileNotFoundError as e:
                 parser.error(
                     f"auto-ingest failed: {e}\n"
-                    f"  Update DEFAULT_INPUT_DIR in lib/ingest_payoffs.py to point to your GDX files."
+                    f"  Expected GDX files in {input_dir}"
                 )
         args.payoff_table = str(pt_path)
 
@@ -953,6 +991,21 @@ Available scenarios (use --list-scenarios to see all):
         # Inject payoff table path into config if provided
         if args.payoff_table is not None:
             config['payoff_table'] = args.payoff_table
+
+        # When players are not hardcoded in the scenario, derive them from the filename
+        if config.get('players') is None:
+            if args.payoff_table is None:
+                parser.error(
+                    f"Scenario '{scenario_name}' requires --payoff-table: "
+                    "players are inferred from the filename "
+                    "(e.g. burke_usachnnde_2060.xlsx → CHN, NDE, USA)."
+                )
+            try:
+                players = _parse_players_from_payoff_table(Path(args.payoff_table))
+            except ValueError as e:
+                parser.error(str(e))
+            from lib.equilibrium.scenarios import fill_players
+            config = fill_players(config, players)
 
         # Setup logger with scenario-specific log file
         log_file = Path('./logs') / f"{config['scenario_name']}.log"

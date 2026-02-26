@@ -691,6 +691,7 @@ def compute_transition_graph(
     # parameters are from --payoff-table RICE runs because the MDP
     # would use wrong static payoffs (u=0) and produce wrong V.
     _results_sheet = None
+    _short_term_sheet = None
     try:
         _xl = pd.ExcelFile(xlsx_path)
         # Check for new sheet name first, fall back to old name for backwards compatibility
@@ -701,6 +702,8 @@ def compute_transition_graph(
             _results_sheet_name = 'Results'
         if _results_sheet_name is not None:
             _results_sheet = pd.read_excel(xlsx_path, sheet_name=_results_sheet_name, header=1, index_col=0)
+        if 'Short-term Values' in _xl.sheet_names:
+            _short_term_sheet = pd.read_excel(xlsx_path, sheet_name='Short-term Values', header=1, index_col=0)
     except Exception as _e:
         logger.warning(f"Could not read Long-term Values/Results sheet: {_e}")
 
@@ -736,6 +739,16 @@ def compute_transition_graph(
                 if state_name in _results_sheet.index:
                     for player in v_players:
                         long_term_values[state_name][player] = float(_results_sheet.loc[state_name, player])
+
+    # Override static payoffs (u) from Short-term Values sheet if present.
+    if _short_term_sheet is not None:
+        u_players = [p for p in config["players"] if p in _short_term_sheet.columns]
+        if u_players:
+            logger.info("Using precomputed u from Short-term Values sheet")
+            for state_name in config["state_names"]:
+                if state_name in _short_term_sheet.index:
+                    for player in u_players:
+                        static_payoffs[state_name][player] = float(_short_term_sheet.loc[state_name, player])
 
     # 7. Get geoengineering levels and deploying coalitions for metadata
     geo_levels = {state.name: state.geo_deployment_level for state in states}

@@ -8,6 +8,7 @@ and formatting of the original strategy tables.
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+import math
 import pandas as pd
 import numpy as np
 import hashlib
@@ -516,6 +517,16 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
 
             current_row += 1
 
+        # Highlight max V per player column (amber, matching payoff table style)
+        if value_functions is not None:
+            _best_fill = PatternFill(start_color='FFFFEEBA', end_color='FFFFEEBA', fill_type='solid')
+            for p_idx, player in enumerate(players):
+                col_idx = 2 + p_idx
+                max_val = float(value_functions[player].max())
+                for row_idx, state in enumerate(states):
+                    if math.isclose(float(value_functions.loc[state, player]), max_val, rel_tol=1e-13):
+                        ws_results.cell(row=3 + row_idx, column=col_idx).fill = _best_fill
+
         # Add borders to entire table
         table_end_row = current_row - 1
         for r in range(1, table_end_row + 1):
@@ -571,6 +582,15 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                 ws_short.cell(row=3 + row_idx, column=2 + p_idx).alignment = Alignment(
                     horizontal='right', vertical='center'
                 )
+
+        # Highlight max u per player column (amber, matching payoff table style)
+        _best_fill = PatternFill(start_color='FFFFEEBA', end_color='FFFFEEBA', fill_type='solid')
+        for p_idx, player in enumerate(players):
+            col_idx = 2 + p_idx
+            max_val = float(static_payoffs[player].max())
+            for row_idx, state in enumerate(states):
+                if math.isclose(float(static_payoffs.loc[state, player]), max_val, rel_tol=1e-13):
+                    ws_short.cell(row=3 + row_idx, column=col_idx).fill = _best_fill
 
         # Borders
         for r in range(1, 3 + len(states)):

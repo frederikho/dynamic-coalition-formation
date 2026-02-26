@@ -158,7 +158,8 @@ async function loadProfiles() {
       return;
     }
 
-    const sortedProfiles = [...data.profiles].sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+    const sortedProfiles = [...data.profiles]
+      .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
 
     sortedProfiles.forEach(profile => {
       const option = document.createElement('option');
@@ -759,7 +760,6 @@ function handleNodeSelect(nodeId: string | null) {
   // Render payoffs table
   const payoffs: Record<string, number> | undefined = nodeData.data?.payoffs;
   const values: Record<string, number> | undefined = nodeData.data?.values;
-  const hideStaticPayoffs = currentGraphData?.metadata?.file_metadata?.payoff_source === 'precomputed_table';
   if (payoffs && values) {
     const players = Object.keys(payoffs);
     const rows = players.map(p => {
@@ -767,14 +767,13 @@ function handleNodeSelect(nodeId: string | null) {
       const v = values[p];
       const uStr = (u != null && isFinite(u)) ? u.toFixed(4) : '—';
       const vStr = (v != null && isFinite(v)) ? v.toFixed(4) : '—';
-      const uCell = hideStaticPayoffs ? '' : `<td style="padding:3px 6px;text-align:right;font-variant-numeric:tabular-nums;">${uStr}</td>`;
       return `<tr>
         <td style="padding:3px 6px;font-weight:600;">${p}</td>
-        ${uCell}
+        <td style="padding:3px 6px;text-align:right;font-variant-numeric:tabular-nums;">${uStr}</td>
         <td style="padding:3px 6px;text-align:right;font-variant-numeric:tabular-nums;">${vStr}</td>
       </tr>`;
     }).join('');
-    const uHeader = hideStaticPayoffs ? '' : `<th style="padding:3px 6px;text-align:right;color:#64748b;font-weight:600;">Current (u)</th>`;
+    const uHeader = `<th style="padding:3px 6px;text-align:right;color:#64748b;font-weight:600;">Current (u)</th>`;
     nodePayoffsDiv.innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead>
