@@ -94,7 +94,8 @@ def generate_filename(config, description=None, output_dir='./strategy_tables'):
 def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: list,
                               effectivity: dict = None, states: list = None, metadata: dict = None,
                               value_functions: pd.DataFrame = None, geo_levels: dict = None,
-                              deploying_coalitions: dict = None, static_payoffs: pd.DataFrame = None):
+                              deploying_coalitions: dict = None, static_payoffs: pd.DataFrame = None,
+                              transition_matrix: pd.DataFrame = None):
     """
     Write a strategy DataFrame to Excel with exact formatting matching original files.
 
@@ -159,7 +160,7 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
         return is_unilateral
 
     # Set column widths
-    ws.column_dimensions['A'].width = 5.109375
+    ws.column_dimensions['A'].width = 14.0
     ws.column_dimensions['B'].width = 8.77734375
     ws.column_dimensions['C'].width = 3.77734375
 
@@ -407,7 +408,7 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                 )
                 cell.border = final_border
 
-    # Precompute geo_dict (used in both Results and StaticPayoffs sheets)
+    # Precompute geo_dict (used in both Long-term Values and Short-term Values sheets)
     geo_dict = None
     if geo_levels is not None:
         if isinstance(geo_levels, pd.DataFrame):
@@ -415,9 +416,9 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
         else:
             geo_dict = geo_levels
 
-    # Add Results sheet if value functions or geo levels are provided
+    # Add Long-term Values sheet if value functions or geo levels are provided
     if value_functions is not None or geo_levels is not None:
-        ws_results = wb.create_sheet(title="Results")
+        ws_results = wb.create_sheet(title="Long-term Values")
 
         # Set column widths
         ws_results.column_dimensions['A'].width = 12
@@ -427,7 +428,7 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
             ws_results.column_dimensions[col_letter].width = 12
 
         # Title
-        ws_results.cell(row=1, column=1, value="Value Functions and Geoengineering Levels")
+        ws_results.cell(row=1, column=1, value="Long-term Value Functions (V) and Geoengineering Levels")
         ws_results.cell(row=1, column=1).font = Font(name='Calibri', bold=True, size=12)
         ws_results.cell(row=1, column=1).fill = PatternFill(
             start_color='FF4D9CC9', end_color='FF4D9CC9', fill_type='solid'
@@ -520,6 +521,125 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
         for r in range(1, table_end_row + 1):
             for c in range(1, num_cols + 1):
                 ws_results.cell(row=r, column=c).border = Border(
+                    left=thin_border, right=thin_border,
+                    top=thin_border, bottom=thin_border
+                )
+
+    # Add Short-term Values (static payoffs u) sheet if provided
+    if static_payoffs is not None:
+        ws_short = wb.create_sheet(title="Short-term Values")
+
+        num_short_cols = 1 + len(players)
+        ws_short.column_dimensions['A'].width = 12
+        for i in range(1, num_short_cols):
+            ws_short.column_dimensions[get_column_letter(1 + i)].width = 12
+
+        # Title
+        ws_short.cell(row=1, column=1, value="Short-term Payoffs (u)")
+        ws_short.cell(row=1, column=1).font = Font(name='Calibri', bold=True, size=12)
+        ws_short.cell(row=1, column=1).fill = PatternFill(
+            start_color='FF4D9CC9', end_color='FF4D9CC9', fill_type='solid'
+        )
+        ws_short.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_short_cols)
+
+        # Headers
+        ws_short.cell(row=2, column=1, value="State")
+        ws_short.cell(row=2, column=1).font = Font(name='Calibri', bold=True, size=10)
+        ws_short.cell(row=2, column=1).fill = PatternFill(
+            start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+        )
+        for idx, player in enumerate(players):
+            ws_short.cell(row=2, column=2 + idx, value=player)
+            ws_short.cell(row=2, column=2 + idx).font = Font(name='Calibri', bold=True, size=10)
+            ws_short.cell(row=2, column=2 + idx).fill = PatternFill(
+                start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+            )
+            ws_short.cell(row=2, column=2 + idx).alignment = Alignment(horizontal='center', vertical='center')
+
+        # Data rows
+        for row_idx, state in enumerate(states):
+            ws_short.cell(row=3 + row_idx, column=1, value=state)
+            ws_short.cell(row=3 + row_idx, column=1).font = Font(name='Calibri', size=10)
+            ws_short.cell(row=3 + row_idx, column=1).fill = PatternFill(
+                start_color='FFEEBF99', end_color='FFEEBF99', fill_type='solid'
+            )
+            for p_idx, player in enumerate(players):
+                val = float(static_payoffs.loc[state, player])
+                ws_short.cell(row=3 + row_idx, column=2 + p_idx, value=val)
+                ws_short.cell(row=3 + row_idx, column=2 + p_idx).number_format = '0.000000'
+                ws_short.cell(row=3 + row_idx, column=2 + p_idx).font = Font(name='Calibri', size=10)
+                ws_short.cell(row=3 + row_idx, column=2 + p_idx).alignment = Alignment(
+                    horizontal='right', vertical='center'
+                )
+
+        # Borders
+        for r in range(1, 3 + len(states)):
+            for c in range(1, num_short_cols + 1):
+                ws_short.cell(row=r, column=c).border = Border(
+                    left=thin_border, right=thin_border,
+                    top=thin_border, bottom=thin_border
+                )
+
+    # Add Transition Matrix (P) sheet if provided
+    if transition_matrix is not None:
+        ws_trans = wb.create_sheet(title="Transition Matrix")
+
+        n_states = len(states)
+        ws_trans.column_dimensions['A'].width = 12
+        for i in range(1, n_states + 1):
+            ws_trans.column_dimensions[get_column_letter(1 + i)].width = 12
+
+        # Title
+        ws_trans.cell(row=1, column=1, value="Transition Probability Matrix (P)")
+        ws_trans.cell(row=1, column=1).font = Font(name='Calibri', bold=True, size=12)
+        ws_trans.cell(row=1, column=1).fill = PatternFill(
+            start_color='FF4D9CC9', end_color='FF4D9CC9', fill_type='solid'
+        )
+        ws_trans.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_states + 1)
+
+        # "From \ To" corner header
+        ws_trans.cell(row=2, column=1, value="From \\ To")
+        ws_trans.cell(row=2, column=1).font = Font(name='Calibri', bold=True, size=10)
+        ws_trans.cell(row=2, column=1).fill = PatternFill(
+            start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+        )
+
+        # Column headers (target states)
+        for j, state in enumerate(states):
+            ws_trans.cell(row=2, column=2 + j, value=state)
+            ws_trans.cell(row=2, column=2 + j).font = Font(name='Calibri', bold=True, size=10)
+            ws_trans.cell(row=2, column=2 + j).fill = PatternFill(
+                start_color='FFD3D3D3', end_color='FFD3D3D3', fill_type='solid'
+            )
+            ws_trans.cell(row=2, column=2 + j).alignment = Alignment(horizontal='center', vertical='center')
+
+        # Data rows
+        for i, from_state in enumerate(states):
+            ws_trans.cell(row=3 + i, column=1, value=from_state)
+            ws_trans.cell(row=3 + i, column=1).font = Font(name='Calibri', bold=True, size=10)
+            ws_trans.cell(row=3 + i, column=1).fill = PatternFill(
+                start_color='FFEEBF99', end_color='FFEEBF99', fill_type='solid'
+            )
+            for j, to_state in enumerate(states):
+                val = float(transition_matrix.loc[from_state, to_state])
+                cell = ws_trans.cell(row=3 + i, column=2 + j, value=val)
+                cell.number_format = '0.000000'
+                cell.font = Font(name='Calibri', size=10)
+                cell.alignment = Alignment(horizontal='right', vertical='center')
+                # Highlight diagonal (self-loops / absorbing) in light yellow
+                if i == j:
+                    cell.fill = PatternFill(
+                        start_color='FFFFFF99', end_color='FFFFFF99', fill_type='solid'
+                    )
+                elif val > 0:
+                    cell.fill = PatternFill(
+                        start_color='FFCCECE3', end_color='FFCCECE3', fill_type='solid'
+                    )
+
+        # Borders
+        for r in range(1, 3 + n_states):
+            for c in range(1, n_states + 2):
+                ws_trans.cell(row=r, column=c).border = Border(
                     left=thin_border, right=thin_border,
                     top=thin_border, bottom=thin_border
                 )

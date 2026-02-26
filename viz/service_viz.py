@@ -693,10 +693,16 @@ def compute_transition_graph(
     _results_sheet = None
     try:
         _xl = pd.ExcelFile(xlsx_path)
-        if 'Results' in _xl.sheet_names:
-            _results_sheet = pd.read_excel(xlsx_path, sheet_name='Results', header=1, index_col=0)
+        # Check for new sheet name first, fall back to old name for backwards compatibility
+        _results_sheet_name = None
+        if 'Long-term Values' in _xl.sheet_names:
+            _results_sheet_name = 'Long-term Values'
+        elif 'Results' in _xl.sheet_names:
+            _results_sheet_name = 'Results'
+        if _results_sheet_name is not None:
+            _results_sheet = pd.read_excel(xlsx_path, sheet_name=_results_sheet_name, header=1, index_col=0)
     except Exception as _e:
-        logger.warning(f"Could not read Results sheet: {_e}")
+        logger.warning(f"Could not read Long-term Values/Results sheet: {_e}")
 
     # Build payoff matrix: shape (n_states, n_players) ordered by config["players"]
     n_states_count = len(config["state_names"])
@@ -720,12 +726,12 @@ def compute_transition_graph(
             for state_name in config["state_names"]:
                 long_term_values[state_name][player] = None
 
-    # Override V from Results sheet if present — more reliable than MDP-computed V
+    # Override V from Long-term Values sheet if present — more reliable than MDP-computed V
     # when country parameters are fallback values (RICE / payoff-table scenarios).
     if _results_sheet is not None:
         v_players = [p for p in config["players"] if p in _results_sheet.columns]
         if v_players:
-            logger.info("Using precomputed V from Results sheet")
+            logger.info("Using precomputed V from Long-term Values sheet")
             for state_name in config["state_names"]:
                 if state_name in _results_sheet.index:
                     for player in v_players:
