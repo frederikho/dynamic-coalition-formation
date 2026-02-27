@@ -13,5 +13,8 @@ scripts/combined*
 /logs
 .env
 /strategy_tables
+/payoff_tables
+
+.claude/
 
 # Note: /docs is committed (GitHub Pages deploys from this folder)

@@ -176,25 +176,36 @@ def parse_gdx_variable_levels(gdx_path: Path, symbol: str) -> dict[str, float]:
     return values
 
 
-def compute_sai_sum(gdx_path: Path, cutoff_year: int) -> float:
+def _in_year_range(calendar_year: float, start_year: int | None, end_year: int) -> bool:
+    """Return True if calendar_year falls within [start_year, end_year] (inclusive)."""
+    return (start_year is None or calendar_year >= start_year) and calendar_year <= end_year
+
+
+def _sai_col_name(start_year: int | None, end_year: int) -> str:
+    """Return the W_SAI column label for the given year range."""
+    if start_year is None:
+        return f"W_SAI_sum_≤{end_year}"
+    return f"W_SAI_sum_{start_year}-{end_year}"
+
+
+def compute_sai_sum(gdx_path: Path, start_year: int | None, end_year: int) -> float:
     """
-    Sum W_SAI level values for all periods whose calendar year <= cutoff_year.
+    Sum W_SAI level values for all periods whose calendar year falls within
+    [start_year, end_year] (inclusive).  start_year=None means no lower bound.
 
     Uses the `year` parameter from the same GDX file to map period indices to
     calendar years.  If W_SAI is absent from the GDX file (e.g. a no-deployment
     scenario), returns 0.0.
     """
     year_map = parse_gdx_parameter(gdx_path, YEAR_SYMBOL)
-    # year_map: {'1': 2015, '2': 2020, ...}  (keys are period indices as strings)
     try:
         sai_levels = parse_gdx_variable_levels(gdx_path, SAI_SYMBOL)
     except SymbolNotFoundError:
-        return 0.0  # No SAI deployment in this scenario
+        return 0.0
 
     total = 0.0
     for period_key, calendar_year in year_map.items():
-        if calendar_year <= cutoff_year:
-            # Periods with no .L entry have level 0
+        if _in_year_range(calendar_year, start_year, end_year):
             total += sai_levels.get(period_key, 0.0)
     return total
 
@@ -202,19 +213,19 @@ def compute_sai_sum(gdx_path: Path, cutoff_year: int) -> float:
 def compute_welfare_sums(
     gdx_path: Path,
     region_codes: list[str],
-    cutoff_year: int,
+    start_year: int | None,
+    end_year: int,
 ) -> dict[str, float]:
     """
     Sum `welfare_regional_t` for each region over all periods whose calendar year
-    <= cutoff_year.
-
-    Uses the `year` parameter from the same GDX file to map period indices to
-    calendar years.
+    falls within [start_year, end_year] (inclusive).  start_year=None means no
+    lower bound.
 
     Args:
         gdx_path:     Path to the GDX file.
-        region_codes: List of lowercase GAMS region codes (e.g. ['nde', 'usa', 'rus']).
-        cutoff_year:  Only include periods with calendar year <= this value.
+        region_codes: List of lowercase GAMS region codes (e.g. ['nde', 'usa', 'chn']).
+        start_year:   First year to include (None = no lower bound).
+        end_year:     Last year to include (inclusive).
 
     Returns:
         Dict mapping region code (lowercase) → summed welfare float.
@@ -224,9 +235,9 @@ def compute_welfare_sums(
 
     totals: dict[str, float] = {code.lower(): 0.0 for code in region_codes}
     for period_key, calendar_year in year_map.items():
-        if calendar_year <= cutoff_year:
+        if _in_year_range(calendar_year, start_year, end_year):
             for code in region_codes:
-                key = (period_key.lower(), code.lower())  # gdxdump: 'period'.'region'
+                key = (period_key.lower(), code.lower())
                 totals[code.lower()] += welfare_by_region_period.get(key, 0.0)
     return totals
 
@@ -341,6 +352,10 @@ def discover_state_files(
     if not gdx_files:
         raise FileNotFoundError(f"No .gdx files found in {input_dir}")
 
+    # Prefer the main results_* files if present; ignore debug_iter_* helpers.
+    if any(p.stem.startswith("results_") for p in gdx_files):
+        gdx_files = [p for p in gdx_files if p.stem.startswith("results_")]
+
     token_map = _GLOBAL_TOKEN_MAP
 
     # Strip deployment suffix from stems
@@ -390,7 +405,8 @@ def write_payoff_table(
     output_path: Path,
     players: list[tuple[str, str]],
     source_dir: str,
-    cutoff_year: int,
+    start_year: int | None,
+    end_year: int,
 ) -> None:
     """
     Write the payoff DataFrame to a formatted Excel file.
@@ -403,10 +419,11 @@ def write_payoff_table(
         output_path: Destination .xlsx path.
         players: List of (gdx_code, display_name) tuples.
         source_dir: Original input directory (written to metadata sheet).
-        cutoff_year: Year up to which W_SAI was summed.
+        start_year: First year included (None = no lower bound).
+        end_year:   Last year included (inclusive).
     """
     display_names = [d for _, d in players]
-    sai_col = f"W_SAI_sum_≤{cutoff_year}"
+    sai_col = _sai_col_name(start_year, end_year)
     states = df.index.tolist()
     n_players = len(display_names)
 
@@ -433,7 +450,7 @@ def write_payoff_table(
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
     title_cell = ws.cell(
         row=1, column=1,
-        value=f"Precomputed Payoffs — {WELFARE_SYMBOL} sum ≤ {cutoff_year}  |  {SAI_SYMBOL} sum ≤ {cutoff_year}",
+        value=f"Precomputed Payoffs — {WELFARE_SYMBOL}  |  {SAI_SYMBOL}: {sai_col}",
     )
     title_cell.font = Font(name="Calibri", bold=True, size=12, color="FFFFFFFF")
     title_cell.fill = PatternFill(start_color=COLORS["title"],
@@ -531,7 +548,8 @@ def write_payoff_table(
         ("Parameter", "Value"),
         ("welfare_symbol", WELFARE_SYMBOL),
         ("sai_symbol", SAI_SYMBOL),
-        ("sai_cutoff_year", cutoff_year),
+        ("sai_start_year", start_year if start_year is not None else ""),
+        ("sai_end_year", end_year),
         ("source_dir", source_dir),
         ("num_states", len(states)),
         ("num_players", n_players),
@@ -559,13 +577,58 @@ def write_payoff_table(
 # Main logic
 # ---------------------------------------------------------------------------
 
+def _check_sai_ordering(df: "pd.DataFrame", sai_col: str) -> None:
+    """
+    Warn if a coalition's W_SAI sum falls outside the range of its members' singletons.
+
+    For each multi-player coalition state present in df, find the singleton W_SAI
+    values for each member and check that the coalition value lies between the
+    minimum and maximum singleton value.  Missing singletons are skipped (no warning).
+    """
+    warnings: list[str] = []
+    for key in df.index:
+        if key == "( )":
+            continue
+        inner = key[1:-1]  # strip parentheses, e.g. 'CHNNDE'
+        try:
+            members = _parse_deployers(inner, _GLOBAL_TOKEN_MAP)
+        except ValueError:
+            continue
+        if len(members) < 2:
+            continue
+
+        singleton_keys = [_deployers_to_key({m}) for m in members]
+        available = [k for k in singleton_keys if k in df.index]
+        if len(available) < 2:
+            continue  # not enough singletons to bound
+
+        singleton_sai = [df.loc[k, sai_col] for k in available]
+        coalition_sai = df.loc[key, sai_col]
+        lo, hi = min(singleton_sai), max(singleton_sai)
+
+        if not (lo <= coalition_sai <= hi):
+            warnings.append(
+                f"  {key}: W_SAI={coalition_sai:.2f} is outside [{lo:.2f}, {hi:.2f}] "
+                f"(members: {', '.join(sorted(members))})"
+            )
+
+    if warnings:
+        print("\nWarning: unexpected W_SAI ordering for the following coalitions:")
+        for w in warnings:
+            print(w)
+        print("  A coalition's SAI should lie between the min and max of its members' singletons.")
+    else:
+        print("\nW_SAI ordering check passed.")
+
+
 def ingest(
     input_dir: Path,
     output_path: Path,
     players: list[tuple[str, str]] | None,
-    cutoff_year: int,
+    start_year: int | None,
+    end_year: int,
 ) -> None:
-    sai_col = f"W_SAI_sum_≤{cutoff_year}"
+    sai_col = _sai_col_name(start_year, end_year)
 
     # --- Discover which GDX files map to which deployer keys ------------------
     key_to_file, skipped = discover_state_files(input_dir)
@@ -594,7 +657,10 @@ def ingest(
 
     total_gdx = len(list(input_dir.glob("*.gdx")))
     print(f"Found {total_gdx} GDX file(s) in {input_dir}")
-    print(f"Summing {SAI_SYMBOL} up to year {cutoff_year}\n")
+    if start_year is None:
+        print(f"Summing {SAI_SYMBOL} up to year {end_year}\n")
+    else:
+        print(f"Summing {SAI_SYMBOL} for years {start_year}–{end_year}\n")
 
     if skipped:
         print("Skipped files:")
@@ -622,8 +688,8 @@ def ingest(
         gdx_path = key_to_file[state_name]
         print(f"  {gdx_path.name}  →  deployer '{state_name}'")
 
-        welfare = compute_welfare_sums(gdx_path, region_codes, cutoff_year)
-        sai_sum = compute_sai_sum(gdx_path, cutoff_year)
+        welfare = compute_welfare_sums(gdx_path, region_codes, start_year, end_year)
+        sai_sum = compute_sai_sum(gdx_path, start_year, end_year)
 
         row: dict = {"state": state_name, "source_file": gdx_path.name}
         for code, display in players:
@@ -639,7 +705,9 @@ def ingest(
     df = pd.DataFrame(rows).set_index("state")
     df = df[display_names + [sai_col, "source_file"]]
 
-    write_payoff_table(df, output_path, players, str(input_dir), cutoff_year)
+    _check_sai_ordering(df, sai_col)
+
+    write_payoff_table(df, output_path, players, str(input_dir), start_year, end_year)
 
     print(f"\nWrote payoff table → {output_path}")
     print(df[display_names + [sai_col]].to_string())
@@ -668,10 +736,13 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--cutoff-year",
-        type=int,
-        default=DEFAULT_CUTOFF_YEAR,
-        help=f"Sum W_SAI up to and including this year (default: %(default)s)",
+        "--year-range",
+        default=str(DEFAULT_CUTOFF_YEAR),
+        help=(
+            "Year range for summation. Either a single end year (e.g. '2060', "
+            "meaning all periods up to and including 2060) or a start-end range "
+            "(e.g. '2060-2080', inclusive on both ends). (default: %(default)s)"
+        ),
     )
     parser.add_argument(
         "--players",
@@ -682,6 +753,16 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+
+    # Parse --year-range: either 'YYYY' or 'YYYY-YYYY'
+    year_range = args.year_range.strip()
+    if "-" in year_range:
+        parts = year_range.split("-", 1)
+        start_year: int | None = int(parts[0])
+        end_year = int(parts[1])
+    else:
+        start_year = None
+        end_year = int(year_range)
 
     if args.players:
         players = []
@@ -701,7 +782,8 @@ def main() -> None:
         input_dir=Path(args.input_dir),
         output_path=output,
         players=players,
-        cutoff_year=args.cutoff_year,
+        start_year=start_year,
+        end_year=end_year,
     )
 
 

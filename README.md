@@ -31,3 +31,29 @@ All results will appear in the ```results``` folder.
 For testing different player strategies, directly modify the tables in the ```strategy_tables``` folder.
 To try out different model parameterizations (discount rates, base temperatures, marginal damages, protocols, etc.), 
 modify the ```base_config``` and ```experiment_configs``` variables inside ```main.py```.
+
+# Build for deployment to github pages
+
+cd viz
+npm run build
+
+Test locally from root:
+python3 -m http.server 8765
+
+Then open http://127.0.0.1:8765.
+
+# Ingest RICE50+ gdx data as payout table
+
+python lib/ingest_payoffs.py --input-dir "/home/frederik/Code/RICE50x/results/Burke" --output "burke_2060" --cutoff-year 2060
+
+# Find equilibrium
+
+Using a payoff table (ingested from RICE run results):
+python find_equilibrium.py power_threshold_rice_n3 --payoff-table burke_2060.xlsx
+
+Or use auto-ingest:
+python find_equilibrium.py power_threshold_rice_n3 --payoff-table burke_2060.xlsx --auto-ingest
+
+# Orchestrate a full joint run of RICE and coalition model
+
+python multimodel_orchestrator.py --periods 2035-2060 2060-2080 2080-2100 --impact burke --countries usa chn nde --policy bau_impact

@@ -721,10 +721,9 @@ def _parse_players_from_payoff_table(path: Path) -> list[str]:
     """
     from lib.ingest_payoffs import _GLOBAL_TOKEN_MAP, _parse_deployers
 
-    stem = path.stem  # e.g. 'burke_usachnnde_2060'
-    parts = stem.rsplit("_", 1)
-    if len(parts) == 2 and parts[1].isdigit():
-        stem = parts[0]  # strip year → 'burke_usachnnde'
+    stem = path.stem  # e.g. 'burke_usachnnde_2060' or 'burke_usachnnde_2060-2080'
+    if _parse_year_range_from_stem(stem) is not None:
+        stem = stem.rsplit("_", 1)[0]  # strip year/range → 'burke_usachnnde'
 
     players: set[str] = set()
     for segment in stem.split("_"):
@@ -742,11 +741,36 @@ def _parse_players_from_payoff_table(path: Path) -> list[str]:
     return sorted(players)
 
 
+def _parse_year_range_from_stem(stem: str) -> tuple[int | None, int] | None:
+    """
+    Extract (start_year, end_year) from the last '_'-separated segment of a stem.
+
+    Accepts:
+      '...._2060'       → (None, 2060)   — no lower bound, sum up to 2060
+      '...._2060-2080'  → (2060, 2080)   — inclusive range
+
+    Returns None if the last segment is not a recognised year/range pattern.
+    """
+    import re
+    parts = stem.rsplit("_", 1)
+    if len(parts) != 2:
+        return None
+    m = re.fullmatch(r"(\d{4})(?:-(\d{4}))?", parts[1])
+    if not m:
+        return None
+    if m.group(2):
+        return int(m.group(1)), int(m.group(2))
+    return None, int(m.group(1))
+
+
 def _run_auto_ingest(payoff_table_arg, parser) -> str:
     """
     Produce a payoff table file via lib.ingest_payoffs if it does not already exist.
 
-    The cutoff year is inferred from the filename stem (e.g. burke_2060.xlsx → 2060).
+    The year range is inferred from the filename stem:
+      burke_usachnnde_2060.xlsx      → up to 2060
+      burke_usachnnde_2060-2080.xlsx → years 2060–2080 inclusive
+
     Path resolution mirrors _load_payoff_table: a bare filename is looked up under
     payoff_tables/ in the repo root.
 
@@ -760,7 +784,8 @@ def _run_auto_ingest(payoff_table_arg, parser) -> str:
     if payoff_table_arg is None:
         parser.error(
             "--auto-ingest requires --payoff-table to name the target file; "
-            "the cutoff year is inferred from the filename (e.g. burke_2060.xlsx)"
+            "the year range is inferred from the filename "
+            "(e.g. burke_usachnnde_2060.xlsx or burke_usachnnde_2060-2080.xlsx)"
         )
 
     pt_path = Path(payoff_table_arg)
@@ -773,21 +798,23 @@ def _run_auto_ingest(payoff_table_arg, parser) -> str:
     if pt_path.exists():
         print(f"[auto-ingest] {pt_path.name} already exists — skipping ingest")
     else:
-        stem_parts = pt_path.stem.rsplit("_", 1)
-        if len(stem_parts) != 2 or not stem_parts[1].isdigit():
+        year_range = _parse_year_range_from_stem(pt_path.stem)
+        if year_range is None:
             parser.error(
-                f"Cannot infer cutoff year from '{pt_path.name}'. "
-                "Encode the year in the stem, e.g. burke_2060.xlsx"
+                f"Cannot infer year range from '{pt_path.name}'. "
+                "Encode the year in the stem, e.g. burke_usachnnde_2060.xlsx "
+                "or burke_usachnnde_2060-2080.xlsx"
             )
-        cutoff_year = int(stem_parts[1])
-        folder_name = stem_parts[0]
+        start_year, end_year = year_range
+        folder_name = pt_path.stem.rsplit("_", 1)[0]
         from lib.ingest_payoffs import ingest, DEFAULT_RESULTS_DIR
         input_dir = DEFAULT_RESULTS_DIR / folder_name
-        print(f"[auto-ingest] {pt_path.name} not found — running ingest (cutoff year {cutoff_year})")
+        year_desc = f"{start_year}-{end_year}" if start_year else f"up to {end_year}"
+        print(f"[auto-ingest] {pt_path.name} not found — running ingest (years {year_desc})")
         print(f"[auto-ingest] {input_dir} → {pt_path}")
         try:
             ingest(input_dir=input_dir, output_path=pt_path,
-                   players=None, cutoff_year=cutoff_year)
+                   players=None, start_year=start_year, end_year=end_year)
         except FileNotFoundError as e:
             parser.error(
                 f"auto-ingest failed: {e}\n"
@@ -910,7 +937,8 @@ Available scenarios (use --list-scenarios to see all):
         if args.payoff_table is None:
             parser.error(
                 "--auto-ingest requires --payoff-table to name the target file; "
-                "the cutoff year is inferred from the filename (e.g. burke_2060.xlsx)"
+                "the year range is inferred from the filename "
+                "(e.g. burke_usachnnde_2060.xlsx or burke_usachnnde_2060-2080.xlsx)"
             )
         # Resolve path the same way _load_payoff_table does
         pt_path = Path(args.payoff_table)
@@ -923,21 +951,23 @@ Available scenarios (use --list-scenarios to see all):
         if pt_path.exists():
             print(f"[auto-ingest] {pt_path.name} already exists — skipping ingest")
         else:
-            # Extract cutoff year from stem, e.g. "burke_2060" → 2060
-            stem_parts = pt_path.stem.rsplit("_", 1)
-            if len(stem_parts) != 2 or not stem_parts[1].isdigit():
+            year_range = _parse_year_range_from_stem(pt_path.stem)
+            if year_range is None:
                 parser.error(
-                    f"Cannot infer cutoff year from '{pt_path.name}'. "
-                    "Encode the year in the stem, e.g. burke_2060.xlsx"
+                    f"Cannot infer year range from '{pt_path.name}'. "
+                    "Encode the year in the stem, e.g. burke_usachnnde_2060.xlsx "
+                    "or burke_usachnnde_2060-2080.xlsx"
                 )
-            cutoff_year = int(stem_parts[1])
-            folder_name = stem_parts[0]
+            start_year, end_year = year_range
+            folder_name = pt_path.stem.rsplit("_", 1)[0]
             from lib.ingest_payoffs import ingest, DEFAULT_RESULTS_DIR
             input_dir = DEFAULT_RESULTS_DIR / folder_name
-            print(f"[auto-ingest] {pt_path.name} not found — running ingest (cutoff year {cutoff_year})")
+            year_desc = f"{start_year}-{end_year}" if start_year else f"up to {end_year}"
+            print(f"[auto-ingest] {pt_path.name} not found — running ingest (years {year_desc})")
             print(f"[auto-ingest] {input_dir} → {pt_path}")
             try:
-                ingest(input_dir=input_dir, output_path=pt_path, players=None, cutoff_year=cutoff_year)
+                ingest(input_dir=input_dir, output_path=pt_path,
+                       players=None, start_year=start_year, end_year=end_year)
             except FileNotFoundError as e:
                 parser.error(
                     f"auto-ingest failed: {e}\n"
