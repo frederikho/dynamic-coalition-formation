@@ -599,7 +599,10 @@ class EquilibriumSolver:
               project_to_exact: bool = True,
               checkpoint_dir: str = './checkpoints',
               load_from_checkpoint: bool = False,
-              config_hash: str = None) -> Tuple[pd.DataFrame, Dict]:
+              config_hash: str = None,
+              max_time_seconds: Optional[float] = None,
+              disable_checkpoints: bool = False,
+              disable_timing_report: bool = False) -> Tuple[pd.DataFrame, Dict]:
         """
         Solve for equilibrium strategy profile using smoothed fixed-point iteration.
 
@@ -649,7 +652,7 @@ class EquilibriumSolver:
             checkpoint_path = str(Path(checkpoint_dir) / f"checkpoint_{config_hash}.pkl")
 
             # Try to load from checkpoint
-            if load_from_checkpoint:
+            if load_from_checkpoint and not disable_checkpoints:
                 checkpoint = self._load_checkpoint(checkpoint_path)
                 if checkpoint:
                     # Restore state
@@ -690,8 +693,17 @@ class EquilibriumSolver:
             'inner_total': []   # Total time for inner loop per outer iteration
         }
 
+        start_time = time.time()
+        stopping_reason = None
+
+        max_change = float('inf')
+        any_outer_started = False
         try:
           while outer_iter < max_outer_iter:
+            any_outer_started = True
+            if max_time_seconds is not None and (time.time() - start_time) >= max_time_seconds:
+                stopping_reason = 'time_budget'
+                break
             outer_iter_start = time.time()  # Track total outer iteration time
 
             if self.verbose:
@@ -705,6 +717,9 @@ class EquilibriumSolver:
             inner_history = []         # Full per-iteration max_change history
             inner_converged = False
             for inner_iter in range(max_inner_iter):
+                if max_time_seconds is not None and (time.time() - start_time) >= max_time_seconds:
+                    stopping_reason = 'time_budget'
+                    break
                 # Save old strategies
                 old_proposals = self.p_proposals.copy()
                 old_acceptances = self.r_acceptances.copy()
@@ -759,6 +774,11 @@ class EquilibriumSolver:
                         self._log(f"    Converged after {inner_iter + 1} iterations")
                     inner_converged = True
                     break
+            if stopping_reason == 'time_budget':
+                # Record inner timing and break out of outer loop cleanly
+                inner_loop_time = time.time() - inner_loop_start
+                timing_stats['inner_total'].append(inner_loop_time)
+                break
 
             # Report oscillation when inner loop fails to converge
             if not inner_converged:
@@ -783,7 +803,7 @@ class EquilibriumSolver:
                 self._log(f"  Outer iteration max_change: {max_change:.6e}")
 
             # Save checkpoint after each outer iteration
-            if checkpoint_path and config_hash:
+            if checkpoint_path and config_hash and not disable_checkpoints:
                 t0 = time.time()
                 self._save_checkpoint(checkpoint_path, outer_iter, tau_p, tau_r, config_hash)
                 timing_stats['checkpoint_save'].append(time.time() - t0)
@@ -884,12 +904,15 @@ class EquilibriumSolver:
             self._log("\n\n" + "="*80, level='warning')
             self._log("INTERRUPTED BY USER", level='warning')
             self._log("="*80, level='warning')
-            self._print_timing_report(timing_stats)
+            if not disable_timing_report:
+                self._print_timing_report(timing_stats)
             raise
 
         # Determine the stopping reason
         early_stop_via_verification = False
-        if converged and tau_p > tau_min * (1 + tau_margin):
+        if stopping_reason == 'time_budget':
+            stopping_reason = 'time_budget'
+        elif converged and tau_p > tau_min * (1 + tau_margin):
             # Stopped early via verification (not via temperature convergence)
             early_stop_via_verification = True
             stopping_reason = 'early_verification'
@@ -905,12 +928,14 @@ class EquilibriumSolver:
                 self._log(f"\nStopped early after {outer_iter + 1} outer iterations (equilibrium verified)")
             elif converged:
                 self._log(f"\nAnnealing converged after {outer_iter + 1} outer iterations")
+            elif stopping_reason == 'time_budget':
+                self._log(f"\nStopped due to time budget (max_time_seconds={max_time_seconds})")
             else:
                 self._log(f"\nAnnealing stopped at max_outer_iter={max_outer_iter} (safety valve)")
                 self._log(f"  Final max_change: {max_change:.6e} (outer_tol: {outer_tol:.2e})")
 
         # Final projection to exact equilibrium (unless we already did it via early stopping)
-        if project_to_exact and not early_stop_via_verification:
+        if project_to_exact and not early_stop_via_verification and stopping_reason != 'time_budget':
             if self.verbose:
                 self._log("\nProjecting to exact equilibrium...")
 
@@ -927,10 +952,15 @@ class EquilibriumSolver:
         # Final strategy DataFrame
         final_strategy_df = self._create_strategy_dataframe()
 
+        if stopping_reason == 'time_budget' and any_outer_started:
+            outer_iterations_reported = outer_iter + 1
+        else:
+            outer_iterations_reported = outer_iter + 1 if converged else outer_iter
+
         result = {
             'converged': converged,
             'stopping_reason': stopping_reason,  # 'early_verification', 'converged', or 'max_iter'
-            'outer_iterations': outer_iter + 1 if converged else outer_iter,
+            'outer_iterations': outer_iterations_reported,
             'final_tau_p': tau_p,
             'final_tau_r': tau_r,
             'final_max_change': max_change,
@@ -941,7 +971,8 @@ class EquilibriumSolver:
 
         if self.verbose:
             self._log("\nSolver complete!")
-            self._print_timing_report(timing_stats)
+            if not disable_timing_report:
+                self._print_timing_report(timing_stats)
 
             self._log("="*80)
 

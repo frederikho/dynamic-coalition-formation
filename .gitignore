@@ -16,5 +16,6 @@ scripts/combined*
 /payoff_tables
 
 .claude/
+results/hpo/
 
 # Note: /docs is committed (GitHub Pages deploys from this folder)
