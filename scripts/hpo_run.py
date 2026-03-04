@@ -26,6 +26,22 @@ def main() -> None:
     )
     parser.add_argument("--study-name", type=str, default="hpo_n3", help="Optuna study name")
     parser.add_argument("--quiet", action="store_true", help="Suppress progress output")
+    parser.add_argument(
+        "--payoff-tables-dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory containing .xlsx payoff table files. Each file becomes one run per trial. "
+            "Players are parsed from each filename (e.g. burke_usachnnde_2060.xlsx → CHN, NDE, USA). "
+            "Use --scenario to select which RICE scenario template to apply (default: power_threshold_RICE_n3)."
+        ),
+    )
+    parser.add_argument(
+        "--scenario",
+        type=str,
+        default="power_threshold_RICE_n3",
+        help="Scenario template to use with --payoff-tables-dir (default: power_threshold_RICE_n3)",
+    )
     args = parser.parse_args()
 
     cfg = StudyConfig(
@@ -38,6 +54,8 @@ def main() -> None:
         storage=args.storage,
         study_name=args.study_name,
         verbose=not args.quiet,
+        payoff_tables_dir=Path(args.payoff_tables_dir) if args.payoff_tables_dir else None,
+        scenario=args.scenario,
     )
 
     run_study(cfg)

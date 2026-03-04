@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional
 
-from lib.equilibrium.find import setup_experiment, _compute_verification
+from lib.equilibrium.find import setup_experiment, _compute_verification, _parse_players_from_payoff_table
+from lib.equilibrium.scenarios import fill_players
 from lib.equilibrium.solver import EquilibriumSolver
 from lib.utils import verify_equilibrium
 
@@ -36,12 +38,23 @@ def run_single(config: Dict[str, Any],
                solver_params: Dict[str, Any],
                max_time_seconds: Optional[float],
                penalty_factor: float = 1.5,
-               random_seed: Optional[int] = None) -> RunResult:
+               random_seed: Optional[int] = None,
+               payoff_table: Optional[Path] = None) -> RunResult:
     """
     Run a single scenario with given solver params and compute verification.
 
     This is side-effect free: no checkpoints, no file writing, no logging.
+
+    If payoff_table is provided, players are parsed from its filename and injected
+    into the config (which must have players=None, i.e. a RICE-style scenario), and
+    the payoff table path is set so setup_experiment loads precomputed payoffs.
     """
+    config = config.copy()
+    if payoff_table is not None:
+        players = _parse_players_from_payoff_table(payoff_table)
+        config = fill_players(config, players)
+        config["payoff_table"] = str(payoff_table)
+
     setup = setup_experiment(config)
 
     solver = EquilibriumSolver(

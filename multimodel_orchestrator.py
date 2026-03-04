@@ -335,6 +335,7 @@ def _build_gams_jobs(
     gams_workdir: str,
     sai_history_gdx: Optional[str] = None,
     sai_history_from: Optional[int] = None,
+    extra_gams_args: Optional[list[str]] = None,
 ) -> list[tuple[str, list[str]]]:
     """Build all GAMS command lines for one phase.
 
@@ -345,7 +346,7 @@ def _build_gams_jobs(
     if sai_history_gdx is not None:
         history_extra = [
             f"--load_sai_history={sai_history_gdx}",
-            f"--fix_sai_history_until={sai_history_from}",
+            f"--load_sai_history_until={sai_history_from}",
         ]
 
     base = [
@@ -355,6 +356,8 @@ def _build_gams_jobs(
         f"--policy={policy}",
         f"--workdir={gams_workdir}",
     ] + history_extra
+    if extra_gams_args:
+        base += extra_gams_args
 
     jobs: list[tuple[str, list[str]]] = []
 
@@ -437,6 +440,7 @@ def run_gams_phase(
     sai_history_gdx: Optional[Path] = None,
     sai_history_from: Optional[int] = None,
     max_workers: int = 4,
+    extra_gams_args: Optional[list[str]] = None,
 ) -> None:
     """Run all GAMS simulations for one phase in parallel.
 
@@ -449,6 +453,7 @@ def run_gams_phase(
         sai_history_gdx: Absolute path to previous-phase GDX file (or None).
         sai_history_from:Year from which to load SAI history (= end year of prev phase).
         max_workers:     Maximum number of parallel GAMS jobs.
+        extra_gams_args: Additional '--key=value' args appended to every GAMS run.
 
     Raises:
         RuntimeError: if any GAMS job fails.
@@ -459,7 +464,13 @@ def run_gams_phase(
 
     history_arg = str(sai_history_gdx) if sai_history_gdx is not None else None
     jobs = _build_gams_jobs(
-        countries, impact, policy, str(workdir), history_arg, sai_history_from
+        countries,
+        impact,
+        policy,
+        str(workdir),
+        history_arg,
+        sai_history_from,
+        extra_gams_args,
     )
 
     _log(f"  Submitting {len(jobs)} GAMS jobs (max_workers={max_workers})...")
@@ -507,6 +518,7 @@ def run_ingest(
     payoff_table_path: Path,
     start_year: Optional[int],
     end_year: int,
+    extra_metadata: Optional[dict[str, object]] = None,
 ) -> None:
     """Ingest welfare and W_SAI from GDX files into a payoff table Excel file.
 
@@ -515,6 +527,7 @@ def run_ingest(
         payoff_table_path: Destination .xlsx file path.
         start_year:        First year to include (None = no lower bound).
         end_year:          Last year to include (inclusive).
+        extra_metadata:    Optional metadata key/value pairs for the Excel file.
     """
     from lib.ingest_payoffs import ingest
 
@@ -529,6 +542,7 @@ def run_ingest(
             players=None,          # auto-detect from filenames
             start_year=start_year,
             end_year=end_year,
+            extra_metadata=extra_metadata,
         )
 
     # Surface the key lines from ingest output
@@ -769,6 +783,8 @@ def orchestrate(
     rice_dir: Path = DEFAULT_RICE_DIR,
     max_workers: int = 4,
     fresh: bool = False,
+    extra_gams_args: Optional[list[str]] = None,
+    payoff_metadata: Optional[dict[str, object]] = None,
 ) -> list[dict]:
     """Run the full multi-period orchestration.
 
@@ -788,6 +804,8 @@ def orchestrate(
         rice_dir:    Absolute path to the RICE50x repository.
         max_workers: Maximum parallel GAMS jobs per phase.
         fresh:       If True, re-run every step even if outputs already exist.
+        extra_gams_args: Additional '--key=value' args appended to every GAMS run.
+        payoff_metadata: Extra key/value rows to write into payoff metadata.
 
     Returns:
         List of per-period result dicts with keys:
@@ -813,6 +831,10 @@ def orchestrate(
     _log(f"  RICE dir:     {rice_dir}")
     _log(f"  Max workers:  {max_workers}")
     _log(f"  Fresh:        {fresh}")
+    if extra_gams_args:
+        _log(f"  Extra GAMS args: {extra_gams_args}")
+    if payoff_metadata:
+        _log(f"  Payoff metadata extras: {payoff_metadata}")
 
     if not rice_dir.exists():
         raise RuntimeError(f"RICE50x directory not found: {rice_dir}")
@@ -851,6 +873,7 @@ def orchestrate(
                 sai_history_gdx=history_gdx,
                 sai_history_from=history_from,
                 max_workers=max_workers,
+                extra_gams_args=extra_gams_args,
             )
 
         # ── Step 2: Ingest payoffs ───────────────────────────────────────────
@@ -863,19 +886,39 @@ def orchestrate(
                 payoff_table_path=payoff_table,
                 start_year=period_start,
                 end_year=period_end,
+                extra_metadata=payoff_metadata,
             )
 
         # ── Step 3: Find equilibrium ─────────────────────────────────────────
         _step(3, 4, "Finding coalition equilibrium", t0)
         if not fresh and strategy_file.exists() and result_cache.exists():
             _skip(f"strategy table and result cache already exist: {strategy_file.name}")
-            with open(result_cache, "rb") as _f:
-                result = pickle.load(_f)
-            if not result.get("verification_success", False):
-                raise RuntimeError(
-                    f"Cached result for '{slug}' has verification_success=False.\n"
-                    f"Delete {result_cache} or rerun with --fresh."
+            try:
+                with open(result_cache, "rb") as _f:
+                    result = pickle.load(_f)
+                if not isinstance(result, dict):
+                    raise ValueError("cached result is not a dict")
+                if not result.get("verification_success", False):
+                    raise RuntimeError(
+                        f"Cached result for '{slug}' has verification_success=False.\n"
+                        f"Delete {result_cache} or rerun with --fresh."
+                    )
+            except RuntimeError:
+                # Keep existing behavior for explicitly failed verification.
+                raise
+            except Exception as exc:
+                _warn(
+                    f"Could not load cached result ({type(exc).__name__}: {exc}). "
+                    "Recomputing equilibrium and refreshing cache."
                 )
+                result = run_find_equilibrium(
+                    scenario=scenario,
+                    payoff_table_path=payoff_table,
+                    output_file=strategy_file,
+                    log_dir=solver_log_dir,
+                )
+                with open(result_cache, "wb") as _f:
+                    pickle.dump(result, _f)
         else:
             result = run_find_equilibrium(
                 scenario=scenario,
@@ -927,7 +970,7 @@ def orchestrate(
         })
 
         # Carry history into the next phase.
-        # fix_sai_history_until fixes N_SAI for all years <= that value.
+        # load_sai_history_until fixes N_SAI for all years <= that value.
         # We want the just-computed period to be fixed through its end year,
         # so use period_end (e.g. 2065 for phase 2050-2065).
         history_gdx  = next_history_gdx
@@ -1082,9 +1125,57 @@ def main() -> None:
             "Without this flag, steps whose output files are present are skipped."
         ),
     )
+    parser.add_argument(
+        "--gamma_ineq",
+        type=float,
+        default=None,
+        help="Optional gamma_ineq override passed through to GAMS.",
+    )
+    parser.add_argument(
+        "--max_gain",
+        type=float,
+        default=None,
+        help="Optional max_gain override passed through to GAMS.",
+    )
+    parser.add_argument(
+        "--max_damage",
+        type=float,
+        default=None,
+        help="Optional max_damage override passed through to GAMS.",
+    )
+    parser.add_argument(
+        "--t_ada_temp",
+        type=float,
+        default=None,
+        help="Optional t_ada_temp override passed through to GAMS.",
+    )
+    parser.add_argument(
+        "--sai_damage_coef",
+        type=float,
+        default=None,
+        help="Optional sai_damage_coef override passed through to GAMS.",
+    )
 
     args = parser.parse_args()
     _validate_periods(args.periods)
+    extra_gams_args: list[str] = []
+    if args.gamma_ineq is not None:
+        extra_gams_args.append(f"--gamma_ineq={args.gamma_ineq}")
+    if args.max_gain is not None:
+        extra_gams_args.append(f"--max_gain={args.max_gain}")
+    if args.max_damage is not None:
+        extra_gams_args.append(f"--max_damage={args.max_damage}")
+    if args.t_ada_temp is not None:
+        extra_gams_args.append(f"--t_ada_temp={args.t_ada_temp}")
+    if args.sai_damage_coef is not None:
+        extra_gams_args.append(f"--sai_damage_coef={args.sai_damage_coef}")
+    payoff_metadata = {
+        "gamma_ineq": args.gamma_ineq,
+        "max_gain": args.max_gain,
+        "max_damage": args.max_damage,
+        "t_ada_temp": args.t_ada_temp,
+        "sai_damage_coef": args.sai_damage_coef,
+    }
 
     try:
         orchestrate(
@@ -1096,6 +1187,8 @@ def main() -> None:
             rice_dir=args.rice_dir,
             max_workers=args.max_workers,
             fresh=args.fresh,
+            extra_gams_args=extra_gams_args or None,
+            payoff_metadata=payoff_metadata,
         )
     except (RuntimeError, ValueError, FileNotFoundError) as exc:
         cmd_str = " ".join(sys.argv)

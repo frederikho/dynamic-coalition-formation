@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ def _run_one_scenario(args: Dict[str, Any]) -> RunResult:
         max_time_seconds=args["max_time_seconds"],
         penalty_factor=args["penalty_factor"],
         random_seed=args["random_seed"],
+        payoff_table=args.get("payoff_table"),
     )
 
 
@@ -63,6 +65,9 @@ class StudyConfig:
     study_name: Optional[str] = None
     verbose: bool = True
     log_every_trials: int = 1
+    # Payoff-table mode: discover .xlsx files in this folder and run each against `scenario`
+    payoff_tables_dir: Optional[Path] = None
+    scenario: str = "power_threshold_RICE_n3"
 
 
 def _ensure_results_dir(path: Path) -> None:
@@ -119,7 +124,8 @@ def _sample_params(trial: optuna.Trial) -> Dict[str, Any]:
     }
 
 
-def _objective(trial: optuna.Trial, cfg: StudyConfig, scenarios: List[str]) -> float:
+def _objective(trial: optuna.Trial, cfg: StudyConfig, scenarios: List[tuple]) -> float:
+    # scenarios is a list of (scenario_name, payoff_table_path_or_None) tuples
     params = _sample_params(trial)
     params["max_outer_iter"] = cfg.max_outer_iter
     params["project_to_exact"] = True
@@ -133,8 +139,6 @@ def _objective(trial: optuna.Trial, cfg: StudyConfig, scenarios: List[str]) -> f
     successes = 0
     stopping_reasons: Dict[str, int] = {}
 
-    total_scenarios = len(scenarios)
-
     if cfg.n_jobs and cfg.n_jobs > 1:
         try:
             ctx = mp.get_context("fork")
@@ -142,7 +146,7 @@ def _objective(trial: optuna.Trial, cfg: StudyConfig, scenarios: List[str]) -> f
             ctx = mp.get_context("spawn")
         with ProcessPoolExecutor(max_workers=cfg.n_jobs, mp_context=ctx, initializer=_init_worker) as executor:
             future_map = {}
-            for idx, scenario_name in enumerate(scenarios, start=1):
+            for idx, (scenario_name, payoff_table) in enumerate(scenarios, start=1):
                 seed = cfg.random_seed + (trial.number * 1000) + idx
                 future = executor.submit(
                     _run_one_scenario,
@@ -152,19 +156,13 @@ def _objective(trial: optuna.Trial, cfg: StudyConfig, scenarios: List[str]) -> f
                         "max_time_seconds": cfg.max_time_seconds,
                         "penalty_factor": cfg.penalty_factor,
                         "random_seed": seed,
+                        "payoff_table": payoff_table,
                     },
                 )
                 future_map[future] = scenario_name
             try:
                 for future in as_completed(future_map):
                     run = future.result()
-                    if cfg.verbose:
-                        status = "OK" if run.verification_success else "FAIL"
-                        print(
-                            f"[HPO]  Trial {trial.number} done {run.scenario_name} "
-                            f"{status} {run.runtime_seconds:.2f}s",
-                            flush=True,
-                        )
                     scores.append(run.score)
                     runtimes.append(run.runtime_seconds)
                     if run.verification_success:
@@ -175,7 +173,7 @@ def _objective(trial: optuna.Trial, cfg: StudyConfig, scenarios: List[str]) -> f
                 _terminate_children()
                 raise
     else:
-        for idx, scenario_name in enumerate(scenarios, start=1):
+        for idx, (scenario_name, payoff_table) in enumerate(scenarios, start=1):
             seed = cfg.random_seed + (trial.number * 1000) + idx
             run = _run_one_scenario(
                 {
@@ -184,15 +182,9 @@ def _objective(trial: optuna.Trial, cfg: StudyConfig, scenarios: List[str]) -> f
                     "max_time_seconds": cfg.max_time_seconds,
                     "penalty_factor": cfg.penalty_factor,
                     "random_seed": seed,
+                    "payoff_table": payoff_table,
                 }
             )
-            if cfg.verbose:
-                status = "OK" if run.verification_success else "FAIL"
-                print(
-                    f"[HPO]  Trial {trial.number} done {run.scenario_name} "
-                    f"{status} {run.runtime_seconds:.2f}s",
-                    flush=True,
-                )
             scores.append(run.score)
             runtimes.append(run.runtime_seconds)
             if run.verification_success:
@@ -225,18 +217,27 @@ def _objective(trial: optuna.Trial, cfg: StudyConfig, scenarios: List[str]) -> f
 def run_study(cfg: StudyConfig) -> None:
     _ensure_results_dir(cfg.results_dir)
 
-    if cfg.scenarios is None:
+    # Build list of (scenario_name, payoff_table_or_None) tuples
+    if cfg.payoff_tables_dir is not None:
+        xlsx_files = sorted(Path(cfg.payoff_tables_dir).glob("*.xlsx"))
+        if not xlsx_files:
+            raise FileNotFoundError(f"No .xlsx files found in {cfg.payoff_tables_dir}")
+        base_pairs = [(cfg.scenario, p) for p in xlsx_files]
+        scenarios = base_pairs[:cfg.scenario_count] if cfg.scenario_count else base_pairs
+    elif cfg.scenarios is None:
         base_scenarios = [
             name for name in list_scenarios(filter_players=cfg.n_players)
             if "RICE" not in name
         ]
         if cfg.scenario_count is None or cfg.scenario_count <= len(base_scenarios):
-            scenarios = base_scenarios[:cfg.scenario_count] if cfg.scenario_count else base_scenarios
+            names = base_scenarios[:cfg.scenario_count] if cfg.scenario_count else base_scenarios
         else:
-            # Repeat scenarios to reach the requested count (acts as weighting)
-            scenarios = list(itertools.islice(itertools.cycle(base_scenarios), cfg.scenario_count))
+            names = list(itertools.islice(itertools.cycle(base_scenarios), cfg.scenario_count))
+        scenarios = [(name, None) for name in names]
     else:
-        scenarios = cfg.scenarios[:cfg.scenario_count] if cfg.scenario_count else cfg.scenarios
+        names = cfg.scenarios[:cfg.scenario_count] if cfg.scenario_count else cfg.scenarios
+        scenarios = [(name, None) for name in names]
+
     if cfg.verbose:
         print(
             f"[HPO] Running {cfg.n_trials} trials on {len(scenarios)} scenarios "
@@ -244,10 +245,21 @@ def run_study(cfg: StudyConfig) -> None:
             flush=True
         )
         print(f"[HPO] Results dir: {cfg.results_dir}", flush=True)
+        if cfg.study_name:
+            print(f"[HPO] Study name: {cfg.study_name}", flush=True)
+        if cfg.storage:
+            print(f"[HPO] Storage: {cfg.storage}", flush=True)
+        print("[HPO] Dashboard: optuna-dashboard sqlite:///results/hpo/study.db", flush=True)
+        print(
+            "[HPO] Parallel trials: run multiple processes with the same --study-name.",
+            flush=True
+        )
 
     optuna.logging.set_verbosity(optuna.logging.ERROR)
 
-    sampler = TPESampler(seed=cfg.random_seed)
+    # Use a per-process seed so parallel workers explore different regions.
+    sampler_seed = (cfg.random_seed + os.getpid()) % (2**31)
+    sampler = TPESampler(seed=sampler_seed)
     study = optuna.create_study(
         direction="minimize",
         sampler=sampler,

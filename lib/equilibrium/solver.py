@@ -430,7 +430,7 @@ class EquilibriumSolver:
 
                         key = (proposer, current_state, next_state, approver)
 
-                        if np.isclose(V_next, V_current, rtol=0, atol=1e-12):
+                        if np.isclose(V_next, V_current, rtol=0, atol=1e-6):
                             # Indifferent: keep current value (could be anything in [0,1])
                             pass
                         elif V_next > V_current:
@@ -462,7 +462,7 @@ class EquilibriumSolver:
                 max_value = max(expected_values.values())
                 argmax_states = [
                     state for state, val in expected_values.items()
-                    if np.isclose(val, max_value, atol=1e-12)
+                    if np.isclose(val, max_value, atol=1e-6)
                 ]
 
                 # Distribute probability uniformly over argmax states
@@ -596,6 +596,7 @@ class EquilibriumSolver:
               consecutive_tol: int = 2,
               verify_every_n: int = 1,
               tau_margin: float = 0.01,
+              max_cycles_at_tau_min: int = 20,
               project_to_exact: bool = True,
               checkpoint_dir: str = './checkpoints',
               load_from_checkpoint: bool = False,
@@ -621,6 +622,8 @@ class EquilibriumSolver:
                             (1 = every iteration, 10 = every 10th). Reduces cost when
                             verification dominates runtime.
             tau_margin: Margin for checking if tau is near tau_min (default 0.01 = 1%)
+            max_cycles_at_tau_min: Abort run after this many consecutive cycle-only outer
+                iterations while tau is already at tau_min (hopeless run detection)
             project_to_exact: Whether to project to exact equilibrium at end
             checkpoint_dir: Directory to save checkpoints (default: './checkpoints')
             load_from_checkpoint: Whether to load from checkpoint if exists
@@ -645,6 +648,9 @@ class EquilibriumSolver:
 
         # Counter for throttling early verification (reset after each attempt)
         iters_since_verify = 0
+
+        # Counter for hopeless-run detection
+        consecutive_cycle_iters = 0
 
         # Checkpoint setup
         checkpoint_path = None
@@ -791,6 +797,23 @@ class EquilibriumSolver:
                     for line in report.split('\n'):
                         self._log(f"      {line}")
 
+                # Track consecutive cycles at tau_min for hopeless-run detection
+                tau_near_min_now = (tau_p <= tau_min * (1 + tau_margin) and
+                                    tau_r <= tau_min * (1 + tau_margin))
+                if tau_near_min_now:
+                    consecutive_cycle_iters += 1
+                    if consecutive_cycle_iters >= max_cycles_at_tau_min:
+                        stopping_reason = 'cycle_stuck'
+                        if self.verbose:
+                            self._log(f"  ✗ Aborting: {consecutive_cycle_iters} consecutive cycles at tau_min — run is hopeless.")
+                        inner_loop_time = time.time() - inner_loop_start
+                        timing_stats['inner_total'].append(inner_loop_time)
+                        break
+                else:
+                    consecutive_cycle_iters = 0
+            else:
+                consecutive_cycle_iters = 0
+
             inner_loop_time = time.time() - inner_loop_start
             timing_stats['inner_total'].append(inner_loop_time)
 
@@ -910,8 +933,8 @@ class EquilibriumSolver:
 
         # Determine the stopping reason
         early_stop_via_verification = False
-        if stopping_reason == 'time_budget':
-            stopping_reason = 'time_budget'
+        if stopping_reason in ('time_budget', 'cycle_stuck'):
+            pass
         elif converged and tau_p > tau_min * (1 + tau_margin):
             # Stopped early via verification (not via temperature convergence)
             early_stop_via_verification = True
@@ -930,6 +953,8 @@ class EquilibriumSolver:
                 self._log(f"\nAnnealing converged after {outer_iter + 1} outer iterations")
             elif stopping_reason == 'time_budget':
                 self._log(f"\nStopped due to time budget (max_time_seconds={max_time_seconds})")
+            elif stopping_reason == 'cycle_stuck':
+                self._log(f"\nStopped early after {outer_iter + 1} outer iterations (cycle at tau_min — hopeless run)")
             else:
                 self._log(f"\nAnnealing stopped at max_outer_iter={max_outer_iter} (safety valve)")
                 self._log(f"  Final max_change: {max_change:.6e} (outer_tol: {outer_tol:.2e})")

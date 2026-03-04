@@ -407,6 +407,7 @@ def write_payoff_table(
     source_dir: str,
     start_year: int | None,
     end_year: int,
+    extra_metadata: dict[str, object] | None = None,
 ) -> None:
     """
     Write the payoff DataFrame to a formatted Excel file.
@@ -421,6 +422,7 @@ def write_payoff_table(
         source_dir: Original input directory (written to metadata sheet).
         start_year: First year included (None = no lower bound).
         end_year:   Last year included (inclusive).
+        extra_metadata: Optional additional metadata key/value pairs.
     """
     display_names = [d for _, d in players]
     sai_col = _sai_col_name(start_year, end_year)
@@ -557,6 +559,9 @@ def write_payoff_table(
         ("gdx_region_codes", ", ".join(code for code, _ in players)),
         ("states", ", ".join(states)),
     ]
+    if extra_metadata:
+        for key, value in extra_metadata.items():
+            meta_rows.append((str(key), "" if value is None else value))
 
     for r_idx, (key, value) in enumerate(meta_rows, start=1):
         is_header = r_idx == 1
@@ -627,6 +632,7 @@ def ingest(
     players: list[tuple[str, str]] | None,
     start_year: int | None,
     end_year: int,
+    extra_metadata: dict[str, object] | None = None,
 ) -> None:
     sai_col = _sai_col_name(start_year, end_year)
 
@@ -707,7 +713,15 @@ def ingest(
 
     _check_sai_ordering(df, sai_col)
 
-    write_payoff_table(df, output_path, players, str(input_dir), start_year, end_year)
+    write_payoff_table(
+        df,
+        output_path,
+        players,
+        str(input_dir),
+        start_year,
+        end_year,
+        extra_metadata=extra_metadata,
+    )
 
     print(f"\nWrote payoff table → {output_path}")
     print(df[display_names + [sai_col]].to_string())
