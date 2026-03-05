@@ -366,7 +366,6 @@ class EquilibriumSolver:
             damped[key] = damping * old_val + (1.0 - damping) * new_val
         return damped
 
-
     def _verify_candidate_equilibrium(self, strategy_df: pd.DataFrame) -> Tuple[bool, str, pd.DataFrame]:
         """Verify if a strategy profile is a valid equilibrium.
 
@@ -596,7 +595,11 @@ class EquilibriumSolver:
               consecutive_tol: int = 2,
               verify_every_n: int = 1,
               tau_margin: float = 0.01,
-              max_cycles_at_tau_min: int = 20,
+              max_cycles_at_tau_min: int = 8,
+              cycle_break_tau_threshold: Optional[float] = None,
+              exact_polish_enabled: bool = True,
+              exact_polish_max_iter: int = 20,
+              exact_polish_tol: float = 1e-12,
               project_to_exact: bool = True,
               checkpoint_dir: str = './checkpoints',
               load_from_checkpoint: bool = False,
@@ -636,9 +639,19 @@ class EquilibriumSolver:
         # Set outer tolerance if not provided
         if outer_tol is None:
             outer_tol = 10 * inner_tol
+        elif outer_tol < inner_tol:
+            if self.verbose:
+                self._log(
+                    f"Warning: outer_tol ({outer_tol:.2e}) < inner_tol ({inner_tol:.2e}); "
+                    f"clamping outer_tol to inner_tol.",
+                    level='warning'
+                )
+            outer_tol = inner_tol
 
         tau_p = tau_p_init
         tau_r = tau_r_init
+        if cycle_break_tau_threshold is None:
+            cycle_break_tau_threshold = tau_min * (1 + tau_margin)
 
         outer_iter = 0
         converged = False
@@ -648,9 +661,7 @@ class EquilibriumSolver:
 
         # Counter for throttling early verification (reset after each attempt)
         iters_since_verify = 0
-
-        # Counter for hopeless-run detection
-        consecutive_cycle_iters = 0
+        low_tau_cycle_count = 0
 
         # Checkpoint setup
         checkpoint_path = None
@@ -796,26 +807,28 @@ class EquilibriumSolver:
                     self._log(f"    ↺ No convergence after {max_inner_iter} iterations.")
                     for line in report.split('\n'):
                         self._log(f"      {line}")
-
-                # Track consecutive cycles at tau_min for hopeless-run detection
-                tau_near_min_now = (tau_p <= tau_min * (1 + tau_margin) and
-                                    tau_r <= tau_min * (1 + tau_margin))
-                if tau_near_min_now:
-                    consecutive_cycle_iters += 1
-                    if consecutive_cycle_iters >= max_cycles_at_tau_min:
-                        stopping_reason = 'cycle_stuck'
-                        if self.verbose:
-                            self._log(f"  ✗ Aborting: {consecutive_cycle_iters} consecutive cycles at tau_min — run is hopeless.")
-                        inner_loop_time = time.time() - inner_loop_start
-                        timing_stats['inner_total'].append(inner_loop_time)
-                        break
+                low_tau_cycle = (
+                    period is not None and
+                    tau_p <= cycle_break_tau_threshold and
+                    tau_r <= cycle_break_tau_threshold
+                )
+                if low_tau_cycle:
+                    low_tau_cycle_count += 1
+                    if self.verbose:
+                        self._log(
+                            f"    ↺ Low-tau cycle count: {low_tau_cycle_count}/{max_cycles_at_tau_min} "
+                            f"(tau threshold={cycle_break_tau_threshold:.4e})"
+                        )
                 else:
-                    consecutive_cycle_iters = 0
+                    low_tau_cycle_count = 0
             else:
-                consecutive_cycle_iters = 0
+                low_tau_cycle_count = 0
 
             inner_loop_time = time.time() - inner_loop_start
             timing_stats['inner_total'].append(inner_loop_time)
+            if low_tau_cycle_count >= max_cycles_at_tau_min:
+                stopping_reason = 'cycle_stuck'
+                break
 
             # Track this outer iteration's convergence
             recent_max_changes.append(max_change)
@@ -933,7 +946,7 @@ class EquilibriumSolver:
 
         # Determine the stopping reason
         early_stop_via_verification = False
-        if stopping_reason in ('time_budget', 'cycle_stuck'):
+        if stopping_reason == 'time_budget':
             pass
         elif converged and tau_p > tau_min * (1 + tau_margin):
             # Stopped early via verification (not via temperature convergence)
@@ -942,6 +955,8 @@ class EquilibriumSolver:
         elif converged:
             # Stopped via regular convergence criterion
             stopping_reason = 'converged'
+        elif stopping_reason == 'cycle_stuck':
+            pass
         else:
             # Hit safety valve
             stopping_reason = 'max_iter'
@@ -954,7 +969,10 @@ class EquilibriumSolver:
             elif stopping_reason == 'time_budget':
                 self._log(f"\nStopped due to time budget (max_time_seconds={max_time_seconds})")
             elif stopping_reason == 'cycle_stuck':
-                self._log(f"\nStopped early after {outer_iter + 1} outer iterations (cycle at tau_min — hopeless run)")
+                self._log(
+                    f"\nStopped due to persistent low-tau cycles "
+                    f"({low_tau_cycle_count} >= {max_cycles_at_tau_min})"
+                )
             else:
                 self._log(f"\nAnnealing stopped at max_outer_iter={max_outer_iter} (safety valve)")
                 self._log(f"  Final max_change: {max_change:.6e} (outer_tol: {outer_tol:.2e})")
@@ -984,7 +1002,7 @@ class EquilibriumSolver:
 
         result = {
             'converged': converged,
-            'stopping_reason': stopping_reason,  # 'early_verification', 'converged', or 'max_iter'
+            'stopping_reason': stopping_reason,  # 'early_verification', 'converged', 'cycle_stuck', 'time_budget', or 'max_iter'
             'outer_iterations': outer_iterations_reported,
             'final_tau_p': tau_p,
             'final_tau_r': tau_r,

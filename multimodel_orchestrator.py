@@ -25,6 +25,7 @@ import argparse
 import concurrent.futures
 import logging
 import pickle
+import shlex
 import subprocess
 import sys
 import io
@@ -180,10 +181,30 @@ def _build_period_label_line(width: int, sizes: list[int], labels: list[str]) ->
     return "".join(line)
 
 
+def _build_centered_segment_label_line(width: int, sizes: list[int], labels: list[str]) -> str:
+    """Center one label in each period segment without drawing separators."""
+    line = [" "] * width
+    total = sum(sizes)
+    starts = [0]
+    for size in sizes[:-1]:
+        starts.append(starts[-1] + size)
+    ends = starts[1:] + [total]
+    for i, label in enumerate(labels):
+        left = int(round(starts[i] / total * width))
+        right = int(round(ends[i] / total * width))
+        center = (left + right) // 2
+        pos = max(left, min(center - len(label) // 2, width - len(label)))
+        for j, ch in enumerate(label):
+            if 0 <= pos + j < width:
+                line[pos + j] = ch
+    return "".join(line)
+
+
 def render_sai_plot_to_ascii(
     t_values: list[int],
     y_values: list[float],
     periods: list[tuple[int, int]],
+    absorbing_labels: Optional[list[str]] = None,
 ) -> str:
     try:
         import matplotlib
@@ -243,11 +264,20 @@ def render_sai_plot_to_ascii(
     bucket_idx = (sampled.astype(np.float32) / 255.0 * (len(ramp) - 1)).astype(int)
     bucket_idx = np.clip(bucket_idx, 0, len(ramp) - 1)
     lines = ["".join(ramp[row]) for row in bucket_idx]
+    # Remove excessive blank rows at the bottom so period labels are directly readable.
+    while lines and not lines[-1].strip():
+        lines.pop()
 
     labels = [f"{s}-{e}" for s, e in periods]
     sizes = _period_sizes(t_values, periods)
     period_line = _build_period_label_line(ascii_width, sizes, labels)
-    return "\n".join(lines + ["", period_line])
+    out_lines = lines + [period_line]
+    if absorbing_labels is not None:
+        coalition_line = _build_centered_segment_label_line(
+            ascii_width, sizes, absorbing_labels
+        )
+        out_lines.append(coalition_line)
+    return "\n".join(out_lines)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GAMS execution
@@ -290,6 +320,50 @@ def _tail(path: Path, n: int = 40) -> str:
         return "(could not read file)"
 
 
+def _log_contains(path: Path, needle: str) -> bool:
+    """Return True if `needle` appears anywhere in file `path`."""
+    try:
+        with open(path) as f:
+            return needle in f.read()
+    except OSError:
+        return False
+
+
+def _coalition_lookup_explanation(
+    cmd_args: list[str], returncode: int, log_path: Path
+) -> Optional[str]:
+    """Return a tentative user-facing hint for failed coalition lookup runs."""
+    if returncode != 144:
+        return None
+    if "--cooperation=coalitions" not in cmd_args:
+        return None
+    if "--sel_coalition=sai_farsighted" not in cmd_args:
+        return None
+    if not _log_contains(
+        log_path,
+        "*** Abandoned SolveLink=6 instance with handle 1 (submitted, but not solved)",
+    ):
+        return None
+
+    coalition_code: Optional[str] = None
+    for arg in cmd_args:
+        if arg.startswith("--sai_coalition="):
+            coalition_code = arg.split("=", 1)[1]
+            break
+
+    if coalition_code:
+        return (
+            "Possible cause: coalition lookup issue. "
+            f"Check whether the coalition '{coalition_code}' exists in "
+            "'coalitions/coal_sai_farsighted.gms'."
+        )
+    return (
+        "Possible cause: coalition lookup issue. "
+        "Check whether the requested coalition exists in "
+        "'coalitions/coal_sai_farsighted.gms'."
+    )
+
+
 def _run_one_gams_job(cmd_args: list[str], cwd: Path, log_path: Path) -> None:
     """Run one GAMS command, directing all output to log_path.
 
@@ -309,10 +383,14 @@ def _run_one_gams_job(cmd_args: list[str], cwd: Path, log_path: Path) -> None:
 
     if proc.returncode != 0:
         snippet = _tail(log_path)
+        coalition_hint = _coalition_lookup_explanation(
+            cmd_args, proc.returncode, log_path
+        )
         raise RuntimeError(
             f"GAMS exited with code {proc.returncode}.\n"
             f"Command: {cmd_str}\n"
             f"Log: {log_path}\n"
+            + (f"{coalition_hint}\n" if coalition_hint else "")
             + (f"Error marker: {error_line}\n" if error_line else "")
             + f"Last 40 lines of log:\n{snippet}"
         )
@@ -580,6 +658,25 @@ def _make_file_only_logger(log_path: Path) -> logging.Logger:
     return logger
 
 
+def _build_equilibrium_command(
+    scenario: str,
+    payoff_table_path: Path,
+    output_file: Path,
+) -> str:
+    """Build the equivalent CLI command for reproducing one solver run."""
+    cmd_args = [
+        "python3",
+        str(COALITION_DIR / "find_equilibrium.py"),
+        scenario,
+        "--payoff-table",
+        str(payoff_table_path),
+        "--output",
+        str(output_file),
+        "--fresh",
+    ]
+    return " ".join(shlex.quote(arg) for arg in cmd_args)
+
+
 def run_find_equilibrium(
     scenario: str,
     payoff_table_path: Path,
@@ -625,12 +722,14 @@ def run_find_equilibrium(
     _log(f"  Scenario:  {scenario}")
     _log(f"  Players:   {config['players']}")
     _log(f"  Output:    {output_file}")
+    eq_cmd = _build_equilibrium_command(scenario, payoff_table_path, output_file)
 
     # Build a file-only logger so the Rich console handler is bypassed.
     # All solver progress is written to this log file instead of the terminal.
     log_path = log_dir / f"solver_{output_file.stem}.log"
     solver_logger = _make_file_only_logger(log_path)
     _log(f"  Solver log: {log_path}")
+    _log(f"  Command:    {eq_cmd}")
     _log(f"  (running — may take several minutes)")
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -654,7 +753,8 @@ def run_find_equilibrium(
         raise RuntimeError(
             f"Equilibrium verification FAILED for '{output_file.stem}'.\n"
             f"Message: {msg}\n"
-            f"Check solver log: {log_path}"
+            f"Check solver log: {log_path}\n"
+            f"Equilibrium command: {eq_cmd}"
         )
 
     return result
@@ -785,6 +885,7 @@ def orchestrate(
     fresh: bool = False,
     extra_gams_args: Optional[list[str]] = None,
     payoff_metadata: Optional[dict[str, object]] = None,
+    payoff_range: Optional[tuple[Optional[int], int]] = None,
 ) -> list[dict]:
     """Run the full multi-period orchestration.
 
@@ -806,6 +907,9 @@ def orchestrate(
         fresh:       If True, re-run every step even if outputs already exist.
         extra_gams_args: Additional '--key=value' args appended to every GAMS run.
         payoff_metadata: Extra key/value rows to write into payoff metadata.
+        payoff_range: Optional payoff summation range override:
+                      (None, end) means [period_start, end] per phase;
+                      (start, end) means fixed [start, end] for all phases.
 
     Returns:
         List of per-period result dicts with keys:
@@ -831,6 +935,12 @@ def orchestrate(
     _log(f"  RICE dir:     {rice_dir}")
     _log(f"  Max workers:  {max_workers}")
     _log(f"  Fresh:        {fresh}")
+    if payoff_range is not None:
+        pr_start, pr_end = payoff_range
+        if pr_start is None:
+            _log(f"  Payoff range: [period_start, {pr_end}]")
+        else:
+            _log(f"  Payoff range: [{pr_start}, {pr_end}]")
     if extra_gams_args:
         _log(f"  Extra GAMS args: {extra_gams_args}")
     if payoff_metadata:
@@ -851,10 +961,27 @@ def orchestrate(
         period_label = f"{period_start}-{period_end}"
         slug = f"{impact}_{countries_slug}_{period_label}"
 
+        if payoff_range is None:
+            ingest_start, ingest_end = period_start, period_end
+            payoff_range_label = period_label
+        else:
+            pr_start, pr_end = payoff_range
+            ingest_start = period_start if pr_start is None else pr_start
+            ingest_end = pr_end
+            if ingest_start > ingest_end:
+                raise RuntimeError(
+                    f"Invalid payoff range for phase {period_label}: "
+                    f"{ingest_start}-{ingest_end} (start > end)."
+                )
+            payoff_range_label = f"{ingest_start}-{ingest_end}"
+
         _section(f"Phase {phase_idx + 1}/{n_phases}  ·  {period_label}")
 
         gams_workdir   = rice_dir / "results" / slug
-        payoff_table   = payoff_dir / f"{slug}.xlsx"
+        if payoff_range is None:
+            payoff_table = payoff_dir / f"{slug}.xlsx"
+        else:
+            payoff_table = payoff_dir / f"{slug}_payoff_{payoff_range_label}.xlsx"
         strategy_file  = strategy_dir / f"{slug}.xlsx"
         result_cache   = strategy_dir / f"{slug}.pkl"
         solver_log_dir = COALITION_DIR / "logs"
@@ -881,11 +1008,12 @@ def orchestrate(
         if not fresh and payoff_table.exists():
             _skip(f"payoff table already exists: {payoff_table.name}")
         else:
+            _log(f"  Ingest years:     {ingest_start}-{ingest_end}")
             run_ingest(
                 gdx_dir=gams_workdir,
                 payoff_table_path=payoff_table,
-                start_year=period_start,
-                end_year=period_end,
+                start_year=ingest_start,
+                end_year=ingest_end,
                 extra_metadata=payoff_metadata,
             )
 
@@ -1022,8 +1150,15 @@ def orchestrate(
 
     try:
         t_values, y_values = compute_sai_timeseries(dest_gdx, full_start, full_end)
+        absorbing_labels = [
+            ", ".join(r["absorbing_states"]) for r in phase_results
+        ]
         _log("\nTerminal plot (W_SAI from GDX):\n")
-        _log(render_sai_plot_to_ascii(t_values, y_values, periods))
+        _log(
+            render_sai_plot_to_ascii(
+                t_values, y_values, periods, absorbing_labels=absorbing_labels
+            )
+        )
         _log(f"\nYears: {t_values[0]}  ...  {t_values[-1]}")
     except Exception as exc:
         _warn(f"Could not render W_SAI plot: {exc}")
@@ -1067,6 +1202,39 @@ def _validate_periods(periods: list[tuple[int, int]]) -> None:
                 f"previous period's end. Got {periods[i - 1][0]}-{prev_end} "
                 f"followed by {curr_start}-{periods[i][1]}."
             )
+
+
+def _parse_payoff_range(s: str) -> tuple[Optional[int], int]:
+    """
+    Parse payoff summation range.
+
+    Accepted formats:
+      YYYY        -> (None, YYYY)         # start is period_start (per phase)
+      YYYY-YYYY   -> (start_year, end_year)
+    """
+    parts = s.split("-")
+    if len(parts) == 1:
+        try:
+            return None, int(parts[0])
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"Payoff range must be 'YYYY' or 'YYYY-YYYY', got '{s}'"
+            )
+    if len(parts) == 2:
+        try:
+            start, end = int(parts[0]), int(parts[1])
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"Payoff range must be 'YYYY' or 'YYYY-YYYY', got '{s}'"
+            )
+        if start > end:
+            raise argparse.ArgumentTypeError(
+                f"Payoff range start must be <= end, got '{s}'"
+            )
+        return start, end
+    raise argparse.ArgumentTypeError(
+        f"Payoff range must be 'YYYY' or 'YYYY-YYYY', got '{s}'"
+    )
 
 
 def main() -> None:
@@ -1155,6 +1323,17 @@ def main() -> None:
         default=None,
         help="Optional sai_damage_coef override passed through to GAMS.",
     )
+    parser.add_argument(
+        "--payoff-range",
+        type=_parse_payoff_range,
+        default=None,
+        metavar="YYYY|YYYY-YYYY",
+        help=(
+            "Override payoff summation years during ingest. "
+            "Use 'YYYY' to sum each phase from period_start..YYYY (e.g. 2300), "
+            "or 'YYYY-YYYY' for a fixed range across all phases."
+        ),
+    )
 
     args = parser.parse_args()
     _validate_periods(args.periods)
@@ -1175,6 +1354,12 @@ def main() -> None:
         "max_damage": args.max_damage,
         "t_ada_temp": args.t_ada_temp,
         "sai_damage_coef": args.sai_damage_coef,
+        "payoff_range": (
+            None
+            if args.payoff_range is None
+            else (f"period_start-{args.payoff_range[1]}" if args.payoff_range[0] is None
+                  else f"{args.payoff_range[0]}-{args.payoff_range[1]}")
+        ),
     }
 
     try:
@@ -1189,6 +1374,7 @@ def main() -> None:
             fresh=args.fresh,
             extra_gams_args=extra_gams_args or None,
             payoff_metadata=payoff_metadata,
+            payoff_range=args.payoff_range,
         )
     except (RuntimeError, ValueError, FileNotFoundError) as exc:
         cmd_str = " ".join(sys.argv)

@@ -265,7 +265,9 @@ def _get_solver_params(config, user_params=None):
         'outer_tol': 1e-9,
         'consecutive_tol': 1,
         'tau_margin': 0.01,
-        'project_to_exact': True
+        'project_to_exact': True,
+        'cycle_break_tau_threshold': 0.01, # Tau gate for the cycle stop; None means tau_min * (1 + tau_margin).
+        'max_cycles_at_tau_min': 8, # Stop if low-tau cycling persists this many outer iterations in a row.
     }
 
     if len(config['players']) == 3:
@@ -506,7 +508,8 @@ def _build_metadata(config, setup, solver_params, solver_result,
     param_order = ['tau_p_init', 'tau_r_init', 'tau_decay', 'tau_min',
                   'max_outer_iter', 'max_inner_iter', 'damping',
                   'inner_tol', 'outer_tol', 'consecutive_tol', 'verify_every_n',
-                  'tau_margin', 'project_to_exact']
+                  'tau_margin', 'max_cycles_at_tau_min', 'cycle_break_tau_threshold',
+                  'project_to_exact']
     for key in param_order:
         if key in solver_params:
             metadata[f'solver_{key}'] = solver_params[key]
@@ -894,6 +897,18 @@ Available scenarios (use --list-scenarios to see all):
         help='Run early verification only every nth stable outer iteration (default: scenario-specific, typically 1 or 10)'
     )
     parser.add_argument(
+        '--max-cycles-at-tau-min',
+        type=int,
+        default=None,
+        help='Stop if this many low-tau cycles are detected consecutively (default: scenario-specific)'
+    )
+    parser.add_argument(
+        '--cycle-break-tau-threshold',
+        type=float,
+        default=None,
+        help='Tau threshold for cycle stop gating (default: tau_min * (1 + tau_margin))'
+    )
+    parser.add_argument(
         '--quiet',
         action='store_true',
         help='Suppress verbose output'
@@ -1008,6 +1023,10 @@ Available scenarios (use --list-scenarios to see all):
         solver_params['max_inner_iter'] = args.max_inner_iter
     if args.verify_every_n is not None:
         solver_params['verify_every_n'] = args.verify_every_n
+    if args.max_cycles_at_tau_min is not None:
+        solver_params['max_cycles_at_tau_min'] = args.max_cycles_at_tau_min
+    if args.cycle_break_tau_threshold is not None:
+        solver_params['cycle_break_tau_threshold'] = args.cycle_break_tau_threshold
 
     results_summary = []
 

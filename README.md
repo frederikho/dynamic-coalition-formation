@@ -48,11 +48,14 @@ python lib/ingest_payoffs.py --input-dir "/home/frederik/Code/RICE50x/results/Bu
 
 # Find equilibrium
 
+Standard:
+python find_equilibrium.py power_threshold_unequal_power_n3
+
 Using a payoff table (ingested from RICE run results):
-python find_equilibrium.py power_threshold_rice_n3 --payoff-table burke_2060.xlsx
+python find_equilibrium.py power_threshold_RICE_n3 --payoff-table burke_2060.xlsx
 
 Or use auto-ingest:
-python find_equilibrium.py power_threshold_rice_n3 --payoff-table burke_2060.xlsx --auto-ingest
+python find_equilibrium.py power_threshold_RICE_n3 --payoff-table burke_2060.xlsx --auto-ingest
 
 # Orchestrate a full joint run of RICE and coalition model
 
