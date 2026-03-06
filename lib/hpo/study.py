@@ -159,15 +159,23 @@ def _objective(trial: optuna.Trial, cfg: StudyConfig, scenarios: List[tuple]) ->
                         "payoff_table": payoff_table,
                     },
                 )
-                future_map[future] = scenario_name
+                future_map[future] = (idx, scenario_name, payoff_table)
             try:
                 for future in as_completed(future_map):
                     run = future.result()
+                    idx, scenario_name, payoff_table = future_map[future]
                     scores.append(run.score)
                     runtimes.append(run.runtime_seconds)
                     if run.verification_success:
                         successes += 1
                     stopping_reasons[run.stopping_reason] = stopping_reasons.get(run.stopping_reason, 0) + 1
+                    if cfg.verbose and trial.number % max(cfg.log_every_trials, 1) == 0:
+                        scenario_label = scenario_name if payoff_table is None else f"{scenario_name}:{Path(payoff_table).name}"
+                        print(
+                            f"[HPO] Trial {trial.number} scenario {idx}/{len(scenarios)} "
+                            f"{scenario_label} runtime={run.runtime_seconds:.2f}s",
+                            flush=True,
+                        )
             except KeyboardInterrupt:
                 executor.shutdown(wait=False, cancel_futures=True)
                 _terminate_children()
@@ -190,6 +198,13 @@ def _objective(trial: optuna.Trial, cfg: StudyConfig, scenarios: List[tuple]) ->
             if run.verification_success:
                 successes += 1
             stopping_reasons[run.stopping_reason] = stopping_reasons.get(run.stopping_reason, 0) + 1
+            if cfg.verbose and trial.number % max(cfg.log_every_trials, 1) == 0:
+                scenario_label = scenario_name if payoff_table is None else f"{scenario_name}:{Path(payoff_table).name}"
+                print(
+                    f"[HPO] Trial {trial.number} scenario {idx}/{len(scenarios)} "
+                    f"{scenario_label} runtime={run.runtime_seconds:.2f}s",
+                    flush=True,
+                )
 
     avg_score = sum(scores) / len(scores)
     avg_runtime = sum(runtimes) / len(runtimes)

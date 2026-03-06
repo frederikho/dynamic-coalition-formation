@@ -329,6 +329,7 @@ def _detect_common_prefix(stems: list[str]) -> str:
 
 def discover_state_files(
     input_dir: Path,
+    required_stem_prefix: str | None = None,
 ) -> tuple[dict[str, Path], list[tuple[Path, str]]]:
     """
     Scan GDX files in input_dir and map each to a deployer key.
@@ -344,6 +345,12 @@ def discover_state_files(
       5. Parse token into a set of display names via greedy matching.
       6. Any deployer set (including singletons) → '(MEMBERS)' key.
 
+    Args:
+        input_dir: Directory containing GDX files.
+        required_stem_prefix: Optional filename-stem prefix filter (e.g.
+            'results_ssp2_bau_impact_andreoni'). If provided, only files whose
+            stem starts with this prefix are considered.
+
     Returns:
         key_to_file : dict mapping deployer key → GDX Path
         skipped     : list of (Path, reason) for files that could not be parsed
@@ -351,6 +358,13 @@ def discover_state_files(
     gdx_files = sorted(input_dir.glob("*.gdx"))
     if not gdx_files:
         raise FileNotFoundError(f"No .gdx files found in {input_dir}")
+
+    if required_stem_prefix is not None:
+        gdx_files = [p for p in gdx_files if p.stem.startswith(required_stem_prefix)]
+        if not gdx_files:
+            raise FileNotFoundError(
+                f"No .gdx files with stem prefix '{required_stem_prefix}' found in {input_dir}"
+            )
 
     # Prefer the main results_* files if present; ignore debug_iter_* helpers.
     if any(p.stem.startswith("results_") for p in gdx_files):
@@ -633,11 +647,15 @@ def ingest(
     start_year: int | None,
     end_year: int,
     extra_metadata: dict[str, object] | None = None,
+    required_stem_prefix: str | None = None,
 ) -> None:
     sai_col = _sai_col_name(start_year, end_year)
 
     # --- Discover which GDX files map to which deployer keys ------------------
-    key_to_file, skipped = discover_state_files(input_dir)
+    key_to_file, skipped = discover_state_files(
+        input_dir,
+        required_stem_prefix=required_stem_prefix,
+    )
 
     # --- Auto-detect players from discovered deployers if not provided --------
     if players is None:

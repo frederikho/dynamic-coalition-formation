@@ -150,6 +150,79 @@ def format_cycle_report(
     return "\n".join(lines)
 
 
+def detect_partial_cycle(
+    history: list[float],
+    max_period: Optional[int] = None,
+    tol: float = 1e-3,
+    min_partial_ratio: float = 0.5,
+) -> Optional[tuple[int, int]]:
+    """
+    Detect a *partial* cycle: evidence of period P where the available data
+    covers less than ``min_confirmations`` full repetitions but at least
+    ``min_partial_ratio`` of one repetition.
+
+    Strategy
+    --------
+    For candidate period P, the overlap is ``len(history) - P`` — the number
+    of value-pairs at distance P that can be compared.  If every one of those
+    pairs agrees within *tol* and the overlap is at least
+    ``ceil(min_partial_ratio * P)``, this is returned as solid evidence of P.
+
+    This complements :func:`detect_cycle`, which requires ≥3 full repetitions
+    (period ≤ n//4).  ``detect_partial_cycle`` is useful when the cycle period
+    is between n//4 and n * min_partial_ratio / (1 + min_partial_ratio).  For
+    the default ratio of 0.5 and n=120 that covers periods up to 80.
+
+    Parameters
+    ----------
+    history:
+        Sequence of max_change values from the inner loop.
+    max_period:
+        Largest period to test.  Defaults to ``len(history) - 1``.
+    tol:
+        Maximum absolute difference allowed between matched pairs.
+    min_partial_ratio:
+        Minimum fraction of one full period that must be confirmed (0 < ratio ≤ 1).
+
+    Returns
+    -------
+    (period, overlap) or None
+        *period* is the detected cycle length; *overlap* is how many
+        consecutive value-pairs confirmed it (overlap < period means partial).
+    """
+    n = len(history)
+    if max_period is None:
+        max_period = n - 1
+
+    if n < 2 or max_period < 1:
+        return None
+
+    arr = np.asarray(history, dtype=float)
+
+    for period in range(1, min(max_period + 1, n)):
+        overlap = n - period          # pairs available for comparison
+        min_overlap = max(1, int(np.ceil(min_partial_ratio * period)))
+        if overlap < min_overlap:
+            break  # larger periods will have even less overlap
+
+        # arr[:overlap] vs arr[period:] — same as checking arr[i] ≈ arr[i+period]
+        max_diff = float(np.max(np.abs(arr[:overlap] - arr[period:])))
+        if max_diff <= tol:
+            return period, overlap
+
+    return None
+
+
+def format_partial_cycle_report(period: int, overlap: int) -> str:
+    """One-line summary for a partial cycle detection."""
+    ratio = overlap / period
+    return (
+        f"~ Partial period-{period} cycle: "
+        f"{overlap}/{period} iterations match ({ratio:.0%} coverage). "
+        f"Extending inner loop to {3 * period} extra iters to confirm."
+    )
+
+
 def format_no_cycle_report(history: list[float], row_width: int = 20) -> str:
     """
     Compact fallback when no cycle is found: show the last *row_width* values

@@ -596,6 +596,8 @@ def run_ingest(
     payoff_table_path: Path,
     start_year: Optional[int],
     end_year: int,
+    policy: str,
+    impact: str,
     extra_metadata: Optional[dict[str, object]] = None,
 ) -> None:
     """Ingest welfare and W_SAI from GDX files into a payoff table Excel file.
@@ -605,12 +607,16 @@ def run_ingest(
         payoff_table_path: Destination .xlsx file path.
         start_year:        First year to include (None = no lower bound).
         end_year:          Last year to include (inclusive).
+        policy:            Policy name used to filter matching GDX filenames.
+        impact:            Impact function used to filter matching GDX filenames.
         extra_metadata:    Optional metadata key/value pairs for the Excel file.
     """
     from lib.ingest_payoffs import ingest
 
     _log(f"  GDX source dir:  {gdx_dir}")
     _log(f"  Payoff table:    {payoff_table_path}")
+    stem_prefix = f"results_ssp2_{policy}_{impact}"
+    _log(f"  GDX filter:      stem starts with '{stem_prefix}'")
 
     buf = io.StringIO()
     with redirect_stdout(buf):
@@ -621,6 +627,7 @@ def run_ingest(
             start_year=start_year,
             end_year=end_year,
             extra_metadata=extra_metadata,
+            required_stem_prefix=stem_prefix,
         )
 
     # Surface the key lines from ingest output
@@ -830,6 +837,8 @@ def _check_sai_consistency(
 def find_history_gdx(
     gdx_dir: Path,
     absorbing_state: str,
+    policy: str,
+    impact: str,
 ) -> Path:
     """Find the GDX file to load as SAI history in the next phase.
 
@@ -841,6 +850,8 @@ def find_history_gdx(
     Args:
         gdx_dir:         Directory containing GDX files from the GAMS phase.
         absorbing_state: Framework state name, e.g. '( )' or '(CHNNDE)'.
+        policy:          Policy name used to filter matching GDX filenames.
+        impact:          Impact function used to filter matching GDX filenames.
 
     Returns:
         Absolute Path to the GDX file for the absorbing coalition.
@@ -850,7 +861,11 @@ def find_history_gdx(
     """
     from lib.ingest_payoffs import discover_state_files
 
-    key_to_file, skipped = discover_state_files(gdx_dir)
+    stem_prefix = f"results_ssp2_{policy}_{impact}"
+    key_to_file, skipped = discover_state_files(
+        gdx_dir,
+        required_stem_prefix=stem_prefix,
+    )
 
     # For power_threshold with equal power, the deployer coalition equals the
     # state coalition, so the deployer key matches the framework state name.
@@ -1014,6 +1029,8 @@ def orchestrate(
                 payoff_table_path=payoff_table,
                 start_year=ingest_start,
                 end_year=ingest_end,
+                policy=policy,
+                impact=impact,
                 extra_metadata=payoff_metadata,
             )
 
@@ -1088,7 +1105,12 @@ def orchestrate(
         # constrained to W_SAI=0 from the previous period and does not
         # re-optimize SAI deployment in years that have already been decided.
         winning_state = absorbing[0]
-        next_history_gdx = find_history_gdx(gams_workdir, winning_state)
+        next_history_gdx = find_history_gdx(
+            gams_workdir,
+            winning_state,
+            policy=policy,
+            impact=impact,
+        )
 
         phase_results.append({
             "period":          period_label,

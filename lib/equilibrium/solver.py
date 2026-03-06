@@ -15,7 +15,10 @@ import time
 from lib.probabilities_optimized import TransitionProbabilitiesOptimized
 from lib.mdp import MDP
 from lib.utils import derive_effectivity, get_approval_committee, verify_equilibrium
-from lib.equilibrium.cycle_analysis import detect_cycle, format_cycle_report
+from lib.equilibrium.cycle_analysis import (
+    detect_cycle, format_cycle_report,
+    detect_partial_cycle, format_partial_cycle_report,
+)
 import copy
 
 
@@ -406,6 +409,54 @@ class EquilibriumSolver:
 
         return success, message, V
 
+    def _polish_exact_equilibrium(self, max_iter: int = 20, tol: float = 1e-12) -> Tuple[bool, str, int]:
+        """Iteratively enforce exact best responses after annealing.
+
+        One-shot projection can be internally inconsistent because projecting
+        strategies changes transitions, which changes V. This loop alternates:
+        solve V -> project exact -> verify, until verified, stalled, or cycling.
+        """
+        proposal_keys = list(self.p_proposals.keys())
+        acceptance_keys = list(self.r_acceptances.keys())
+
+        seen_signatures = set()
+        prev_p = None
+        prev_r = None
+        last_message = "Verification not run."
+
+        for it in range(1, max_iter + 1):
+            strategy_df = self._create_strategy_dataframe()
+            P, _, _ = self._compute_transition_probabilities(strategy_df)
+            V = self._solve_value_functions(P)
+
+            self._project_to_exact_equilibrium(V)
+            projected_strategy_df = self._create_strategy_dataframe()
+            success, message, _ = self._verify_candidate_equilibrium(projected_strategy_df)
+            last_message = message
+
+            p_arr = np.fromiter((self.p_proposals[k] for k in proposal_keys), dtype=np.float64)
+            r_arr = np.fromiter((self.r_acceptances[k] for k in acceptance_keys), dtype=np.float64)
+            signature = (
+                np.round(p_arr, 12).tobytes(),
+                np.round(r_arr, 12).tobytes(),
+            )
+
+            if success:
+                return True, message, it
+
+            if signature in seen_signatures:
+                return False, f"{message}\n\nPolishing stopped: detected a repeated exact-strategy state.", it
+            seen_signatures.add(signature)
+
+            if prev_p is not None and prev_r is not None:
+                if np.allclose(p_arr, prev_p, rtol=0, atol=tol) and np.allclose(r_arr, prev_r, rtol=0, atol=tol):
+                    return False, f"{message}\n\nPolishing stopped: exact strategies no longer change.", it
+
+            prev_p = p_arr
+            prev_r = r_arr
+
+        return False, f"{last_message}\n\nPolishing stopped: reached max_iter={max_iter}.", max_iter
+
     def _project_to_exact_equilibrium(self, V: pd.DataFrame):
         """Project strategies to exact equilibrium conditions.
 
@@ -625,8 +676,11 @@ class EquilibriumSolver:
                             (1 = every iteration, 10 = every 10th). Reduces cost when
                             verification dominates runtime.
             tau_margin: Margin for checking if tau is near tau_min (default 0.01 = 1%)
-            max_cycles_at_tau_min: Abort run after this many consecutive cycle-only outer
-                iterations while tau is already at tau_min (hopeless run detection)
+            max_cycles_at_tau_min: Stop if this many qualifying low-tau cycles are detected
+            cycle_break_tau_threshold: Tau gate for cycle stopping (defaults to tau_min*(1+tau_margin))
+            exact_polish_enabled: Run iterative exact-strategy polishing after annealing
+            exact_polish_max_iter: Maximum polish iterations
+            exact_polish_tol: Stagnation tolerance for polish iterations
             project_to_exact: Whether to project to exact equilibrium at end
             checkpoint_dir: Directory to save checkpoints (default: './checkpoints')
             load_from_checkpoint: Whether to load from checkpoint if exists
@@ -642,8 +696,7 @@ class EquilibriumSolver:
         elif outer_tol < inner_tol:
             if self.verbose:
                 self._log(
-                    f"Warning: outer_tol ({outer_tol:.2e}) < inner_tol ({inner_tol:.2e}); "
-                    f"clamping outer_tol to inner_tol.",
+                    f"Warning: outer_tol ({outer_tol:.2e}) < inner_tol ({inner_tol:.2e}); ",
                     level='warning'
                 )
             outer_tol = inner_tol
@@ -733,7 +786,10 @@ class EquilibriumSolver:
             max_change = float('inf')  # Track final max_change from inner loop
             inner_history = []         # Full per-iteration max_change history
             inner_converged = False
-            for inner_iter in range(max_inner_iter):
+            effective_max_inner_iter = max_inner_iter
+            partial_cycle_period = None  # Set if a partial cycle is detected mid-run
+            inner_iter = 0
+            while inner_iter < effective_max_inner_iter:
                 if max_time_seconds is not None and (time.time() - start_time) >= max_time_seconds:
                     stopping_reason = 'time_budget'
                     break
@@ -791,6 +847,23 @@ class EquilibriumSolver:
                         self._log(f"    Converged after {inner_iter + 1} iterations")
                     inner_converged = True
                     break
+
+                # After exhausting the initial budget, check for a partial cycle and
+                # extend the run by 3x the candidate period so detect_cycle can confirm.
+                if inner_iter == max_inner_iter - 1 and partial_cycle_period is None:
+                    t0 = time.time()
+                    partial = detect_partial_cycle(inner_history)
+                    timing_stats['cycle_analysis'].append(time.time() - t0)
+                    if partial is not None:
+                        partial_cycle_period, overlap = partial
+                        effective_max_inner_iter = max_inner_iter + 3 * partial_cycle_period
+                        if self.verbose:
+                            self._log(
+                                f"    {format_partial_cycle_report(partial_cycle_period, overlap)}"
+                            )
+
+                inner_iter += 1
+
             if stopping_reason == 'time_budget':
                 # Record inner timing and break out of outer loop cleanly
                 inner_loop_time = time.time() - inner_loop_start
@@ -802,11 +875,20 @@ class EquilibriumSolver:
                 t0 = time.time()
                 period = detect_cycle(inner_history)
                 timing_stats['cycle_analysis'].append(time.time() - t0)
-                if self.verbose and period is not None:
-                    report = format_cycle_report(inner_history, period, cycles_to_show=1)
-                    self._log(f"    ↺ No convergence after {max_inner_iter} iterations.")
-                    for line in report.split('\n'):
-                        self._log(f"      {line}")
+                if self.verbose:
+                    iters_run = len(inner_history)
+                    if period is not None:
+                        report = format_cycle_report(inner_history, period, cycles_to_show=1)
+                        self._log(f"    ↺ No convergence after {iters_run} iterations.")
+                        for line in report.split('\n'):
+                            self._log(f"      {line}")
+                    elif partial_cycle_period is not None:
+                        # Extension ran but detect_cycle still couldn't confirm
+                        self._log(
+                            f"    ~ No convergence after {iters_run} iterations. "
+                            f"Partial period-{partial_cycle_period} cycle was not confirmed "
+                            f"after extension."
+                        )
                 low_tau_cycle = (
                     period is not None and
                     tau_p <= cycle_break_tau_threshold and

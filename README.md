@@ -51,6 +51,9 @@ python lib/ingest_payoffs.py --input-dir "/home/frederik/Code/RICE50x/results/Bu
 Standard:
 python find_equilibrium.py power_threshold_unequal_power_n3
 
+Save the generated payoff table as an Excel file in `payoff_tables/`:
+python find_equilibrium.py power_threshold_unequal_power_n3 --save-payoffs
+
 Using a payoff table (ingested from RICE run results):
 python find_equilibrium.py power_threshold_RICE_n3 --payoff-table burke_2060.xlsx
 
@@ -60,3 +63,18 @@ python find_equilibrium.py power_threshold_RICE_n3 --payoff-table burke_2060.xls
 # Orchestrate a full joint run of RICE and coalition model
 
 python multimodel_orchestrator.py --periods 2035-2060 2060-2080 2080-2100 --impact burke --countries usa chn nde --policy bau_impact
+
+With more params:
+python3 multimodel_orchestrator.py \
+  --max-workers 3 \
+  --periods 2035-2060 2060-2080 2080-2100 \
+  --impact burke \
+  --countries usa chn nde \
+  --policy bau_impact \
+  --gamma_ineq=0 \
+  --max_gain=10 \
+  --max_damage=0.9 \
+  --t_ada_temp=5 \
+  --sai_damage_coef=0 \
+  --fresh
+

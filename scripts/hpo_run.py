@@ -25,6 +25,7 @@ def main() -> None:
         help="Optuna storage URL (e.g. sqlite:///results/hpo/study.db)"
     )
     parser.add_argument("--study-name", type=str, default="hpo_n3", help="Optuna study name")
+    parser.add_argument("--verbose", action="store_true", help="Enable progress output")
     parser.add_argument("--quiet", action="store_true", help="Suppress progress output")
     parser.add_argument(
         "--payoff-tables-dir",
@@ -43,6 +44,10 @@ def main() -> None:
         help="Scenario template to use with --payoff-tables-dir (default: power_threshold_RICE_n3)",
     )
     args = parser.parse_args()
+    if args.verbose and args.quiet:
+        parser.error("Use either --verbose or --quiet, not both.")
+
+    verbose = True if args.verbose else not args.quiet
 
     cfg = StudyConfig(
         n_trials=args.trials,
@@ -53,7 +58,7 @@ def main() -> None:
         n_jobs=args.n_jobs,
         storage=args.storage,
         study_name=args.study_name,
-        verbose=not args.quiet,
+        verbose=verbose,
         payoff_tables_dir=Path(args.payoff_tables_dir) if args.payoff_tables_dir else None,
         scenario=args.scenario,
     )

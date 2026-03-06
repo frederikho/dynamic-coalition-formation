@@ -21,7 +21,8 @@ from lib.equilibrium.scenarios import get_scenario, list_scenarios
 from lib.equilibrium.excel_writer import (
     write_strategy_table_excel,
     generate_filename,
-    generate_config_hash
+    generate_config_hash,
+    write_payoff_table_excel
 )
 from lib.effectivity import heyen_lehtomaa_2021
 from lib.utils import (
@@ -105,16 +106,22 @@ def _load_payoff_table(path: Path, states: list, players: list) -> tuple:
     geo_levels = pd.DataFrame(index=state_names, columns=["G"], dtype=np.float64) if sai_col else None
 
     for state in states:
-        key = _deployer_key(state)
-        if key not in df.index:
+        # Prefer direct state-name rows when available (used by --save-payoffs).
+        # Fallback to deployer-key rows for ingest_payoffs-style tables.
+        if state.name in df.index:
+            row_key = state.name
+        else:
+            row_key = _deployer_key(state)
+        if row_key not in df.index:
+            needed_key = _deployer_key(state)
             raise ValueError(
-                f"Payoff table {path.name} has no row for deployer key '{key}' "
-                f"(needed by framework state '{state.name}').\n"
+                f"Payoff table {path.name} has no row for framework state '{state.name}' "
+                f"or deployer key '{needed_key}'.\n"
                 f"Available keys: {df.index.tolist()}"
             )
-        payoffs.loc[state.name] = df.loc[key, players].values
+        payoffs.loc[state.name] = df.loc[row_key, players].values
         if sai_col is not None:
-            geo_levels.loc[state.name, "G"] = float(df.loc[key, sai_col])
+            geo_levels.loc[state.name, "G"] = float(df.loc[row_key, sai_col])
 
     return payoffs, geo_levels
 
@@ -206,6 +213,7 @@ def setup_experiment(config):
 
     return {
         'players': config["players"],
+        'states': states,
         'state_names': state_names,
         'effectivity': effectivity,
         'protocol': config["protocol"],
@@ -283,20 +291,21 @@ def _get_solver_params(config, user_params=None):
             'outer_tol': 2e-2,
         }) 
         
+        
     # for RICE case
     if len(config['players']) == 3:
         default_params.update({
-            'tau_p_init': 1,
-            'tau_r_init': 1,
+            'tau_p_init': 0.5,
+            'tau_r_init': 0.5,
             'tau_decay': 0.95,
-            'tau_min': 0.000001,
-            'damping': 0.70,
+            'tau_min': 0.00001,
+            'damping': 0.92,
             'max_inner_iter': 150,
-            'max_outer_iter': 10000,
-            'inner_tol': 2e-2,
-            'outer_tol': 2e-2,
-            'consecutive_tol': 5,
-            'verify_every_n': 20,
+            'max_outer_iter': 1000,
+            'inner_tol': 5e-2,
+            'outer_tol': 5e-2,
+            'consecutive_tol': 6,
+            'verify_every_n': 4,
         })
         
     # Standard parameters for 4-player scenarios. Works well for some of them. Commented out, do not delete yet.
@@ -319,7 +328,7 @@ def _get_solver_params(config, user_params=None):
         default_params.update({
             'tau_p_init': 0.2,
             'tau_r_init': 0.2,
-            'tau_decay': 0.99,
+            'tau_decay': 0.92,
             'tau_min': 0.001,
             'damping': 0.95,
             'max_inner_iter': 150,
@@ -327,6 +336,7 @@ def _get_solver_params(config, user_params=None):
             'inner_tol': 2e-2,
             'outer_tol': 2e-2,
             'consecutive_tol': 2,
+            'verify_every_n': 5,
         })        
 
     if len(config['players']) >= 5:
@@ -354,7 +364,8 @@ def _print_solver_params(params, logger):
     param_order = ['tau_p_init', 'tau_r_init', 'tau_decay', 'tau_min',
                   'max_outer_iter', 'max_inner_iter', 'damping',
                   'inner_tol', 'outer_tol', 'consecutive_tol', 'verify_every_n',
-                  'tau_margin', 'project_to_exact']
+                  'tau_margin', 'max_cycles_at_tau_min', 'cycle_break_tau_threshold',
+                  'project_to_exact']
 
     logger.info("Solver parameters:")
     for key in param_order:
@@ -559,7 +570,25 @@ def _save_to_file(strategy_df, output_file, setup, metadata, V=None, transition_
         logger.info(f"Runtime: {runtime_seconds//60:.0f}m {runtime_seconds%60:.1f}s")
 
 
-def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None, load_from_checkpoint=False, random_seed=None, logger=None):
+def _build_saved_payoff_table(setup: dict) -> pd.DataFrame:
+    """
+    Build a payoff table indexed by deployer key from framework state payoffs.
+
+    Multiple framework states can map to the same deployer key. In that case we
+    require payoff and geoengineering values to match (within tolerance).
+    """
+    players = setup["players"]
+    ordered_states = setup["state_names"]
+    rows = []
+    for state_name in ordered_states:
+        payload = {p: float(setup["payoffs"].loc[state_name, p]) for p in players}
+        payload["G"] = float(setup["geoengineering"].loc[state_name, "G"])
+        rows.append(payload)
+    return pd.DataFrame(rows, index=ordered_states)
+
+
+def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None,
+                     load_from_checkpoint=False, random_seed=None, logger=None, save_payoffs=False):
     """
     Find equilibrium for a given configuration.
 
@@ -573,6 +602,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         load_from_checkpoint: Whether to load from checkpoint if it exists
         random_seed: Random seed for initialization (if None, generates one)
         logger: Logger instance (optional, will be created if not provided)
+        save_payoffs: If True, save derived payoff table under payoff_tables/
 
     Returns:
         Dictionary with equilibrium results
@@ -592,6 +622,30 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
 
     # Generate config hash for checkpoint identification
     config_hash = generate_config_hash(config, length=10)
+
+    if save_payoffs:
+        repo_root = Path(__file__).resolve().parents[2]
+        payoff_dir = repo_root / "payoff_tables"
+        scenario_name = config.get("scenario_name", "scenario")
+        payoff_hash = config_hash[:6]
+        payoff_path = payoff_dir / f"payoff_{scenario_name}_{payoff_hash}.xlsx"
+        payoff_df = _build_saved_payoff_table(setup)
+        source_label = Path(config["payoff_table"]).name if config.get("payoff_table") else "computed_from_scenario"
+        payoff_metadata = {
+            "scenario_name": scenario_name,
+            "config_hash": payoff_hash,
+            "players": ", ".join(setup["players"]),
+            "source": source_label,
+        }
+        write_payoff_table_excel(
+            payoff_df=payoff_df,
+            excel_file_path=str(payoff_path),
+            players=setup["players"],
+            metadata=payoff_metadata,
+            source_label=source_label,
+        )
+        if verbose:
+            logger.info(f"Saved payoff table to: {payoff_path}")
 
     # Check if checkpoint exists and inform user
     checkpoint_dir = './checkpoints'
@@ -763,6 +817,34 @@ def _parse_year_range_from_stem(stem: str) -> tuple[int | None, int] | None:
         return None
     if m.group(2):
         return int(m.group(1)), int(m.group(2))
+    return None, int(m.group(1))
+
+
+def _parse_year_range_arg(year_range: str, parser) -> tuple[int | None, int]:
+    """
+    Parse a year range CLI argument.
+
+    Accepts:
+      'YYYY'       → (None, YYYY)   — no lower bound, sum up to YYYY
+      'YYYY-YYYY'  → (YYYY, YYYY)   — inclusive range
+    """
+    import re
+
+    raw = year_range.strip()
+    m = re.fullmatch(r"(\d{4})(?:-(\d{4}))?", raw)
+    if not m:
+        parser.error(
+            f"Invalid --payoff-year-range '{year_range}'. "
+            "Use 'YYYY' or 'YYYY-YYYY' (e.g. 2300 or 2035-2300)."
+        )
+    if m.group(2):
+        start_year = int(m.group(1))
+        end_year = int(m.group(2))
+        if start_year > end_year:
+            parser.error(
+                f"Invalid --payoff-year-range '{year_range}': start year must be <= end year."
+            )
+        return start_year, end_year
     return None, int(m.group(1))
 
 
@@ -945,15 +1027,37 @@ Available scenarios (use --list-scenarios to see all):
             'Mutually exclusive with --payoff-table.'
         )
     )
+    parser.add_argument(
+        '--payoff-year-range',
+        type=str,
+        default=None,
+        help=(
+            "Year range to use when (re)ingesting payoffs before solving. "
+            "Accepts 'YYYY' (sum up to year) or 'YYYY-YYYY' (inclusive range). "
+            "Requires --payoff-table. Overrides year inference from the payoff filename."
+        )
+    )
+    parser.add_argument(
+        '--payoff-input-dir',
+        type=str,
+        default=None,
+        help=(
+            "Directory containing source .gdx files for payoff ingestion. "
+            "Default: inferred from payoff filename under DEFAULT_RESULTS_DIR."
+        )
+    )
+    parser.add_argument(
+        '--save-payoffs',
+        action='store_true',
+        help='Save the derived payoff table to payoff_tables/ before solving'
+    )
 
     args = parser.parse_args()
 
-    if args.auto_ingest:
+    if args.auto_ingest or args.payoff_year_range is not None:
         if args.payoff_table is None:
             parser.error(
-                "--auto-ingest requires --payoff-table to name the target file; "
-                "the year range is inferred from the filename "
-                "(e.g. burke_usachnnde_2060.xlsx or burke_usachnnde_2060-2080.xlsx)"
+                "--auto-ingest/--payoff-year-range requires --payoff-table to name the target file."
             )
         # Resolve path the same way _load_payoff_table does
         pt_path = Path(args.payoff_table)
@@ -963,22 +1067,38 @@ Available scenarios (use --list-scenarios to see all):
             repo_root = Path(__file__).parent.parent.parent
             pt_path = repo_root / "payoff_tables" / pt_path
 
-        if pt_path.exists():
-            print(f"[auto-ingest] {pt_path.name} already exists — skipping ingest")
+        if args.payoff_year_range is not None:
+            start_year, end_year = _parse_year_range_arg(args.payoff_year_range, parser)
+            force_reingest = True
         else:
             year_range = _parse_year_range_from_stem(pt_path.stem)
             if year_range is None:
                 parser.error(
                     f"Cannot infer year range from '{pt_path.name}'. "
                     "Encode the year in the stem, e.g. burke_usachnnde_2060.xlsx "
-                    "or burke_usachnnde_2060-2080.xlsx"
+                    "or burke_usachnnde_2060-2080.xlsx, "
+                    "or pass --payoff-year-range explicitly."
                 )
             start_year, end_year = year_range
-            folder_name = pt_path.stem.rsplit("_", 1)[0]
-            from lib.ingest_payoffs import ingest, DEFAULT_RESULTS_DIR
+            force_reingest = args.fresh
+
+        if args.payoff_input_dir is not None:
+            input_dir = Path(args.payoff_input_dir)
+        else:
+            # Infer input folder from payoff filename by stripping a trailing year/range segment.
+            folder_name = pt_path.stem
+            if _parse_year_range_from_stem(pt_path.stem) is not None:
+                folder_name = pt_path.stem.rsplit("_", 1)[0]
+            from lib.ingest_payoffs import DEFAULT_RESULTS_DIR
             input_dir = DEFAULT_RESULTS_DIR / folder_name
+
+        if pt_path.exists() and not force_reingest:
+            print(f"[auto-ingest] {pt_path.name} already exists — skipping ingest")
+        else:
+            from lib.ingest_payoffs import ingest
             year_desc = f"{start_year}-{end_year}" if start_year else f"up to {end_year}"
-            print(f"[auto-ingest] {pt_path.name} not found — running ingest (years {year_desc})")
+            action = "re-ingesting" if pt_path.exists() else "running ingest"
+            print(f"[auto-ingest] {pt_path.name} {'exists' if pt_path.exists() else 'not found'} — {action} (years {year_desc})")
             print(f"[auto-ingest] {input_dir} → {pt_path}")
             try:
                 ingest(input_dir=input_dir, output_path=pt_path,
@@ -1104,7 +1224,8 @@ Available scenarios (use --list-scenarios to see all):
             description=args.description,
             load_from_checkpoint=load_from_checkpoint,
             random_seed=args.seed,
-            logger=logger
+            logger=logger,
+            save_payoffs=args.save_payoffs,
         )
 
         results_summary.append((scenario_name, result['verification_success'],

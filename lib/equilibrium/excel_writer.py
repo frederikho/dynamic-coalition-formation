@@ -705,6 +705,118 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
     wb.save(excel_file_path)
 
 
+def write_payoff_table_excel(
+    payoff_df: pd.DataFrame,
+    excel_file_path: str,
+    players: list[str],
+    metadata: dict | None = None,
+    source_label: str = "computed",
+    sai_column_name: str = "W_SAI_sum_generated",
+):
+    """
+    Write a payoff table Excel file compatible with _load_payoff_table().
+
+    Expected input:
+    - payoff_df index: deployer keys (e.g. '( )', '(USA)', '(CHNNDE)')
+    - payoff_df columns: one column per player plus optional 'G' column
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Payoffs"
+
+    has_g = "G" in payoff_df.columns
+    data_cols = list(players) + ([sai_column_name] if has_g else [])
+    headers = ["State"] + data_cols + ["Source file"]
+
+    ws.column_dimensions["A"].width = 18
+    for idx in range(len(data_cols)):
+        ws.column_dimensions[get_column_letter(2 + idx)].width = 16
+    ws.column_dimensions[get_column_letter(2 + len(data_cols))].width = 28
+
+    # Row 1 title so row 2 can be the header for _load_payoff_table(header=1)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+    ws.cell(row=1, column=1, value="Precomputed Payoffs (Generated)").font = Font(
+        name="Calibri", bold=True, size=12
+    )
+    ws.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="center")
+    ws.cell(row=1, column=1).fill = PatternFill(start_color="FF4D9CC9", end_color="FF4D9CC9", fill_type="solid")
+
+    # Row 2 headers
+    for col_idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=2, column=col_idx, value=header)
+        cell.font = Font(name="Calibri", bold=True, size=10)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.fill = PatternFill(start_color="FFD3D3D3", end_color="FFD3D3D3", fill_type="solid")
+
+    # Data rows
+    row = 3
+    for state_key in payoff_df.index.tolist():
+        ws.cell(row=row, column=1, value=state_key)
+        ws.cell(row=row, column=1).font = Font(name="Calibri", bold=True, size=10)
+        ws.cell(row=row, column=1).alignment = Alignment(horizontal="center", vertical="center")
+        ws.cell(row=row, column=1).fill = PatternFill(start_color="FFEEBF99", end_color="FFEEBF99", fill_type="solid")
+
+        col = 2
+        for player in players:
+            val = float(payoff_df.loc[state_key, player])
+            c = ws.cell(row=row, column=col, value=val)
+            c.number_format = "0.000000"
+            c.font = Font(name="Calibri", size=10)
+            c.alignment = Alignment(horizontal="right", vertical="center")
+            col += 1
+
+        if has_g:
+            g_val = float(payoff_df.loc[state_key, "G"])
+            c = ws.cell(row=row, column=col, value=g_val)
+            c.number_format = "0.000"
+            c.font = Font(name="Calibri", size=10)
+            c.alignment = Alignment(horizontal="right", vertical="center")
+            col += 1
+
+        src = ws.cell(row=row, column=col, value=source_label)
+        src.font = Font(name="Calibri", italic=True, size=9)
+        src.alignment = Alignment(horizontal="left", vertical="center")
+        row += 1
+
+    # Highlight best payoff (max) per player column.
+    best_fill = PatternFill(
+        start_color="FFFFEEBA",
+        end_color="FFFFEEBA",
+        fill_type="solid",
+    )
+    for p_idx, player in enumerate(players):
+        col_idx = 2 + p_idx
+        max_val = float(payoff_df[player].max())
+        for r_idx, state_key in enumerate(payoff_df.index.tolist(), start=3):
+            if math.isclose(float(payoff_df.loc[state_key, player]), max_val, rel_tol=1e-13):
+                ws.cell(row=r_idx, column=col_idx).fill = best_fill
+
+    thin = Side(style="thin", color="000000")
+    for r in range(1, row):
+        for c in range(1, len(headers) + 1):
+            ws.cell(row=r, column=c).border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    if metadata is not None:
+        ws_meta = wb.create_sheet(title="Metadata")
+        ws_meta.column_dimensions["A"].width = 28
+        ws_meta.column_dimensions["B"].width = 48
+        ws_meta.cell(row=1, column=1, value="Parameter").font = Font(name="Calibri", bold=True, size=10)
+        ws_meta.cell(row=1, column=2, value="Value").font = Font(name="Calibri", bold=True, size=10)
+        ws_meta.cell(row=1, column=1).fill = PatternFill(start_color="FFD3D3D3", end_color="FFD3D3D3", fill_type="solid")
+        ws_meta.cell(row=1, column=2).fill = PatternFill(start_color="FFD3D3D3", end_color="FFD3D3D3", fill_type="solid")
+        meta_row = 2
+        for key, value in metadata.items():
+            ws_meta.cell(row=meta_row, column=1, value=str(key))
+            ws_meta.cell(row=meta_row, column=2, value=str(value))
+            meta_row += 1
+        for r in range(1, meta_row):
+            for c in range(1, 3):
+                ws_meta.cell(row=r, column=c).border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    Path(excel_file_path).parent.mkdir(parents=True, exist_ok=True)
+    wb.save(excel_file_path)
+
+
 if __name__ == '__main__':
     # Example usage
     import sys
