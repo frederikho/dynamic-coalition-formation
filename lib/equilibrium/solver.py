@@ -265,12 +265,17 @@ class EquilibriumSolver:
 
         return V
 
-    def _update_acceptances(self, V: pd.DataFrame, tau_r: float) -> Dict:
+    def _update_acceptances(self, V: pd.DataFrame, tau_r: float,
+                            old_acceptances: Optional[Dict] = None,
+                            players_subset: Optional[List] = None) -> Dict:
         """Update acceptance probabilities using smoothed sigmoid.
 
         Args:
             V: Value functions
             tau_r: Smoothing temperature for acceptances
+            old_acceptances: Current acceptance dict; required when players_subset is given
+                             so non-selected approvers keep their existing values.
+            players_subset: If given, only recompute for approvers in this set.
 
         Returns:
             Updated acceptance probabilities
@@ -286,11 +291,15 @@ class EquilibriumSolver:
                     )
 
                     for approver in committee:
+                        key = (proposer, current_state, next_state, approver)
+                        if players_subset is not None and approver not in players_subset:
+                            new_acceptances[key] = old_acceptances[key]
+                            continue
+
                         V_current = V.loc[current_state, approver]
                         V_next = V.loc[next_state, approver]
 
                         # Smoothed acceptance: sigmoid((V_next - V_current) / tau_r)
-                        key = (proposer, current_state, next_state, approver)
                         new_acceptances[key] = sigmoid(
                             V_next - V_current, tau_r
                         )
@@ -304,13 +313,18 @@ class EquilibriumSolver:
         return P_approvals.get(key, 0.0)
 
     def _update_proposals(self, V: pd.DataFrame, P_approvals: Dict,
-                         tau_p: float) -> Dict:
+                         tau_p: float,
+                         old_proposals: Optional[Dict] = None,
+                         players_subset: Optional[List] = None) -> Dict:
         """Update proposal probabilities using smoothed softmax.
 
         Args:
             V: Value functions
             P_approvals: Approval probabilities
             tau_p: Smoothing temperature for proposals
+            old_proposals: Current proposal dict; required when players_subset is given
+                           so non-selected proposers keep their existing values.
+            players_subset: If given, only recompute for proposers in this set.
 
         Returns:
             Updated proposal probabilities
@@ -319,6 +333,12 @@ class EquilibriumSolver:
 
         for proposer in self.players:
             for current_state in self.states:
+                if players_subset is not None and proposer not in players_subset:
+                    for next_state in self.states:
+                        key = (proposer, current_state, next_state)
+                        new_proposals[key] = old_proposals[key]
+                    continue
+
                 # Compute expected values for each next state
                 expected_values = np.zeros(len(self.states))
 
@@ -657,7 +677,8 @@ class EquilibriumSolver:
               config_hash: str = None,
               max_time_seconds: Optional[float] = None,
               disable_checkpoints: bool = False,
-              disable_timing_report: bool = False) -> Tuple[pd.DataFrame, Dict]:
+              disable_timing_report: bool = False,
+              update_k_players: Optional[int] = None) -> Tuple[pd.DataFrame, Dict]:
         """
         Solve for equilibrium strategy profile using smoothed fixed-point iteration.
 
@@ -685,6 +706,9 @@ class EquilibriumSolver:
             checkpoint_dir: Directory to save checkpoints (default: './checkpoints')
             load_from_checkpoint: Whether to load from checkpoint if exists
             config_hash: Hash of configuration for checkpoint filename
+            update_k_players: If set, only update this many randomly sampled players per
+                              inner iteration (asynchronous / Gauss-Seidel style update).
+                              None (default) updates all players simultaneously.
 
         Returns:
             strategy_df: Equilibrium strategy DataFrame
@@ -741,10 +765,17 @@ class EquilibriumSolver:
                     if self.verbose:
                         self._log("No checkpoint found, starting fresh")
 
+        if update_k_players is not None:
+            k_update = min(update_k_players, len(self.players))
+        else:
+            k_update = None
+
         if self.verbose:
             self._log("Starting equilibrium solver...")
             self._log(f"Initial tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
             self._log(f"Outer tolerance: {outer_tol:.2e}, consecutive required: {consecutive_tol}")
+            if k_update is not None:
+                self._log(f"Asynchronous updates: k={k_update}/{len(self.players)} players per inner iter")
             if checkpoint_path:
                 self._log(f"Checkpoints will be saved to: {checkpoint_path}")
 
@@ -809,12 +840,22 @@ class EquilibriumSolver:
 
                 # 4. Update acceptances (smoothed)
                 t0 = time.time()
-                new_acceptances = self._update_acceptances(V, tau_r)
+                players_this_iter = (
+                    list(np.random.choice(self.players, size=k_update, replace=False))
+                    if k_update is not None else None
+                )
+                new_acceptances = self._update_acceptances(
+                    V, tau_r, old_acceptances=old_acceptances,
+                    players_subset=players_this_iter
+                )
                 timing_stats['update_acceptances'].append(time.time() - t0)
 
                 # 5. Update proposals (smoothed)
                 t0 = time.time()
-                new_proposals = self._update_proposals(V, P_approvals, tau_p)
+                new_proposals = self._update_proposals(
+                    V, P_approvals, tau_p, old_proposals=old_proposals,
+                    players_subset=players_this_iter
+                )
                 timing_stats['update_proposals'].append(time.time() - t0)
 
                 # 6. Apply damping

@@ -156,9 +156,24 @@ def compute_sai_timeseries(
 def _period_sizes(t_values: list[int], periods: list[tuple[int, int]]) -> list[int]:
     sizes: list[int] = []
     for start, end in periods:
-        count = sum(1 for t in t_values if start <= t <= end)
+        count = sum(1 for t in t_values if start <= t < end)
         sizes.append(max(1, count))
     return sizes
+
+
+def _previous_model_year(gdx_path: Path, year: int) -> int:
+    """Return the largest model year strictly less than `year` from a GDX file."""
+    from lib.ingest_payoffs import parse_gdx_parameter, YEAR_SYMBOL
+
+    year_map = parse_gdx_parameter(gdx_path, YEAR_SYMBOL)
+    years = sorted({int(round(y)) for y in year_map.values()})
+    prev = [y for y in years if y < year]
+    if not prev:
+        raise RuntimeError(
+            f"Could not find a model year before {year} in {gdx_path.name}. "
+            f"Available years start at {years[0] if years else 'N/A'}."
+        )
+    return prev[-1]
 
 
 def _build_period_label_line(width: int, sizes: list[int], labels: list[str]) -> str:
@@ -596,6 +611,7 @@ def run_ingest(
     payoff_table_path: Path,
     start_year: Optional[int],
     end_year: int,
+    end_inclusive: bool,
     policy: str,
     impact: str,
     extra_metadata: Optional[dict[str, object]] = None,
@@ -606,7 +622,8 @@ def run_ingest(
         gdx_dir:           Directory containing the GDX files from GAMS.
         payoff_table_path: Destination .xlsx file path.
         start_year:        First year to include (None = no lower bound).
-        end_year:          Last year to include (inclusive).
+        end_year:          Last year bound.
+        end_inclusive:     Whether end_year is inclusive (True) or exclusive (False).
         policy:            Policy name used to filter matching GDX filenames.
         impact:            Impact function used to filter matching GDX filenames.
         extra_metadata:    Optional metadata key/value pairs for the Excel file.
@@ -626,6 +643,7 @@ def run_ingest(
             players=None,          # auto-detect from filenames
             start_year=start_year,
             end_year=end_year,
+            end_inclusive=end_inclusive,
             extra_metadata=extra_metadata,
             required_stem_prefix=stem_prefix,
         )
@@ -978,11 +996,13 @@ def orchestrate(
 
         if payoff_range is None:
             ingest_start, ingest_end = period_start, period_end
+            ingest_end_inclusive = False
             payoff_range_label = period_label
         else:
             pr_start, pr_end = payoff_range
             ingest_start = period_start if pr_start is None else pr_start
             ingest_end = pr_end
+            ingest_end_inclusive = True
             if ingest_start > ingest_end:
                 raise RuntimeError(
                     f"Invalid payoff range for phase {period_label}: "
@@ -1023,12 +1043,14 @@ def orchestrate(
         if not fresh and payoff_table.exists():
             _skip(f"payoff table already exists: {payoff_table.name}")
         else:
-            _log(f"  Ingest years:     {ingest_start}-{ingest_end}")
+            upper = "]" if ingest_end_inclusive else ")"
+            _log(f"  Ingest years:     [{ingest_start}, {ingest_end}{upper}")
             run_ingest(
                 gdx_dir=gams_workdir,
                 payoff_table_path=payoff_table,
                 start_year=ingest_start,
                 end_year=ingest_end,
+                end_inclusive=ingest_end_inclusive,
                 policy=policy,
                 impact=impact,
                 extra_metadata=payoff_metadata,
@@ -1121,10 +1143,12 @@ def orchestrate(
 
         # Carry history into the next phase.
         # load_sai_history_until fixes N_SAI for all years <= that value.
-        # We want the just-computed period to be fixed through its end year,
-        # so use period_end (e.g. 2065 for phase 2050-2065).
+        # To avoid leaking boundary-year deployment into the next phase's
+        # baseline '( )' row, stop at the previous model year (e.g. 2055 for
+        # period ending at 2060 on a 5-year grid).
         history_gdx  = next_history_gdx
-        history_from = period_end
+        history_from = _previous_model_year(next_history_gdx, period_end)
+        _log(f"  Next history cutoff year: {history_from}")
 
         if phase_idx == n_phases - 1:
             last_winning_state = winning_state

@@ -306,6 +306,7 @@ def _get_solver_params(config, user_params=None):
             'outer_tol': 5e-2,
             'consecutive_tol': 6,
             'verify_every_n': 4,
+            'update_k_players': 2,
         })
         
     # Standard parameters for 4-player scenarios. Works well for some of them. Commented out, do not delete yet.
@@ -365,7 +366,7 @@ def _print_solver_params(params, logger):
                   'max_outer_iter', 'max_inner_iter', 'damping',
                   'inner_tol', 'outer_tol', 'consecutive_tol', 'verify_every_n',
                   'tau_margin', 'max_cycles_at_tau_min', 'cycle_break_tau_threshold',
-                  'project_to_exact']
+                  'project_to_exact', 'update_k_players']
 
     logger.info("Solver parameters:")
     for key in param_order:
@@ -520,7 +521,7 @@ def _build_metadata(config, setup, solver_params, solver_result,
                   'max_outer_iter', 'max_inner_iter', 'damping',
                   'inner_tol', 'outer_tol', 'consecutive_tol', 'verify_every_n',
                   'tau_margin', 'max_cycles_at_tau_min', 'cycle_break_tau_threshold',
-                  'project_to_exact']
+                  'project_to_exact', 'update_k_players']
     for key in param_order:
         if key in solver_params:
             metadata[f'solver_{key}'] = solver_params[key]

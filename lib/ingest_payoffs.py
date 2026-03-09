@@ -176,9 +176,17 @@ def parse_gdx_variable_levels(gdx_path: Path, symbol: str) -> dict[str, float]:
     return values
 
 
-def _in_year_range(calendar_year: float, start_year: int | None, end_year: int) -> bool:
-    """Return True if calendar_year falls within [start_year, end_year] (inclusive)."""
-    return (start_year is None or calendar_year >= start_year) and calendar_year <= end_year
+def _in_year_range(
+    calendar_year: float,
+    start_year: int | None,
+    end_year: int,
+    *,
+    end_inclusive: bool = True,
+) -> bool:
+    """Return True if year is in [start_year, end_year] or [start_year, end_year)."""
+    lower_ok = start_year is None or calendar_year >= start_year
+    upper_ok = calendar_year <= end_year if end_inclusive else calendar_year < end_year
+    return lower_ok and upper_ok
 
 
 def _sai_col_name(start_year: int | None, end_year: int) -> str:
@@ -188,10 +196,17 @@ def _sai_col_name(start_year: int | None, end_year: int) -> str:
     return f"W_SAI_sum_{start_year}-{end_year}"
 
 
-def compute_sai_sum(gdx_path: Path, start_year: int | None, end_year: int) -> float:
+def compute_sai_sum(
+    gdx_path: Path,
+    start_year: int | None,
+    end_year: int,
+    *,
+    end_inclusive: bool = True,
+) -> float:
     """
     Sum W_SAI level values for all periods whose calendar year falls within
-    [start_year, end_year] (inclusive).  start_year=None means no lower bound.
+    [start_year, end_year] by default, or [start_year, end_year) when
+    end_inclusive=False. start_year=None means no lower bound.
 
     Uses the `year` parameter from the same GDX file to map period indices to
     calendar years.  If W_SAI is absent from the GDX file (e.g. a no-deployment
@@ -205,7 +220,12 @@ def compute_sai_sum(gdx_path: Path, start_year: int | None, end_year: int) -> fl
 
     total = 0.0
     for period_key, calendar_year in year_map.items():
-        if _in_year_range(calendar_year, start_year, end_year):
+        if _in_year_range(
+            calendar_year,
+            start_year,
+            end_year,
+            end_inclusive=end_inclusive,
+        ):
             total += sai_levels.get(period_key, 0.0)
     return total
 
@@ -215,17 +235,19 @@ def compute_welfare_sums(
     region_codes: list[str],
     start_year: int | None,
     end_year: int,
+    *,
+    end_inclusive: bool = True,
 ) -> dict[str, float]:
     """
     Sum `welfare_regional_t` for each region over all periods whose calendar year
-    falls within [start_year, end_year] (inclusive).  start_year=None means no
-    lower bound.
+    falls within [start_year, end_year] by default, or [start_year, end_year)
+    when end_inclusive=False. start_year=None means no lower bound.
 
     Args:
         gdx_path:     Path to the GDX file.
         region_codes: List of lowercase GAMS region codes (e.g. ['nde', 'usa', 'chn']).
         start_year:   First year to include (None = no lower bound).
-        end_year:     Last year to include (inclusive).
+        end_year:     Last year bound.
 
     Returns:
         Dict mapping region code (lowercase) → summed welfare float.
@@ -235,7 +257,12 @@ def compute_welfare_sums(
 
     totals: dict[str, float] = {code.lower(): 0.0 for code in region_codes}
     for period_key, calendar_year in year_map.items():
-        if _in_year_range(calendar_year, start_year, end_year):
+        if _in_year_range(
+            calendar_year,
+            start_year,
+            end_year,
+            end_inclusive=end_inclusive,
+        ):
             for code in region_codes:
                 key = (period_key.lower(), code.lower())
                 totals[code.lower()] += welfare_by_region_period.get(key, 0.0)
@@ -646,6 +673,7 @@ def ingest(
     players: list[tuple[str, str]] | None,
     start_year: int | None,
     end_year: int,
+    end_inclusive: bool = True,
     extra_metadata: dict[str, object] | None = None,
     required_stem_prefix: str | None = None,
 ) -> None:
@@ -681,10 +709,11 @@ def ingest(
 
     total_gdx = len(list(input_dir.glob("*.gdx")))
     print(f"Found {total_gdx} GDX file(s) in {input_dir}")
+    end_bracket = "]" if end_inclusive else ")"
     if start_year is None:
-        print(f"Summing {SAI_SYMBOL} up to year {end_year}\n")
+        print(f"Summing {SAI_SYMBOL} for years (-∞, {end_year}{end_bracket}\n")
     else:
-        print(f"Summing {SAI_SYMBOL} for years {start_year}–{end_year}\n")
+        print(f"Summing {SAI_SYMBOL} for years [{start_year}, {end_year}{end_bracket}\n")
 
     if skipped:
         print("Skipped files:")
@@ -712,8 +741,19 @@ def ingest(
         gdx_path = key_to_file[state_name]
         print(f"  {gdx_path.name}  →  deployer '{state_name}'")
 
-        welfare = compute_welfare_sums(gdx_path, region_codes, start_year, end_year)
-        sai_sum = compute_sai_sum(gdx_path, start_year, end_year)
+        welfare = compute_welfare_sums(
+            gdx_path,
+            region_codes,
+            start_year,
+            end_year,
+            end_inclusive=end_inclusive,
+        )
+        sai_sum = compute_sai_sum(
+            gdx_path,
+            start_year,
+            end_year,
+            end_inclusive=end_inclusive,
+        )
 
         row: dict = {"state": state_name, "source_file": gdx_path.name}
         for code, display in players:
