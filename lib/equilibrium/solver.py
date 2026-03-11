@@ -193,6 +193,64 @@ class EquilibriumSolver:
 
         return df
 
+    def _compact_strategy_str(self) -> str:
+        """Return the strategy DataFrame as a compact string with abbreviated labels.
+
+        Each player name is shortened to its first letter (e.g. CHN→C, NDE→N, USA→U).
+        States are ordered: ( ) first, then by coalition size, then grand coalition.
+        Within each state rows are ordered: Prop, then Acc for each player.
+        """
+        abbrev = {p: p[0] for p in self.players}
+        abbrev_players = [abbrev[p] for p in self.players]
+
+        def shorten(s: str) -> str:
+            for full, short in abbrev.items():
+                s = s.replace(full, short)
+            return s
+
+        def state_size(state_name: str) -> int:
+            return len(state_name.strip().lstrip('(').rstrip(')').replace(' ', ''))
+
+        df = self._create_strategy_dataframe()
+
+        # --- Columns ---
+        # Abbreviate and sort: by proposer (player order), then by state size
+        proposer_order = {f'P:{a}': i for i, a in enumerate(abbrev_players)}
+        state_size_map = {shorten(s): state_size(s) for s in self.states}
+        new_cols = [(shorten(c0).replace('Proposer ', 'P:'), shorten(c1)) for c0, c1 in df.columns]
+        sorted_cols = sorted(new_cols, key=lambda t: (proposer_order.get(t[0], 999), state_size_map.get(t[1], 999)))
+        df.columns = pd.MultiIndex.from_tuples(new_cols, names=df.columns.names)
+        df = df.reindex(columns=pd.MultiIndex.from_tuples(sorted_cols, names=df.columns.names))
+
+        # --- Rows ---
+        # Replace NaN player (Proposition rows) with '' so index has no NaN
+        def shorten_row(t):
+            state, kind, player = t
+            return (
+                shorten(state),
+                'Prop' if kind == 'Proposition' else 'Acc',
+                shorten(player) if isinstance(player, str) else '',
+            )
+
+        df.index = pd.MultiIndex.from_tuples(
+            [shorten_row(t) for t in df.index], names=df.index.names
+        )
+
+        # Build desired row order: ( ) → pairwise → grand coalition; Prop before Acc
+        sorted_states = sorted(self.states, key=state_size)
+        desired_rows = []
+        for state in sorted_states:
+            s = shorten(state)
+            desired_rows.append((s, 'Prop', ''))
+            for p in abbrev_players:
+                desired_rows.append((s, 'Acc', p))
+
+        existing = set(df.index.tolist())
+        desired_rows = [r for r in desired_rows if r in existing]
+        df = df.reindex(pd.MultiIndex.from_tuples(desired_rows, names=df.index.names))
+
+        return df.to_string(float_format=lambda x: f'{x:.2f}')
+
     def _compute_transition_probabilities_fast(self) -> Tuple:
         """Compute transition probabilities from strategy dicts (fast path).
 
@@ -267,15 +325,19 @@ class EquilibriumSolver:
 
     def _update_acceptances(self, V: pd.DataFrame, tau_r: float,
                             old_acceptances: Optional[Dict] = None,
-                            players_subset: Optional[List] = None) -> Dict:
+                            players_subset: Optional[List] = None,
+                            keys_subset: Optional[set] = None) -> Dict:
         """Update acceptance probabilities using smoothed sigmoid.
 
         Args:
             V: Value functions
             tau_r: Smoothing temperature for acceptances
-            old_acceptances: Current acceptance dict; required when players_subset is given
-                             so non-selected approvers keep their existing values.
-            players_subset: If given, only recompute for approvers in this set.
+            old_acceptances: Current acceptance dict; required when any subset is given
+                             so non-selected entries keep their existing values.
+            players_subset: If given (and keys_subset is None), only recompute for
+                            approvers in this set.
+            keys_subset: If given, only recompute these exact (proposer, current_state,
+                         next_state, approver) keys. Takes precedence over players_subset.
 
         Returns:
             Updated acceptance probabilities
@@ -292,7 +354,16 @@ class EquilibriumSolver:
 
                     for approver in committee:
                         key = (proposer, current_state, next_state, approver)
-                        if players_subset is not None and approver not in players_subset:
+
+                        # Determine whether to recompute or carry forward old value
+                        if keys_subset is not None:
+                            skip = key not in keys_subset
+                        elif players_subset is not None:
+                            skip = approver not in players_subset
+                        else:
+                            skip = False
+
+                        if skip:
                             new_acceptances[key] = old_acceptances[key]
                             continue
 
@@ -429,7 +500,7 @@ class EquilibriumSolver:
 
         return success, message, V
 
-    def _polish_exact_equilibrium(self, max_iter: int = 20, tol: float = 1e-12) -> Tuple[bool, str, int]:
+    def _polish_exact_equilibrium(self, max_iter: int = 20, tol: float = 1e-9) -> Tuple[bool, str, int]:
         """Iteratively enforce exact best responses after annealing.
 
         One-shot projection can be internally inconsistent because projecting
@@ -500,7 +571,7 @@ class EquilibriumSolver:
 
                         key = (proposer, current_state, next_state, approver)
 
-                        if np.isclose(V_next, V_current, rtol=0, atol=1e-6):
+                        if np.isclose(V_next, V_current, rtol=0, atol=1e-9):
                             # Indifferent: keep current value (could be anything in [0,1])
                             pass
                         elif V_next > V_current:
@@ -532,14 +603,27 @@ class EquilibriumSolver:
                 max_value = max(expected_values.values())
                 argmax_states = [
                     state for state, val in expected_values.items()
-                    if np.isclose(val, max_value, atol=1e-6)
+                    if np.isclose(val, max_value, atol=1e-9)
                 ]
 
-                # Distribute probability uniformly over argmax states
+                # Zero out non-argmax states and renormalize the existing weights
+                # within the argmax set.  Any mixture over argmax states is a valid
+                # exact best response; preserving the smoothed weights minimises the
+                # perturbation to V and helps the polish loop find a self-consistent
+                # fixed point.  Uniform (1/N) is used only as a fallback when the
+                # total weight on argmax states is numerically zero.
+                argmax_set = set(argmax_states)
+                total_weight = sum(
+                    self.p_proposals[(proposer, current_state, ns)]
+                    for ns in argmax_set
+                )
                 for next_state in self.states:
                     key = (proposer, current_state, next_state)
-                    if next_state in argmax_states:
-                        self.p_proposals[key] = 1.0 / len(argmax_states)
+                    if next_state in argmax_set:
+                        if total_weight > 0:
+                            self.p_proposals[key] = self.p_proposals[key] / total_weight
+                        else:
+                            self.p_proposals[key] = 1.0 / len(argmax_set)
                     else:
                         self.p_proposals[key] = 0.0
 
@@ -670,7 +754,7 @@ class EquilibriumSolver:
               cycle_break_tau_threshold: Optional[float] = None,
               exact_polish_enabled: bool = True,
               exact_polish_max_iter: int = 20,
-              exact_polish_tol: float = 1e-12,
+              exact_polish_tol: float = 1e-9,
               project_to_exact: bool = True,
               checkpoint_dir: str = './checkpoints',
               load_from_checkpoint: bool = False,
@@ -678,7 +762,11 @@ class EquilibriumSolver:
               max_time_seconds: Optional[float] = None,
               disable_checkpoints: bool = False,
               disable_timing_report: bool = False,
-              update_k_players: Optional[int] = None) -> Tuple[pd.DataFrame, Dict]:
+              update_k_players: Optional[int] = None,
+              link_player_updates: bool = True,
+              update_k_acceptances: Optional[int] = None,
+              log_strategy_every_inner: bool = True,
+              inner_cycle_check_interval: int = 20) -> Tuple[pd.DataFrame, Dict]:
         """
         Solve for equilibrium strategy profile using smoothed fixed-point iteration.
 
@@ -709,6 +797,22 @@ class EquilibriumSolver:
             update_k_players: If set, only update this many randomly sampled players per
                               inner iteration (asynchronous / Gauss-Seidel style update).
                               None (default) updates all players simultaneously.
+            link_player_updates: If True (default), proposals and acceptances are updated
+                                 for the same sampled players. If False, proposals use
+                                 update_k_players and acceptances are sampled independently
+                                 (governed by update_k_acceptances).
+            update_k_acceptances: If set, update exactly this many randomly sampled
+                                  individual acceptance keys per inner iteration, independent
+                                  of player-level sampling. Overrides link_player_updates
+                                  for acceptances. None (default) uses player-level sampling.
+            log_strategy_every_inner: If True, log the full strategy profile (proposals and
+                                      acceptances) after every inner iteration. Intended for
+                                      debugging; off by default.
+            inner_cycle_check_interval: Check for a confirmed cycle every this many inner
+                                        iterations. When a cycle is detected at low tau, the
+                                        inner loop breaks immediately (avoids burning all
+                                        max_inner_iter iterations on a known limit cycle).
+                                        Set to 0 to disable. Default: 20.
 
         Returns:
             strategy_df: Equilibrium strategy DataFrame
@@ -770,12 +874,25 @@ class EquilibriumSolver:
         else:
             k_update = None
 
+        all_acceptance_keys = list(self.r_acceptances.keys())
+        if update_k_acceptances is not None:
+            k_acc = min(update_k_acceptances, len(all_acceptance_keys))
+        else:
+            k_acc = None
+
         if self.verbose:
             self._log("Starting equilibrium solver...")
             self._log(f"Initial tau_p={tau_p:.4f}, tau_r={tau_r:.4f}")
             self._log(f"Outer tolerance: {outer_tol:.2e}, consecutive required: {consecutive_tol}")
-            if k_update is not None:
-                self._log(f"Asynchronous updates: k={k_update}/{len(self.players)} players per inner iter")
+            if k_update is not None or k_acc is not None:
+                proposal_desc = f"proposals: k={k_update}/{len(self.players)} players"
+                if k_acc is not None:
+                    acc_desc = f"acceptances: k={k_acc}/{len(all_acceptance_keys)} keys (independent)"
+                elif not link_player_updates:
+                    acc_desc = f"acceptances: k={k_update}/{len(self.players)} players (independent)"
+                else:
+                    acc_desc = f"acceptances: linked to proposals"
+                self._log(f"Asynchronous updates — {proposal_desc}; {acc_desc}")
             if checkpoint_path:
                 self._log(f"Checkpoints will be saved to: {checkpoint_path}")
 
@@ -838,15 +955,35 @@ class EquilibriumSolver:
                 V = self._solve_value_functions(P)
                 timing_stats['solve_values'].append(time.time() - t0)
 
-                # 4. Update acceptances (smoothed)
-                t0 = time.time()
-                players_this_iter = (
+                # Sample which players/keys to update this iteration
+                proposal_players = (
                     list(np.random.choice(self.players, size=k_update, replace=False))
                     if k_update is not None else None
                 )
+                if k_acc is not None:
+                    # Key-level sampling for acceptances, independent of proposals
+                    acc_keys = set(
+                        all_acceptance_keys[i]
+                        for i in np.random.choice(len(all_acceptance_keys), size=k_acc, replace=False)
+                    )
+                    acc_players = None
+                elif link_player_updates:
+                    # Same player sample for both
+                    acc_keys = None
+                    acc_players = proposal_players
+                else:
+                    # Independent player-level sample for acceptances
+                    acc_keys = None
+                    acc_players = (
+                        list(np.random.choice(self.players, size=k_update, replace=False))
+                        if k_update is not None else None
+                    )
+
+                # 4. Update acceptances (smoothed)
+                t0 = time.time()
                 new_acceptances = self._update_acceptances(
                     V, tau_r, old_acceptances=old_acceptances,
-                    players_subset=players_this_iter
+                    players_subset=acc_players, keys_subset=acc_keys
                 )
                 timing_stats['update_acceptances'].append(time.time() - t0)
 
@@ -854,9 +991,23 @@ class EquilibriumSolver:
                 t0 = time.time()
                 new_proposals = self._update_proposals(
                     V, P_approvals, tau_p, old_proposals=old_proposals,
-                    players_subset=players_this_iter
+                    players_subset=proposal_players
                 )
                 timing_stats['update_proposals'].append(time.time() - t0)
+
+                # Measure convergence BEFORE applying damping: compare new vs old strategies.
+                # Using |new - old| is correct for both full and partial (async) updates:
+                # non-updated keys are copied from old, so they contribute 0 change.
+                # This avoids the trivial-zero bug of residual-after-damping when damping=0.
+                acceptance_change = max(
+                    abs(new_acceptances[k] - old_acceptances[k])
+                    for k in old_acceptances
+                )
+                proposal_change = max(
+                    abs(new_proposals[k] - old_proposals[k])
+                    for k in old_proposals
+                )
+                max_change = max(proposal_change, acceptance_change)
 
                 # 6. Apply damping
                 t0 = time.time()
@@ -867,17 +1018,6 @@ class EquilibriumSolver:
                     old_proposals, new_proposals, damping
                 )
                 timing_stats['damping'].append(time.time() - t0)
-
-                # Check convergence
-                proposal_change = np.max([
-                    abs(new_proposals[k] - old_proposals[k])
-                    for k in old_proposals
-                ])
-                acceptance_change = np.max([
-                    abs(new_acceptances[k] - old_acceptances[k])
-                    for k in old_acceptances
-                ])
-                max_change = max(proposal_change, acceptance_change)
                 inner_history.append(max_change)
 
                 if inner_iter % 10 == 0 and self.verbose:
@@ -887,7 +1027,33 @@ class EquilibriumSolver:
                     if self.verbose:
                         self._log(f"    Converged after {inner_iter + 1} iterations")
                     inner_converged = True
+
+                if log_strategy_every_inner and self.verbose:
+                    self._log(f"\n    --- Strategy after inner iter {inner_iter} ---")
+                    self._log(f"\n{self._compact_strategy_str()}\n")
+
+                if inner_converged:
                     break
+
+                # Periodic mid-inner cycle detection: break early when a confirmed cycle is
+                # found at low tau.  Avoids wasting all max_inner_iter iterations on a known
+                # limit cycle (the final polish will find the equilibrium anyway).
+                if (inner_cycle_check_interval > 0
+                        and inner_iter > 0
+                        and inner_iter % inner_cycle_check_interval == 0):
+                    at_low_tau = (tau_p <= cycle_break_tau_threshold
+                                  and tau_r <= cycle_break_tau_threshold)
+                    if at_low_tau:
+                        t0 = time.time()
+                        period_mid = detect_cycle(inner_history)
+                        timing_stats['cycle_analysis'].append(time.time() - t0)
+                        if period_mid is not None:
+                            if self.verbose:
+                                self._log(
+                                    f"    ↺ Period-{period_mid} cycle confirmed at inner iter {inner_iter} "
+                                    f"(low tau), breaking inner loop early."
+                                )
+                            break
 
                 # After exhausting the initial budget, check for a partial cycle and
                 # extend the run by 3x the candidate period so detect_cycle can confirm.
@@ -996,18 +1162,16 @@ class EquilibriumSolver:
                 # Create current strategy DataFrame
                 current_strategy_df = self._create_strategy_dataframe()
 
-                # Compute current value functions
-                P, _, _ = self._compute_transition_probabilities(current_strategy_df)
-                V_current = self._solve_value_functions(P)
+                # Project and iterate until V stabilises, then verify
+                success, message, polish_iters = self._polish_exact_equilibrium(
+                    max_iter=exact_polish_max_iter, tol=exact_polish_tol
+                )
+                if self.verbose:
+                    self._log(f"  Polish finished in {polish_iters} iteration(s).")
 
-                # Project to exact equilibrium (temporarily)
-                self._project_to_exact_equilibrium(V_current)
-
-                # Create projected strategy DataFrame
+                # Recompute V from the polished strategy for the result dict
                 projected_strategy_df = self._create_strategy_dataframe()
-
-                # Verify the projected equilibrium
-                success, message, V_projected = self._verify_candidate_equilibrium(projected_strategy_df)
+                _, _, V_projected = self._verify_candidate_equilibrium(projected_strategy_df)
 
                 timing_stats['early_verification'].append(time.time() - t_verify_start)
 
@@ -1105,13 +1269,13 @@ class EquilibriumSolver:
             if self.verbose:
                 self._log("\nProjecting to exact equilibrium...")
 
-            # Recompute value functions one more time
-            strategy_df = self._create_strategy_dataframe()
-            P, _, _ = self._compute_transition_probabilities(strategy_df)
-            V = self._solve_value_functions(P)
-
-            # Project to exact equilibrium
-            self._project_to_exact_equilibrium(V)
+            # Iterate project→V→project until V stabilises
+            success_polish, message_polish, polish_iters = self._polish_exact_equilibrium(
+                max_iter=exact_polish_max_iter, tol=exact_polish_tol
+            )
+            if self.verbose:
+                status = "succeeded" if success_polish else "did not verify"
+                self._log(f"  Polish {status} after {polish_iters} iteration(s).")
         elif early_stop_via_verification and self.verbose:
             self._log("\nSkipping final projection (already projected and verified)")
 

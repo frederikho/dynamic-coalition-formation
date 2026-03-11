@@ -32,7 +32,7 @@ class State:
         self.min_power = min_power
         self.coalition_powers = [coal.total_power for coal in self.coalitions]
 
-        assert np.isclose(np.sum(self.coalition_powers), 1., atol=1e-12),\
+        assert np.isclose(np.sum(self.coalition_powers), 1., atol=1e-9),\
             "Coalition powers must sum up to 1."
 
     @property

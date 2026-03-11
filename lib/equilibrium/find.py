@@ -260,6 +260,11 @@ def _get_solver_params(config, user_params=None):
     'project_to_exact': should always be True actually
     """
     
+    #   One subtlety with the current update_k_players/update_k_acceptances setup: new_proposals[k] and new_acceptances[k] for non-updated keys are copied from old_*, so their change is     
+    #   exactly 0. This means max_change is only driven by the values that were actually updated this iteration. With update_k_acceptances=1, only 1 acceptance key changes per inner         
+    #   iteration, so max_change will often be small even if the overall strategy is far from a fixed point — inner convergence becomes easier to hit spuriously. Something to watch out for
+    #   when interpreting "Converged after N iterations" with very granular updates. 
+    
     # Default parameters resembling Jere's implementation
     default_params = {
         'tau_p_init': 1e-6,
@@ -276,6 +281,10 @@ def _get_solver_params(config, user_params=None):
         'project_to_exact': True,
         'cycle_break_tau_threshold': 0.01, # Tau gate for the cycle stop; None means tau_min * (1 + tau_margin).
         'max_cycles_at_tau_min': 8, # Stop if low-tau cycling persists this many outer iterations in a row.
+        'update_k_players': None,
+        'link_player_updates': True,  # False makes the updating more granular
+        'update_k_acceptances': None,
+        'inner_cycle_check_interval': 20,
     }
 
     if len(config['players']) == 3:
@@ -295,18 +304,20 @@ def _get_solver_params(config, user_params=None):
     # for RICE case
     if len(config['players']) == 3:
         default_params.update({
-            'tau_p_init': 0.5,
-            'tau_r_init': 0.5,
-            'tau_decay': 0.95,
-            'tau_min': 0.00001,
-            'damping': 0.92,
-            'max_inner_iter': 150,
-            'max_outer_iter': 1000,
-            'inner_tol': 5e-2,
-            'outer_tol': 5e-2,
+            'tau_p_init': 0.000000001,
+            'tau_r_init': 0.000000001,
+            'tau_decay': 0.5,
+            'tau_min': 0.0000000001,
+            'damping': 0.0,
+            'max_inner_iter': 300,
+            'max_outer_iter': 5,
+            'inner_tol': 5e-4,
+            'outer_tol': 5e-4,
             'consecutive_tol': 6,
             'verify_every_n': 4,
-            'update_k_players': 2,
+            'update_k_players': 3,
+            'link_player_updates': True,
+            'update_k_acceptances': None,
         })
         
     # Standard parameters for 4-player scenarios. Works well for some of them. Commented out, do not delete yet.
@@ -366,7 +377,8 @@ def _print_solver_params(params, logger):
                   'max_outer_iter', 'max_inner_iter', 'damping',
                   'inner_tol', 'outer_tol', 'consecutive_tol', 'verify_every_n',
                   'tau_margin', 'max_cycles_at_tau_min', 'cycle_break_tau_threshold',
-                  'project_to_exact', 'update_k_players']
+                  'project_to_exact', 'update_k_players', 'link_player_updates',
+                  'update_k_acceptances', 'inner_cycle_check_interval']
 
     logger.info("Solver parameters:")
     for key in param_order:
@@ -521,7 +533,8 @@ def _build_metadata(config, setup, solver_params, solver_result,
                   'max_outer_iter', 'max_inner_iter', 'damping',
                   'inner_tol', 'outer_tol', 'consecutive_tol', 'verify_every_n',
                   'tau_margin', 'max_cycles_at_tau_min', 'cycle_break_tau_threshold',
-                  'project_to_exact', 'update_k_players']
+                  'project_to_exact', 'update_k_players', 'link_player_updates',
+                  'update_k_acceptances', 'inner_cycle_check_interval']
     for key in param_order:
         if key in solver_params:
             metadata[f'solver_{key}'] = solver_params[key]
@@ -746,8 +759,12 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     runtime_seconds = end_time - start_time
     end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # Save to file if requested
-    if output_file is not None:
+    # Save to file if requested (skip if verification failed)
+    if output_file is not None and not success:
+        if verbose:
+            logger.warning("Skipping file output: equilibrium verification failed.")
+
+    if output_file is not None and success:
         # Generate filename if not provided explicitly
         if output_file == 'auto':
             output_file = generate_filename(config, description=description)

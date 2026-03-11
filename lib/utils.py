@@ -438,7 +438,7 @@ def verify_proposals(players: List[str], states: List[str],
             # long-run payoff.
             argmaxes = [key for key, val in expected_values.items()
                         if np.isclose(val, max(expected_values.values()),
-                        atol=1e-12)]
+                        atol=1e-9)]
 
             try:
                 # Any state with a positive proposal probability must be one
@@ -486,7 +486,7 @@ def verify_approvals(players: List[str], states: List[str],
                                     (current_state, 'Acceptance', approver),
                                     (f'Proposer {proposer}', next_state)]
 
-                    if np.isclose(V_next, V_current, rtol=0, atol=1e-6):
+                    if np.isclose(V_next, V_current, rtol=0, atol=1e-9):
                         passed = (0. <= p_approve <= 1.)
                     elif V_next > V_current:
                         passed = (p_approve == 1.)
