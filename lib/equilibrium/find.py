@@ -6,11 +6,13 @@ and save the resulting strategy profiles to Excel files.
 """
 
 import argparse
+import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
 import time
 from datetime import datetime
+from typing import Any, Dict, List
 
 from lib.logging import get_logger
 from lib.country import Country
@@ -602,7 +604,9 @@ def _build_saved_payoff_table(setup: dict) -> pd.DataFrame:
 
 
 def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None,
-                     load_from_checkpoint=False, random_seed=None, logger=None, save_payoffs=False):
+                     load_from_checkpoint=False, random_seed=None, logger=None, save_payoffs=False,
+                     save_unverified=False, diagnostics=False,
+                     approval_margin_threshold: float = 1e-3):
     """
     Find equilibrium for a given configuration.
 
@@ -617,6 +621,11 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         random_seed: Random seed for initialization (if None, generates one)
         logger: Logger instance (optional, will be created if not provided)
         save_payoffs: If True, save derived payoff table under payoff_tables/
+        save_unverified: If True, save the strategy profile even when final
+                        equilibrium verification fails
+        diagnostics: If True, attach machine-readable run diagnostics
+        approval_margin_threshold: Threshold used in diagnostics for
+                                   classifying small approval margins
 
     Returns:
         Dictionary with equilibrium results
@@ -759,15 +768,20 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     runtime_seconds = end_time - start_time
     end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # Save to file if requested (skip if verification failed)
-    if output_file is not None and not success:
+    # Save to file if requested. By default, skip unverified profiles unless
+    # explicitly requested via save_unverified.
+    should_save_output = output_file is not None and (success or save_unverified)
+    final_output_file = output_file
+
+    if output_file is not None and not should_save_output:
         if verbose:
             logger.warning("Skipping file output: equilibrium verification failed.")
 
-    if output_file is not None and success:
+    if should_save_output:
         # Generate filename if not provided explicitly
         if output_file == 'auto':
             output_file = generate_filename(config, description=description)
+        final_output_file = output_file
 
         # Build metadata
         metadata = _build_metadata(
@@ -778,6 +792,22 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
 
         # Save to file with value functions, transition matrix, and geo levels
         _save_to_file(found_strategy_df, output_file, setup, metadata, V, P, verbose, logger)
+
+        if verbose and not success and save_unverified:
+            logger.warning("Saved strategy profile even though equilibrium verification failed.")
+
+    result["output_written"] = should_save_output
+    result["output_file"] = final_output_file
+    if diagnostics:
+        result["diagnostics"] = build_result_diagnostics(
+            config=config,
+            solver_params=solver_params,
+            result=result,
+            runtime_seconds=runtime_seconds,
+            output_file=final_output_file,
+            output_written=should_save_output,
+            approval_margin_threshold=approval_margin_threshold,
+        )
 
     return result
 
@@ -814,6 +844,116 @@ def _parse_players_from_payoff_table(path: Path) -> list[str]:
         )
 
     return sorted(players)
+
+
+def is_valid_rice_payoff_table_filename(path: Path) -> bool:
+    """Return True if the payoff table filename encodes a player set."""
+    if path.suffix.lower() != ".xlsx":
+        return False
+    try:
+        _parse_players_from_payoff_table(path)
+    except ValueError:
+        return False
+    return True
+
+
+def iter_valid_rice_payoff_tables(directory: Path) -> list[Path]:
+    """Return valid RICE payoff tables in a directory, sorted by filename."""
+    return sorted(
+        path for path in directory.glob("*.xlsx")
+        if is_valid_rice_payoff_table_filename(path)
+    )
+
+
+def _compute_hardness_metrics(result: Dict[str, Any], approval_margin_threshold: float = 1e-3) -> Dict[str, Any]:
+    """Compute runtime-independent fragility metrics from a solved result."""
+    players = result["players"]
+    states = result["state_names"]
+    V = result["V"]
+    P_approvals = result["P_approvals"]
+    effectivity = result["effectivity"]
+
+    approval_margins: List[float] = []
+    proposal_ambiguous_rows = 0
+    proposal_min_best_gap = None
+
+    for proposer in players:
+        for current_state in states:
+            expected_values = []
+            for next_state in states:
+                p_approved = P_approvals[(proposer, current_state, next_state)]
+                p_rejected = 1.0 - p_approved
+                V_current = float(V.loc[current_state, proposer])
+                V_next = float(V.loc[next_state, proposer])
+                expected_values.append(
+                    p_approved * V_next + p_rejected * V_current
+                )
+
+                approvers = get_approval_committee(
+                    effectivity, players, proposer, current_state, next_state
+                )
+                for approver in approvers:
+                    margin = abs(float(V.loc[next_state, approver]) - float(V.loc[current_state, approver]))
+                    approval_margins.append(margin)
+
+            sorted_values = sorted(expected_values, reverse=True)
+            if len(sorted_values) >= 2:
+                best_gap = sorted_values[0] - sorted_values[1]
+                proposal_min_best_gap = best_gap if proposal_min_best_gap is None else min(proposal_min_best_gap, best_gap)
+
+            max_value = max(expected_values)
+            argmax_count = sum(np.isclose(val, max_value, atol=1e-9) for val in expected_values)
+            if argmax_count > 1:
+                proposal_ambiguous_rows += 1
+
+    nonzero_margins = [m for m in approval_margins if m > 0]
+    min_nonzero_approval_margin = min(nonzero_margins) if nonzero_margins else None
+    num_small_approval_margins = sum(m < approval_margin_threshold for m in nonzero_margins)
+
+    return {
+        "min_nonzero_approval_margin": min_nonzero_approval_margin,
+        "num_small_approval_margins": num_small_approval_margins,
+        "proposal_ambiguous_rows": proposal_ambiguous_rows,
+        "proposal_min_best_gap": proposal_min_best_gap,
+        "approval_margin_threshold": approval_margin_threshold,
+    }
+
+
+def build_result_diagnostics(
+    config: Dict[str, Any],
+    solver_params: Dict[str, Any],
+    result: Dict[str, Any],
+    runtime_seconds: float,
+    output_file: str | None,
+    output_written: bool,
+    approval_margin_threshold: float = 1e-3,
+) -> Dict[str, Any]:
+    """Build machine-readable diagnostics for a single solver run."""
+    diagnostics = {
+        "scenario_name": config.get("scenario_name", "equilibrium"),
+        "payoff_table": config.get("payoff_table"),
+        "players": result["players"],
+        "n_players": len(result["players"]),
+        "runtime_seconds": runtime_seconds,
+        "verification_success": result["verification_success"],
+        "verification_message": result.get("verification_message", ""),
+        "verification_message_first_line": result.get("verification_message", "").splitlines()[0] if result.get("verification_message") else "",
+        "random_seed": result.get("random_seed"),
+        "output_file": output_file,
+        "output_written": output_written,
+        "solver_params": solver_params.copy(),
+    }
+
+    solver_result = result.get("solver_result", {})
+    diagnostics.update({
+        "stopping_reason": solver_result.get("stopping_reason"),
+        "outer_iterations": solver_result.get("outer_iterations"),
+        "converged": solver_result.get("converged"),
+        "final_tau_p": solver_result.get("final_tau_p"),
+        "final_tau_r": solver_result.get("final_tau_r"),
+    })
+    diagnostics.update(_compute_hardness_metrics(result, approval_margin_threshold=approval_margin_threshold))
+    return diagnostics
 
 
 def _parse_year_range_from_stem(stem: str) -> tuple[int | None, int] | None:
@@ -1069,6 +1209,22 @@ Available scenarios (use --list-scenarios to see all):
         action='store_true',
         help='Save the derived payoff table to payoff_tables/ before solving'
     )
+    parser.add_argument(
+        '--save-unverified',
+        action='store_true',
+        help='Save the strategy profile even if final equilibrium verification fails'
+    )
+    parser.add_argument(
+        '--diagnostics-json',
+        action='store_true',
+        help='Print machine-readable diagnostics as one JSON object per scenario after each run'
+    )
+    parser.add_argument(
+        '--approval-margin-threshold',
+        type=float,
+        default=1e-3,
+        help='Threshold used in diagnostics for counting small approval margins (default: 1e-3)'
+    )
 
     args = parser.parse_args()
 
@@ -1244,10 +1400,16 @@ Available scenarios (use --list-scenarios to see all):
             random_seed=args.seed,
             logger=logger,
             save_payoffs=args.save_payoffs,
+            save_unverified=args.save_unverified,
+            diagnostics=args.diagnostics_json,
+            approval_margin_threshold=args.approval_margin_threshold,
         )
 
         results_summary.append((scenario_name, result['verification_success'],
                                  result.get('verification_message', '')))
+
+        if args.diagnostics_json and 'diagnostics' in result:
+            print(json.dumps(result['diagnostics'], default=str))
 
         if result['verification_success']:
             logger.info("\n" + "=" * 80)

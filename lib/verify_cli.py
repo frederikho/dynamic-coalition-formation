@@ -15,11 +15,16 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import pandas as pd
-
 # Allow running as a script: `python lib/verify_cli.py ...`
 if __package__ is None or __package__ == "":
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    repo_root = str(Path(__file__).resolve().parent.parent)
+    script_dir = str(Path(__file__).resolve().parent)
+    if sys.path and sys.path[0] == script_dir:
+        sys.path[0] = repo_root
+    elif repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
+import pandas as pd
 
 from lib.country import Country
 from lib.coalition import Coalition
@@ -28,6 +33,7 @@ from lib.mdp import MDP
 from lib.probabilities_optimized import (
     TransitionProbabilitiesOptimized as TransitionProbabilities,
 )
+from lib.equilibrium.solver import format_strategy_df_compact
 import numpy as np
 
 from lib.utils import (
@@ -445,6 +451,12 @@ def _run_verification(xlsx_path: Path) -> Tuple[bool, str, Dict[str, Any]]:
 
     success, message = verify_equilibrium(result)
 
+    compact_strategy = format_strategy_df_compact(
+        strategy_df_raw,
+        players=players,
+        states=states,
+    )
+
     details = {
         "players": players,
         "n_states": len(states),
@@ -452,6 +464,7 @@ def _run_verification(xlsx_path: Path) -> Tuple[bool, str, Dict[str, Any]]:
         "min_power": config["min_power"],
         "unanimity_required": config["unanimity_required"],
         "discounting": config["discounting"],
+        "compact_strategy": compact_strategy,
     }
     return success, message, details
 
@@ -502,6 +515,7 @@ def main() -> None:
             f"min_power={details['min_power']} | "
             f"unanimity_required={details['unanimity_required']}"
         )
+        print(details["compact_strategy"])
 
         if success:
             print("Result: EQUILIBRIUM ✅")

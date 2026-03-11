@@ -17,5 +17,5 @@ scripts/combined*
 
 .claude/
 results/hpo/
-
+reports/rice_hardness*.csv
 # Note: /docs is committed (GitHub Pages deploys from this folder)

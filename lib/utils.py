@@ -3,6 +3,8 @@ import pandas as pd
 from typing import List, Dict, Tuple, Any
 from lib.state import State
 
+VERIFICATION_VALUE_FORMAT = ".6f"
+
 
 def _escape_latex(s: str) -> str:
     """Escape common LaTeX special characters in a string for safe captions."""
@@ -501,8 +503,8 @@ def verify_approvals(players: List[str], states: List[str],
                             f"Approval strategy error with player {approver}! "
                             f"When player {proposer} proposes the transition "
                             f"{current_state} -> {next_state}, the values are "
-                            f"V(current) = {V_current:.5f} "
-                            f"and V(next) = {V_next:.5f}, "
+                            f"V(current) = {V_current:{VERIFICATION_VALUE_FORMAT}} "
+                            f"and V(next) = {V_next:{VERIFICATION_VALUE_FORMAT}}, "
                             f"but approval probability is {p_approve}."
                             )
                         return False, error_msg
@@ -538,7 +540,10 @@ def verify_equilibrium(result: Dict[str, Any]):
 
         # Prepend V values once when either verification fails
         V = result["V"]
-        full_message = f"The value functions V are:\n{V}\n\n" + '\n'.join(messages)
+        formatted_V = V.to_string(
+            float_format=lambda x: format(float(x), VERIFICATION_VALUE_FORMAT)
+        )
+        full_message = f"The value functions V are:\n{formatted_V}\n\n" + '\n'.join(messages)
 
         return False, full_message
 

@@ -53,6 +53,67 @@ def softmax(values: np.ndarray, temperature: float = 1.0) -> np.ndarray:
     return exp_values / np.sum(exp_values)
 
 
+def format_strategy_df_compact(df: pd.DataFrame, players: List[str], states: List[str]) -> str:
+    """Return a compact string representation of a strategy DataFrame.
+
+    Each player name is shortened to its first letter (e.g. CHN->C, NDE->N, USA->U).
+    States are ordered: ( ) first, then by coalition size, then grand coalition.
+    Within each state rows are ordered: Prop, then Acc for each player.
+    """
+    abbrev = {p: p[0] for p in players}
+    abbrev_players = [abbrev[p] for p in players]
+
+    def shorten(s: str) -> str:
+        for full, short in abbrev.items():
+            s = s.replace(full, short)
+        return s
+
+    def state_size(state_name: str) -> int:
+        return len(state_name.strip().lstrip('(').rstrip(')').replace(' ', ''))
+
+    compact_df = df.copy()
+
+    proposer_order = {f'P:{a}': i for i, a in enumerate(abbrev_players)}
+    state_size_map = {shorten(s): state_size(s) for s in states}
+    new_cols = [(shorten(c0).replace('Proposer ', 'P:'), shorten(c1)) for c0, c1 in compact_df.columns]
+    sorted_cols = sorted(
+        new_cols,
+        key=lambda t: (proposer_order.get(t[0], 999), state_size_map.get(t[1], 999))
+    )
+    compact_df.columns = pd.MultiIndex.from_tuples(new_cols, names=compact_df.columns.names)
+    compact_df = compact_df.reindex(
+        columns=pd.MultiIndex.from_tuples(sorted_cols, names=compact_df.columns.names)
+    )
+
+    def shorten_row(t):
+        state, kind, player = t
+        return (
+            shorten(state),
+            'Prop' if kind == 'Proposition' else 'Acc',
+            shorten(player) if isinstance(player, str) else '',
+        )
+
+    compact_df.index = pd.MultiIndex.from_tuples(
+        [shorten_row(t) for t in compact_df.index], names=compact_df.index.names
+    )
+
+    sorted_states = sorted(states, key=state_size)
+    desired_rows = []
+    for state in sorted_states:
+        s = shorten(state)
+        desired_rows.append((s, 'Prop', ''))
+        for p in abbrev_players:
+            desired_rows.append((s, 'Acc', p))
+
+    existing = set(compact_df.index.tolist())
+    desired_rows = [r for r in desired_rows if r in existing]
+    compact_df = compact_df.reindex(
+        pd.MultiIndex.from_tuples(desired_rows, names=compact_df.index.names)
+    )
+
+    return compact_df.to_string(float_format=lambda x: f'{x:.2f}')
+
+
 class EquilibriumSolver:
     """Finds equilibrium strategy profiles via smoothed fixed-point iteration."""
 
@@ -194,62 +255,12 @@ class EquilibriumSolver:
         return df
 
     def _compact_strategy_str(self) -> str:
-        """Return the strategy DataFrame as a compact string with abbreviated labels.
-
-        Each player name is shortened to its first letter (e.g. CHN→C, NDE→N, USA→U).
-        States are ordered: ( ) first, then by coalition size, then grand coalition.
-        Within each state rows are ordered: Prop, then Acc for each player.
-        """
-        abbrev = {p: p[0] for p in self.players}
-        abbrev_players = [abbrev[p] for p in self.players]
-
-        def shorten(s: str) -> str:
-            for full, short in abbrev.items():
-                s = s.replace(full, short)
-            return s
-
-        def state_size(state_name: str) -> int:
-            return len(state_name.strip().lstrip('(').rstrip(')').replace(' ', ''))
-
-        df = self._create_strategy_dataframe()
-
-        # --- Columns ---
-        # Abbreviate and sort: by proposer (player order), then by state size
-        proposer_order = {f'P:{a}': i for i, a in enumerate(abbrev_players)}
-        state_size_map = {shorten(s): state_size(s) for s in self.states}
-        new_cols = [(shorten(c0).replace('Proposer ', 'P:'), shorten(c1)) for c0, c1 in df.columns]
-        sorted_cols = sorted(new_cols, key=lambda t: (proposer_order.get(t[0], 999), state_size_map.get(t[1], 999)))
-        df.columns = pd.MultiIndex.from_tuples(new_cols, names=df.columns.names)
-        df = df.reindex(columns=pd.MultiIndex.from_tuples(sorted_cols, names=df.columns.names))
-
-        # --- Rows ---
-        # Replace NaN player (Proposition rows) with '' so index has no NaN
-        def shorten_row(t):
-            state, kind, player = t
-            return (
-                shorten(state),
-                'Prop' if kind == 'Proposition' else 'Acc',
-                shorten(player) if isinstance(player, str) else '',
-            )
-
-        df.index = pd.MultiIndex.from_tuples(
-            [shorten_row(t) for t in df.index], names=df.index.names
+        """Return the strategy DataFrame as a compact string with abbreviated labels."""
+        return format_strategy_df_compact(
+            self._create_strategy_dataframe(),
+            players=self.players,
+            states=self.states,
         )
-
-        # Build desired row order: ( ) → pairwise → grand coalition; Prop before Acc
-        sorted_states = sorted(self.states, key=state_size)
-        desired_rows = []
-        for state in sorted_states:
-            s = shorten(state)
-            desired_rows.append((s, 'Prop', ''))
-            for p in abbrev_players:
-                desired_rows.append((s, 'Acc', p))
-
-        existing = set(df.index.tolist())
-        desired_rows = [r for r in desired_rows if r in existing]
-        df = df.reindex(pd.MultiIndex.from_tuples(desired_rows, names=df.index.names))
-
-        return df.to_string(float_format=lambda x: f'{x:.2f}')
 
     def _compute_transition_probabilities_fast(self) -> Tuple:
         """Compute transition probabilities from strategy dicts (fast path).
@@ -506,11 +517,16 @@ class EquilibriumSolver:
         One-shot projection can be internally inconsistent because projecting
         strategies changes transitions, which changes V. This loop alternates:
         solve V -> project exact -> verify, until verified, stalled, or cycling.
+
+        When a cycle is detected, additionally tries the element-wise average of
+        the cycling strategies as a candidate mixed equilibrium.
         """
         proposal_keys = list(self.p_proposals.keys())
         acceptance_keys = list(self.r_acceptances.keys())
 
-        seen_signatures = set()
+        # Map signature -> index into seen_arrays (for cycle-period detection)
+        seen_signatures = {}
+        seen_arrays = []   # (p_arr, r_arr) after each projection, for averaging
         prev_p = None
         prev_r = None
         last_message = "Verification not run."
@@ -519,6 +535,10 @@ class EquilibriumSolver:
             strategy_df = self._create_strategy_dataframe()
             P, _, _ = self._compute_transition_probabilities(strategy_df)
             V = self._solve_value_functions(P)
+
+            # Capture pre-projection arrays for change reporting
+            p_before = np.fromiter((self.p_proposals[k] for k in proposal_keys), dtype=np.float64)
+            r_before = np.fromiter((self.r_acceptances[k] for k in acceptance_keys), dtype=np.float64)
 
             self._project_to_exact_equilibrium(V)
             projected_strategy_df = self._create_strategy_dataframe()
@@ -532,12 +552,78 @@ class EquilibriumSolver:
                 np.round(r_arr, 12).tobytes(),
             )
 
+            if self.verbose:
+                self._log(f"\n  --- Polish iteration {it} ---")
+                self._log(f"  V:\n{V.round(6).to_string()}")
+                # Report what projection changed
+                acc_flipped = int(np.sum(np.abs(r_arr - r_before) > 0.5))
+                acc_0to1 = int(np.sum((r_before < 0.5) & (r_arr > 0.5)))
+                acc_1to0 = int(np.sum((r_before > 0.5) & (r_arr < 0.5)))
+                prop_changed = int(np.sum(np.abs(p_arr - p_before) > 1e-9))
+                self._log(
+                    f"  Projection: {acc_flipped} acceptance(s) flipped "
+                    f"({acc_0to1} reject→approve, {acc_1to0} approve→reject); "
+                    f"{prop_changed} proposal weight(s) changed"
+                )
+                # Show specific acceptance flips
+                for i, k in enumerate(acceptance_keys):
+                    if abs(r_arr[i] - r_before[i]) > 0.5:
+                        proposer, cur, nxt, approver = k
+                        self._log(
+                            f"    acc flip: {approver} in {cur}, "
+                            f"{proposer} proposes {nxt}: "
+                            f"{r_before[i]:.2f} → {r_arr[i]:.2f} "
+                            f"(V_cur={V.loc[cur, approver]:.6f}, V_nxt={V.loc[nxt, approver]:.6f})"
+                        )
+                # Show proposal argmax changes vs prev iteration
+                if prev_p is not None:
+                    for i, k in enumerate(proposal_keys):
+                        proposer, cur, nxt = k
+                        if abs(p_arr[i] - prev_p[i]) > 1e-9:
+                            self._log(
+                                f"    prop change: {proposer} in {cur} → {nxt}: "
+                                f"{prev_p[i]:.4f} → {p_arr[i]:.4f}"
+                            )
+                self._log(f"  Verification: {'✓' if success else '✗'} {message.splitlines()[0] if not success else ''}")
+
             if success:
                 return True, message, it
 
             if signature in seen_signatures:
+                cycle_start_idx = seen_signatures[signature]
+                cycle_period = len(seen_arrays) - cycle_start_idx
+                cycling_p = [a[0] for a in seen_arrays[cycle_start_idx:]]
+                cycling_r = [a[1] for a in seen_arrays[cycle_start_idx:]]
+                avg_p = np.mean(cycling_p, axis=0)
+                avg_r = np.mean(cycling_r, axis=0)
+
+                # Apply the average strategy
+                for i, k in enumerate(proposal_keys):
+                    self.p_proposals[k] = avg_p[i]
+                for i, k in enumerate(acceptance_keys):
+                    self.r_acceptances[k] = avg_r[i]
+
+                avg_strategy_df = self._create_strategy_dataframe()
+                avg_success, avg_message, _ = self._verify_candidate_equilibrium(avg_strategy_df)
+
+                if self.verbose:
+                    self._log(
+                        f"\n  ↺ Cycle of period {cycle_period} detected "
+                        f"(iter {cycle_start_idx + 1}–{it}); trying average strategy..."
+                    )
+                    if avg_success:
+                        self._log("  ✓ Average strategy verified as equilibrium.")
+                    else:
+                        self._log(f"  ✗ Average strategy did not verify: "
+                                  f"{avg_message.splitlines()[0]}")
+
+                if avg_success:
+                    return True, avg_message, it
+
                 return False, f"{message}\n\nPolishing stopped: detected a repeated exact-strategy state.", it
-            seen_signatures.add(signature)
+
+            seen_signatures[signature] = len(seen_arrays)
+            seen_arrays.append((p_arr.copy(), r_arr.copy()))
 
             if prev_p is not None and prev_r is not None:
                 if np.allclose(p_arr, prev_p, rtol=0, atol=tol) and np.allclose(r_arr, prev_r, rtol=0, atol=tol):
