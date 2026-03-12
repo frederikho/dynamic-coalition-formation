@@ -6,6 +6,7 @@ and save the resulting strategy profiles to Excel files.
 """
 
 import argparse
+import inspect
 import json
 import pandas as pd
 import numpy as np
@@ -19,6 +20,7 @@ from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
 from lib.equilibrium.solver import EquilibriumSolver
+from lib.equilibrium.active_set_n3 import solve_with_active_set_n3
 from lib.equilibrium.support_enumeration_n3 import solve_with_support_enumeration_n3
 from lib.equilibrium.scenarios import get_scenario, list_scenarios
 from lib.equilibrium.excel_writer import (
@@ -289,6 +291,8 @@ def _get_solver_params(config, user_params=None):
         'link_player_updates': True,  # False makes the updating more granular
         'update_k_acceptances': None,
         'inner_cycle_check_interval': 20,
+        'active_set_max_candidates': 1024,
+        'active_set_refinement_iter': 10,
         'support_enumeration_max_candidates': 512,
         'support_enumeration_acceptance_fixpoint_iter': 20,
     }
@@ -391,6 +395,8 @@ def _print_solver_params(params, logger):
                   'tau_margin', 'max_cycles_at_tau_min', 'cycle_break_tau_threshold',
                   'project_to_exact', 'update_k_players', 'link_player_updates',
                   'update_k_acceptances', 'inner_cycle_check_interval',
+                  'active_set_max_candidates',
+                  'active_set_refinement_iter',
                   'support_enumeration_max_candidates',
                   'support_enumeration_acceptance_fixpoint_iter']
 
@@ -417,8 +423,20 @@ def _run_solver(solver, params, checkpoint_dir='./checkpoints', load_from_checkp
         Tuple of (strategy_df, solver_result)
     """
     try:
+        solve_signature = inspect.signature(solver.solve)
+        allowed_param_names = {
+            name
+            for name, parameter in solve_signature.parameters.items()
+            if parameter.kind in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        }
+        filtered_params = {
+            key: value for key, value in params.items() if key in allowed_param_names
+        }
         return solver.solve(
-            **params,
+            **filtered_params,
             checkpoint_dir=checkpoint_dir,
             load_from_checkpoint=load_from_checkpoint,
             config_hash=config_hash
@@ -430,8 +448,25 @@ def _run_solver(solver, params, checkpoint_dir='./checkpoints', load_from_checkp
         sys.exit(0)
 
 
+def _run_active_set_solver(solver, params, logger=None):
+    """Run the cycle-guided active-set solver for n=3 cases."""
+    try:
+        max_candidates = int(params.get("active_set_max_candidates", 1024))
+        refinement_iter = int(params.get("active_set_refinement_iter", 10))
+        return solve_with_active_set_n3(
+            solver,
+            max_candidates=max_candidates,
+            refinement_iter=refinement_iter,
+        )
+    except KeyboardInterrupt:
+        if logger:
+            logger.warning("Solver stopped. No output file saved.")
+        import sys
+        sys.exit(0)
+
+
 def _run_support_enumeration_solver(solver, params, logger=None):
-    """Run the cycle-guided support enumeration solver for n=3 cases."""
+    """Run the cycle-guided support-enumeration solver for n=3 cases."""
     try:
         max_candidates = int(params.get("support_enumeration_max_candidates", 512))
         acceptance_fixpoint_iter = int(params.get("support_enumeration_acceptance_fixpoint_iter", 20))
@@ -635,7 +670,8 @@ def _build_saved_payoff_table(setup: dict) -> pd.DataFrame:
 def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None,
                      load_from_checkpoint=False, random_seed=None, logger=None, save_payoffs=False,
                      save_unverified=False, diagnostics=False,
-                     approval_margin_threshold: float = 1e-3):
+                     approval_margin_threshold: float = 1e-3,
+                     solver_approach: str = "annealing"):
     """
     Find equilibrium for a given configuration.
 
@@ -655,6 +691,8 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         diagnostics: If True, attach machine-readable run diagnostics
         approval_margin_threshold: Threshold used in diagnostics for
                                    classifying small approval margins
+        solver_approach: One of 'annealing', 'support_enumeration', or
+                         'active_set'
 
     Returns:
         Dictionary with equilibrium results
@@ -742,20 +780,32 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         logger.info(f"Random seed for initialization: {solver.random_seed}")
         logger.info("")
 
-    use_support_enumeration = (
-        config.get("scenario_name") == "power_threshold_RICE_n3"
-        and len(setup["players"]) == 3
-    )
-    if use_support_enumeration:
+    selected_solver_approach = solver_approach
+
+    if selected_solver_approach in {"support_enumeration", "active_set"} and len(setup["players"]) != 3:
+        raise ValueError(
+            f"solver_approach='{selected_solver_approach}' is currently only supported for 3-player cases."
+        )
+
+    if selected_solver_approach == "active_set":
         if verbose:
-            logger.info("Using cycle-guided support enumeration solver.")
+            logger.info("Using cycle-guided active-set solver.")
+            logger.info("")
+        found_strategy_df, solver_result = _run_active_set_solver(
+            solver,
+            solver_params,
+            logger=logger,
+        )
+    elif selected_solver_approach == "support_enumeration":
+        if verbose:
+            logger.info("Using cycle-guided support-enumeration solver.")
             logger.info("")
         found_strategy_df, solver_result = _run_support_enumeration_solver(
             solver,
             solver_params,
             logger=logger,
         )
-    else:
+    elif selected_solver_approach == "annealing":
         found_strategy_df, solver_result = _run_solver(
             solver,
             solver_params,
@@ -763,6 +813,11 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
             load_from_checkpoint=load_from_checkpoint,
             config_hash=config_hash,
             logger=logger
+        )
+    else:
+        raise ValueError(
+            f"Unknown solver_approach='{selected_solver_approach}'. "
+            "Expected one of: annealing, support_enumeration, active_set."
         )
 
     # Fill NaN values for non-committee members
@@ -786,7 +841,9 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         'effectivity': setup['effectivity'],
         'strategy_df': found_strategy_df_filled,
         'solver_result': solver_result,
-        'random_seed': solver.random_seed
+        'stopping_reason': solver_result.get('stopping_reason'),
+        'random_seed': solver.random_seed,
+        'solver_approach': selected_solver_approach,
     }
 
     # Verify equilibrium
@@ -841,6 +898,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
 
     result["output_written"] = should_save_output
     result["output_file"] = final_output_file
+    result["runtime_seconds"] = runtime_seconds
     if diagnostics:
         result["diagnostics"] = build_result_diagnostics(
             config=config,
@@ -977,6 +1035,7 @@ def build_result_diagnostics(
         "payoff_table": config.get("payoff_table"),
         "players": result["players"],
         "n_players": len(result["players"]),
+        "solver_approach": result.get("solver_approach"),
         "runtime_seconds": runtime_seconds,
         "verification_success": result["verification_success"],
         "verification_message": result.get("verification_message", ""),
@@ -1268,6 +1327,17 @@ Available scenarios (use --list-scenarios to see all):
         default=1e-3,
         help='Threshold used in diagnostics for counting small approval margins (default: 1e-3)'
     )
+    parser.add_argument(
+        '--solver-approach',
+        type=str,
+        choices=['annealing', 'support_enumeration', 'active_set'],
+        default='annealing',
+        help=(
+            "Solver approach to use: 'annealing' for the legacy smoothed solver, "
+            "'support_enumeration' for the cycle-guided support search, "
+            "'active_set' for the stricter cycle-guided active-set search."
+        )
+    )
 
     args = parser.parse_args()
 
@@ -1446,6 +1516,7 @@ Available scenarios (use --list-scenarios to see all):
             save_unverified=args.save_unverified,
             diagnostics=args.diagnostics_json,
             approval_margin_threshold=args.approval_margin_threshold,
+            solver_approach=args.solver_approach,
         )
 
         results_summary.append((scenario_name, result['verification_success'],
@@ -1457,12 +1528,17 @@ Available scenarios (use --list-scenarios to see all):
         if result['verification_success']:
             logger.info("\n" + "=" * 80)
             logger.info(f"Scenario: {scenario_name}")
+            logger.info(f"Runtime: {result['runtime_seconds']:.2f}s")
             logger.success("SUCCESS: Found valid equilibrium!")
             logger.info("=" * 80)
         else:
             logger.warning("\n" + "=" * 80)
             logger.warning(f"Scenario: {scenario_name}")
+            logger.warning(f"Runtime: {result['runtime_seconds']:.2f}s")
             logger.warning("WARNING: Equilibrium verification failed!")
+            stopping_reason = result.get('stopping_reason')
+            if stopping_reason:
+                logger.warning(f"Stopping reason: {stopping_reason}")
             logger.warning(result['verification_message'])
             logger.warning("=" * 80)
 

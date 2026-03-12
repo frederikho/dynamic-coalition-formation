@@ -142,6 +142,7 @@ def _run_single_case(
     payoff_table: Path,
     approval_margin_threshold: float,
     verbose: bool,
+    solver_approach: str,
 ) -> Dict[str, Any]:
     config = get_scenario(scenario_name)
     players = _parse_players_from_payoff_table(payoff_table)
@@ -162,6 +163,7 @@ def _run_single_case(
         save_unverified=False,
         diagnostics=True,
         approval_margin_threshold=approval_margin_threshold,
+        solver_approach=solver_approach,
     )
     diagnostics = result["diagnostics"].copy()
     diagnostics.update(_parse_filename_metadata(payoff_table))
@@ -204,6 +206,13 @@ def main() -> None:
         action="store_true",
         help="Suppress verbose solver output while still printing the final report",
     )
+    parser.add_argument(
+        "--solver-approach",
+        type=str,
+        choices=["annealing", "support_enumeration", "active_set"],
+        default="annealing",
+        help="Solver approach to use for every attempted payoff table (default: annealing)",
+    )
 
     args = parser.parse_args()
 
@@ -221,6 +230,7 @@ def main() -> None:
                 payoff_table=payoff_table,
                 approval_margin_threshold=args.approval_margin_threshold,
                 verbose=not args.quiet,
+                solver_approach=args.solver_approach,
             )
         except Exception as exc:
             diagnostics = _parse_filename_metadata(payoff_table)
@@ -235,7 +245,7 @@ def main() -> None:
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if args.output_csv == "auto":
-        output_csv = Path("reports") / f"rice_hardness_{timestamp}.csv"
+        output_csv = Path("reports") / f"rice_hardness_{args.solver_approach}_{timestamp}.csv"
     else:
         output_csv = Path(args.output_csv)
 
