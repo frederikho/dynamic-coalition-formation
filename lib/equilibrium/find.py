@@ -19,6 +19,7 @@ from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
 from lib.equilibrium.solver import EquilibriumSolver
+from lib.equilibrium.support_enumeration_n3 import solve_with_support_enumeration_n3
 from lib.equilibrium.scenarios import get_scenario, list_scenarios
 from lib.equilibrium.excel_writer import (
     write_strategy_table_excel,
@@ -33,7 +34,8 @@ from lib.utils import (
     verify_equilibrium,
     get_geoengineering_levels,
     get_deploying_coalitions,
-    list_members
+    list_members,
+    get_approval_committee,
 )
 from lib.probabilities_optimized import TransitionProbabilitiesOptimized as TransitionProbabilities
 from lib.mdp import MDP
@@ -287,6 +289,8 @@ def _get_solver_params(config, user_params=None):
         'link_player_updates': True,  # False makes the updating more granular
         'update_k_acceptances': None,
         'inner_cycle_check_interval': 20,
+        'support_enumeration_max_candidates': 512,
+        'support_enumeration_acceptance_fixpoint_iter': 20,
     }
 
     if len(config['players']) == 3:
@@ -306,20 +310,26 @@ def _get_solver_params(config, user_params=None):
     # for RICE case
     if len(config['players']) == 3:
         default_params.update({
-            'tau_p_init': 0.000000001,
-            'tau_r_init': 0.000000001,
-            'tau_decay': 0.5,
-            'tau_min': 0.0000000001,
+            'tau_p_init': 1e-10,
+            'tau_r_init': 1e-10,
+            'tau_decay': 1,
+            'tau_min': 1e-10,
             'damping': 0.0,
-            'max_inner_iter': 300,
-            'max_outer_iter': 5,
-            'inner_tol': 5e-4,
-            'outer_tol': 5e-4,
-            'consecutive_tol': 6,
+            'max_inner_iter': 30,
+            'max_outer_iter': 20,
+            'inner_tol': 5e-3,
+            'outer_tol': 5e-3,
+            'consecutive_tol': 3,
             'verify_every_n': 4,
             'update_k_players': 3,
             'link_player_updates': True,
             'update_k_acceptances': None,
+            # tau_decay=1 means tau stays at tau_p_init=1e-6 forever.
+            # The default cycle_break_tau_threshold=0.01 would fire immediately
+            # (1e-6 < 0.01), falsely treating every saturated max_change=1.0 as
+            # a low-tau cycle.  Set the threshold below the actual tau so the
+            # cycle-stopping logic never triggers.
+            'cycle_break_tau_threshold': 5e-10,
         })
         
     # Standard parameters for 4-player scenarios. Works well for some of them. Commented out, do not delete yet.
@@ -340,17 +350,17 @@ def _get_solver_params(config, user_params=None):
     # Special parameters for n==4
     if len(config['players']) == 4:
         default_params.update({
-            'tau_p_init': 0.2,
-            'tau_r_init': 0.2,
-            'tau_decay': 0.92,
-            'tau_min': 0.001,
-            'damping': 0.95,
-            'max_inner_iter': 150,
+            'tau_p_init': 0.000002,
+            'tau_r_init': 0.000002,
+            'tau_decay': 0.99,
+            'tau_min': 0.0000001,
+            'damping': 0.0,
+            'max_inner_iter': 100,
             'max_outer_iter': 1000,
             'inner_tol': 2e-2,
             'outer_tol': 2e-2,
-            'consecutive_tol': 2,
-            'verify_every_n': 5,
+            'consecutive_tol': 1,
+            'verify_every_n': 1,
         })        
 
     if len(config['players']) >= 5:
@@ -380,7 +390,9 @@ def _print_solver_params(params, logger):
                   'inner_tol', 'outer_tol', 'consecutive_tol', 'verify_every_n',
                   'tau_margin', 'max_cycles_at_tau_min', 'cycle_break_tau_threshold',
                   'project_to_exact', 'update_k_players', 'link_player_updates',
-                  'update_k_acceptances', 'inner_cycle_check_interval']
+                  'update_k_acceptances', 'inner_cycle_check_interval',
+                  'support_enumeration_max_candidates',
+                  'support_enumeration_acceptance_fixpoint_iter']
 
     logger.info("Solver parameters:")
     for key in param_order:
@@ -410,6 +422,23 @@ def _run_solver(solver, params, checkpoint_dir='./checkpoints', load_from_checkp
             checkpoint_dir=checkpoint_dir,
             load_from_checkpoint=load_from_checkpoint,
             config_hash=config_hash
+        )
+    except KeyboardInterrupt:
+        if logger:
+            logger.warning("Solver stopped. No output file saved.")
+        import sys
+        sys.exit(0)
+
+
+def _run_support_enumeration_solver(solver, params, logger=None):
+    """Run the cycle-guided support enumeration solver for n=3 cases."""
+    try:
+        max_candidates = int(params.get("support_enumeration_max_candidates", 512))
+        acceptance_fixpoint_iter = int(params.get("support_enumeration_acceptance_fixpoint_iter", 20))
+        return solve_with_support_enumeration_n3(
+            solver,
+            max_cycle_candidates=max_candidates,
+            acceptance_fixpoint_iter=acceptance_fixpoint_iter,
         )
     except KeyboardInterrupt:
         if logger:
@@ -713,14 +742,28 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         logger.info(f"Random seed for initialization: {solver.random_seed}")
         logger.info("")
 
-    found_strategy_df, solver_result = _run_solver(
-        solver,
-        solver_params,
-        checkpoint_dir='./checkpoints',
-        load_from_checkpoint=load_from_checkpoint,
-        config_hash=config_hash,
-        logger=logger
+    use_support_enumeration = (
+        config.get("scenario_name") == "power_threshold_RICE_n3"
+        and len(setup["players"]) == 3
     )
+    if use_support_enumeration:
+        if verbose:
+            logger.info("Using cycle-guided support enumeration solver.")
+            logger.info("")
+        found_strategy_df, solver_result = _run_support_enumeration_solver(
+            solver,
+            solver_params,
+            logger=logger,
+        )
+    else:
+        found_strategy_df, solver_result = _run_solver(
+            solver,
+            solver_params,
+            checkpoint_dir='./checkpoints',
+            load_from_checkpoint=load_from_checkpoint,
+            config_hash=config_hash,
+            logger=logger
+        )
 
     # Fill NaN values for non-committee members
     found_strategy_df_filled = found_strategy_df.copy()

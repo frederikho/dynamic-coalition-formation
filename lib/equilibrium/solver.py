@@ -164,7 +164,6 @@ class EquilibriumSolver:
         # Create TransitionProbabilities object once for fast updates
         # (will be initialized with current strategy dicts in first use)
         self.tp = None  # Lazy initialization on first solve() call
-
     def _log(self, message, level='info'):
         """Log message using logger if available, otherwise print."""
         if self.logger:
