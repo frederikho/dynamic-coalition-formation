@@ -388,6 +388,20 @@ def verify_proposals(players: List[str], states: List[str],
                      P_proposals: Dict[tuple, float],
                      P_approvals: Dict[tuple, float],
                      V: pd.DataFrame) -> Tuple[bool, str]:
+    ok, msg, _detail = verify_proposals_detailed(
+        players=players,
+        states=states,
+        P_proposals=P_proposals,
+        P_approvals=P_approvals,
+        V=V,
+    )
+    return ok, msg
+
+
+def verify_proposals_detailed(players: List[str], states: List[str],
+                              P_proposals: Dict[tuple, float],
+                              P_approvals: Dict[tuple, float],
+                              V: pd.DataFrame) -> Tuple[bool, str, Dict[str, Any] | None]:
     """Checks that the proposal strategies of all players constitute a
     valid equilibrium, as specified in Condition 1 in section A.5.
 
@@ -453,14 +467,33 @@ def verify_proposals(players: List[str], states: List[str],
                          f"on state(s) {pos_prob_next_states}, but the argmax "
                          f"states are: {argmaxes}."
                          )
-                return False, error_msg
+                return False, error_msg, {
+                    "type": "proposal",
+                    "proposer": proposer,
+                    "current_state": current_state,
+                    "positive_states": pos_prob_next_states,
+                    "argmax_states": argmaxes,
+                }
 
-    return True, "Test passed."
+    return True, "Test passed.", None
 
 
 def verify_approvals(players: List[str], states: List[str],
                      effectivity: Dict[tuple, int], V: pd.DataFrame,
                      strategy_df: pd.DataFrame) -> Tuple[bool, str]:
+    ok, msg, _detail = verify_approvals_detailed(
+        players=players,
+        states=states,
+        effectivity=effectivity,
+        V=V,
+        strategy_df=strategy_df,
+    )
+    return ok, msg
+
+
+def verify_approvals_detailed(players: List[str], states: List[str],
+                              effectivity: Dict[tuple, int], V: pd.DataFrame,
+                              strategy_df: pd.DataFrame) -> Tuple[bool, str, Dict[str, Any] | None]:
     """Checks that the approval strategies of all players constitute a
     valid equilibrium, as specified in Condition 2 in section A.5.
 
@@ -507,12 +540,26 @@ def verify_approvals(players: List[str], states: List[str],
                             f"and V(next) = {V_next:{VERIFICATION_VALUE_FORMAT}}, "
                             f"but approval probability is {p_approve}."
                             )
-                        return False, error_msg
+                        return False, error_msg, {
+                            "type": "approval",
+                            "approver": approver,
+                            "proposer": proposer,
+                            "current_state": current_state,
+                            "next_state": next_state,
+                            "V_current": float(V_current),
+                            "V_next": float(V_next),
+                            "approval_probability": float(p_approve),
+                        }
 
-    return True, "Test passed."
+    return True, "Test passed.", None
 
 
 def verify_equilibrium(result: Dict[str, Any]):
+    ok, msg, _detail = verify_equilibrium_detailed(result)
+    return ok, msg
+
+
+def verify_equilibrium_detailed(result: Dict[str, Any]):
     """Checks that the experiment results and strategy profiles are a
     valid equilibrium.
 
@@ -520,23 +567,24 @@ def verify_equilibrium(result: Dict[str, Any]):
         results: A dictionary from main.run_experiment().
     """
 
-    proposals_ok = verify_proposals(players=result["players"],
-                                    states=result["state_names"],
-                                    P_proposals=result["P_proposals"],
-                                    P_approvals=result["P_approvals"],
-                                    V=result["V"])
+    proposals_ok = verify_proposals_detailed(players=result["players"],
+                                             states=result["state_names"],
+                                             P_proposals=result["P_proposals"],
+                                             P_approvals=result["P_approvals"],
+                                             V=result["V"])
 
-    approvals_ok = verify_approvals(players=result["players"],
-                                    states=result["state_names"],
-                                    effectivity=result["effectivity"],
-                                    V=result["V"],
-                                    strategy_df=result["strategy_df"])
+    approvals_ok = verify_approvals_detailed(players=result["players"],
+                                             states=result["state_names"],
+                                             effectivity=result["effectivity"],
+                                             V=result["V"],
+                                             strategy_df=result["strategy_df"])
 
     if proposals_ok[0] and approvals_ok[0]:
-        return True, "All tests passed."
+        return True, "All tests passed.", None
     else:
         messages = [check[1] for check in [proposals_ok, approvals_ok]
                     if not check[0]]
+        first_violation = next((check[2] for check in [proposals_ok, approvals_ok] if not check[0]), None)
 
         # Prepend V values once when either verification fails
         V = result["V"]
@@ -545,7 +593,7 @@ def verify_equilibrium(result: Dict[str, Any]):
         )
         full_message = f"The value functions V are:\n{formatted_V}\n\n" + '\n'.join(messages)
 
-        return False, full_message
+        return False, full_message, first_violation
 
 
 def write_latex_tables(result: Dict[str, Any], variables: List[str],

@@ -14,7 +14,7 @@ import pickle
 import time
 from lib.probabilities_optimized import TransitionProbabilitiesOptimized
 from lib.mdp import MDP
-from lib.utils import derive_effectivity, get_approval_committee, verify_equilibrium
+from lib.utils import derive_effectivity, get_approval_committee, verify_equilibrium, verify_equilibrium_detailed
 from lib.equilibrium.cycle_analysis import (
     detect_cycle, format_cycle_report,
     detect_partial_cycle, format_partial_cycle_report,
@@ -471,13 +471,18 @@ class EquilibriumSolver:
         return damped
 
     def _verify_candidate_equilibrium(self, strategy_df: pd.DataFrame) -> Tuple[bool, str, pd.DataFrame]:
+        success, message, V, _detail = self._verify_candidate_equilibrium_detailed(strategy_df)
+        return success, message, V
+
+    def _verify_candidate_equilibrium_detailed(self, strategy_df: pd.DataFrame) -> Tuple[bool, str, pd.DataFrame, Dict]:
         """Verify if a strategy profile is a valid equilibrium.
 
         Args:
             strategy_df: Strategy DataFrame to verify
 
         Returns:
-            (success, message, V): Verification result, message, and value functions
+            (success, message, V, detail): Verification result, message, value functions,
+            and structured first-violation detail when verification fails.
         """
         # Compute transition probabilities
         tp = TransitionProbabilitiesOptimized(
@@ -506,9 +511,9 @@ class EquilibriumSolver:
         }
 
         # Verify equilibrium
-        success, message = verify_equilibrium(result)
+        success, message, detail = verify_equilibrium_detailed(result)
 
-        return success, message, V
+        return success, message, V, detail
 
     def _polish_exact_equilibrium(self, max_iter: int = 20, tol: float = 1e-9) -> Tuple[bool, str, int]:
         """Iteratively enforce exact best responses after annealing.

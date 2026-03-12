@@ -19,6 +19,21 @@ class ActiveSetDiagnostics:
     unstable_approvals: int
     candidate_combinations: int
     accepted_candidate: int | None
+    expansion_rounds: int = 0
+
+
+def _format_violation_short(violation: Dict[str, Any] | None) -> str:
+    if not violation:
+        return "none"
+    if violation["type"] == "proposal":
+        return f"proposal {violation['proposer']} @ {violation['current_state']}"
+    if violation["type"] == "approval":
+        return (
+            "approval "
+            f"{violation['approver']} on "
+            f"{violation['proposer']}:{violation['current_state']}->{violation['next_state']}"
+        )
+    return str(violation)
 
 
 def _product_size(options: List[List[Any]]) -> int:
@@ -131,6 +146,7 @@ def _analyze_cycle(
 ) -> Dict[str, Any]:
     row_support_options: Dict[tuple, List[tuple]] = {}
     approval_options: Dict[tuple, List[float]] = {}
+    approval_flip_counts: Dict[tuple, int] = {}
 
     row_support_history = {}
     for p_arr, _ in cycle_arrays:
@@ -149,12 +165,19 @@ def _analyze_cycle(
         vals = sorted({float(round(v, 12)) for v in r_matrix[:, i]})
         if len(vals) > 1:
             approval_options[key] = vals
+    for idx in range(1, len(cycle_arrays)):
+        prev_r = cycle_arrays[idx - 1][1]
+        cur_r = cycle_arrays[idx][1]
+        for i, key in enumerate(acceptance_keys):
+            if abs(float(prev_r[i]) - float(cur_r[i])) > 1e-9:
+                approval_flip_counts[key] = approval_flip_counts.get(key, 0) + 1
 
     return {
         "cycle_period": len(cycle_arrays),
         "cycle_arrays": cycle_arrays,
         "row_support_options": row_support_options,
         "approval_options": approval_options,
+        "approval_flip_counts": approval_flip_counts,
     }
 
 
@@ -246,60 +269,53 @@ def _refine_candidate(
                         solver.r_acceptances[key] = 1.0 if V_next > V_current else 0.0
 
 
-def solve_with_active_set_n3(
+def _enumerate_active_candidates(
     solver: EquilibriumSolver,
-    max_candidates: int = 1024,
-    refinement_iter: int = 10,
-) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """Attempt a 3-player equilibrium solve using a cycle-guided active-set search."""
-    cycle_info = _capture_exact_cycle(solver)
-    if cycle_info is None:
-        strategy_df = solver._create_strategy_dataframe()
-        success, message, _ = solver._verify_candidate_equilibrium(strategy_df)
-        diagnostics = ActiveSetDiagnostics(
-            cycle_period=None,
-            unstable_rows=0,
-            unstable_approvals=0,
-            candidate_combinations=0,
-            accepted_candidate=0 if success else None,
-        )
-        return strategy_df, {
-            "converged": success,
-            "stopping_reason": "active_set_direct" if success else "active_set_failed",
-            "outer_iterations": 0,
-            "active_set": diagnostics.__dict__,
-            "verification_message": message,
-        }
-
-    row_items = sorted(cycle_info["row_support_options"].items())
-    approval_items = sorted(cycle_info["approval_options"].items())
+    row_items: List[Tuple[tuple, List[tuple]]],
+    approval_items: List[Tuple[tuple, List[float]]],
+    base_p: np.ndarray,
+    base_r: np.ndarray,
+    proposal_keys: List[tuple],
+    acceptance_keys: List[tuple],
+    refinement_iter: int,
+    max_candidates: int,
+    diagnostics: ActiveSetDiagnostics,
+) -> Tuple[pd.DataFrame, Dict[str, Any], Dict[str, Any] | None]:
     candidate_count = _product_size([supports for _, supports in row_items]) * _product_size([vals for _, vals in approval_items])
+    diagnostics.unstable_rows = len(row_items)
+    diagnostics.unstable_approvals = len(approval_items)
+    diagnostics.candidate_combinations = candidate_count
 
-    diagnostics = ActiveSetDiagnostics(
-        cycle_period=cycle_info["cycle_period"],
-        unstable_rows=len(row_items),
-        unstable_approvals=len(approval_items),
-        candidate_combinations=candidate_count,
-        accepted_candidate=None,
-    )
+    if solver.verbose:
+        solver._log(
+            f"Active-set round {diagnostics.expansion_rounds}: "
+            f"rows={diagnostics.unstable_rows}, "
+            f"approvals={diagnostics.unstable_approvals}, "
+            f"candidates={candidate_count}"
+        )
 
     if candidate_count > max_candidates:
         strategy_df = solver._create_strategy_dataframe()
-        success, message, _ = solver._verify_candidate_equilibrium(strategy_df)
+        success, message, _V, detail = solver._verify_candidate_equilibrium_detailed(strategy_df)
+        if solver.verbose:
+            solver._log(
+                "Active-set stopped: "
+                f"candidate_count={candidate_count} exceeds active_set_max_candidates={max_candidates}",
+                level="warning",
+            )
         return strategy_df, {
             "converged": success,
             "stopping_reason": "active_set_too_many_candidates",
             "outer_iterations": 0,
             "active_set": diagnostics.__dict__,
             "verification_message": message,
-        }
+        }, detail
 
-    proposal_keys, acceptance_keys = _get_strategy_key_orders(solver)
-    base_p, base_r = cycle_info["cycle_arrays"][-1]
     support_space = [supports for _, supports in row_items] or [tuple()]
     approval_space = [vals for _, vals in approval_items] or [tuple()]
-
     candidate_idx = 0
+    last_detail = None
+
     for support_choice in product(*support_space):
         for approval_choice in product(*approval_space):
             candidate_idx += 1
@@ -323,7 +339,8 @@ def solve_with_active_set_n3(
                 refinement_iter=refinement_iter,
             )
             strategy_df = solver._create_strategy_dataframe()
-            success, message, _ = solver._verify_candidate_equilibrium(strategy_df)
+            success, message, _V, detail = solver._verify_candidate_equilibrium_detailed(strategy_df)
+            last_detail = detail
             if success:
                 diagnostics.accepted_candidate = candidate_idx
                 return strategy_df, {
@@ -332,14 +349,158 @@ def solve_with_active_set_n3(
                     "outer_iterations": 0,
                     "active_set": diagnostics.__dict__,
                     "verification_message": message,
-                }
+                }, detail
 
     strategy_df = solver._create_strategy_dataframe()
-    success, message, _ = solver._verify_candidate_equilibrium(strategy_df)
+    success, message, _V, detail = solver._verify_candidate_equilibrium_detailed(strategy_df)
+    last_detail = detail or last_detail
     return strategy_df, {
         "converged": success,
         "stopping_reason": "active_set_failed",
         "outer_iterations": 0,
         "active_set": diagnostics.__dict__,
         "verification_message": message,
-    }
+    }, last_detail
+
+
+def _expand_active_sets_from_violation(
+    solver: EquilibriumSolver,
+    strategy_df: pd.DataFrame,
+    row_items: List[Tuple[tuple, List[tuple]]],
+    approval_items: List[Tuple[tuple, List[float]]],
+    violation: Dict[str, Any],
+) -> bool:
+    if not violation:
+        return False
+
+    if violation["type"] == "proposal":
+        row_key = (violation["proposer"], violation["current_state"])
+        existing = {key: list(options) for key, options in row_items}
+        current_support = tuple(sorted(violation["positive_states"]))
+        argmax_support = tuple(sorted(violation["argmax_states"]))
+        options = existing.get(row_key, [])
+        changed = False
+        for support in (current_support, argmax_support):
+            if support and support not in options:
+                options.append(support)
+                changed = True
+        if changed:
+            existing[row_key] = options
+            row_items[:] = sorted(existing.items())
+        return changed
+
+    if violation["type"] == "approval":
+        key = (
+            violation["proposer"],
+            violation["current_state"],
+            violation["next_state"],
+            violation["approver"],
+        )
+        existing = {akey: list(options) for akey, options in approval_items}
+        if key not in existing:
+            existing[key] = [0.0, 1.0]
+            approval_items[:] = sorted(existing.items())
+            return True
+        return False
+
+    return False
+
+
+def solve_with_active_set_n3(
+    solver: EquilibriumSolver,
+    max_candidates: int = 1024,
+    refinement_iter: int = 10,
+    max_initial_approvals: int = 8,
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Attempt a 3-player equilibrium solve using a cycle-guided active-set search."""
+    cycle_info = _capture_exact_cycle(solver)
+    if cycle_info is None:
+        strategy_df = solver._create_strategy_dataframe()
+        success, message, _ = solver._verify_candidate_equilibrium(strategy_df)
+        diagnostics = ActiveSetDiagnostics(
+            cycle_period=None,
+            unstable_rows=0,
+            unstable_approvals=0,
+            candidate_combinations=0,
+            accepted_candidate=0 if success else None,
+        )
+        return strategy_df, {
+            "converged": success,
+            "stopping_reason": "active_set_direct" if success else "active_set_failed",
+            "outer_iterations": 0,
+            "active_set": diagnostics.__dict__,
+            "verification_message": message,
+        }
+
+    diagnostics = ActiveSetDiagnostics(
+        cycle_period=cycle_info["cycle_period"],
+        unstable_rows=0,
+        unstable_approvals=0,
+        candidate_combinations=0,
+        accepted_candidate=None,
+    )
+
+    if solver.verbose:
+        solver._log(
+            "Active set start: "
+            f"cycle_period={diagnostics.cycle_period}, "
+            f"rows={len(cycle_info['row_support_options'])}, "
+            f"approvals={len(cycle_info['approval_options'])}"
+        )
+
+    proposal_keys, acceptance_keys = _get_strategy_key_orders(solver)
+    base_p, base_r = cycle_info["cycle_arrays"][-1]
+    row_items = sorted(cycle_info["row_support_options"].items())
+    approval_flip_counts = cycle_info.get("approval_flip_counts", {})
+    approval_options = cycle_info["approval_options"]
+    recurrent_approval_items = [
+        (key, approval_options[key])
+        for key, count in sorted(
+            approval_flip_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+        if count > 1 and key in approval_options
+    ]
+    if not recurrent_approval_items:
+        recurrent_approval_items = sorted(approval_options.items())
+    if max_initial_approvals is not None:
+        recurrent_approval_items = recurrent_approval_items[:max_initial_approvals]
+    approval_items = recurrent_approval_items
+
+    max_expansion_rounds = 3
+    for expansion_round in range(max_expansion_rounds + 1):
+        diagnostics.expansion_rounds = expansion_round
+        strategy_df, result, detail = _enumerate_active_candidates(
+            solver=solver,
+            row_items=row_items,
+            approval_items=approval_items,
+            base_p=base_p,
+            base_r=base_r,
+            proposal_keys=proposal_keys,
+            acceptance_keys=acceptance_keys,
+            refinement_iter=refinement_iter,
+            max_candidates=max_candidates,
+            diagnostics=diagnostics,
+        )
+        if result["converged"] or result["stopping_reason"] == "active_set_too_many_candidates":
+            return strategy_df, result
+
+        expanded = _expand_active_sets_from_violation(
+            solver=solver,
+            strategy_df=strategy_df,
+            row_items=row_items,
+            approval_items=approval_items,
+            violation=detail or {},
+        )
+        if solver.verbose:
+            action = "expanded" if expanded else "stalled"
+            solver._log(
+                f"Active-set {action} after round {expansion_round}: "
+                f"{_format_violation_short(detail)}"
+            )
+        if not expanded:
+            return strategy_df, result
+
+    result["stopping_reason"] = "active_set_expansion_failed"
+    result["active_set"] = diagnostics.__dict__
+    return strategy_df, result
