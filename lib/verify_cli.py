@@ -42,6 +42,8 @@ from lib.utils import (
     get_geoengineering_levels,
     verify_equilibrium,
 )
+from lib.effectivity import check_effectivity, get_effectivity
+from lib.equilibrium.excel_writer import write_strategy_table_excel
 
 
 DEFAULT_STRATEGY_DIR = Path("./strategy_tables")
@@ -368,7 +370,7 @@ def _parse_coalition_structure(state_name: str, all_countries: List[Country]) ->
     return coalitions
 
 
-def _run_verification(xlsx_path: Path) -> Tuple[bool, str, Dict[str, Any]]:
+def _run_verification(xlsx_path: Path, skip_effectivity_check: bool = False) -> Tuple[bool, str, Dict[str, Any]]:
     strategy_df_raw = pd.read_excel(xlsx_path, header=[0, 1], index_col=[0, 1, 2])
 
     config = _build_config(xlsx_path, strategy_df_raw)
@@ -414,14 +416,28 @@ def _run_verification(xlsx_path: Path) -> Tuple[bool, str, Dict[str, Any]]:
 
     geoengineering = get_geoengineering_levels(states=state_objects)
 
-    effectivity = derive_effectivity(df=strategy_df_raw, players=players, states=states)
+    file_effectivity = derive_effectivity(df=strategy_df_raw, players=players, states=states)
+    effectivity = get_effectivity("heyen_lehtomaa_2021", players, states)
+
+    if not skip_effectivity_check:
+        effectivity_violations = check_effectivity(file_effectivity, players, states)
+        if effectivity_violations:
+            lines = "\n  ".join(effectivity_violations)
+            raise ValueError(
+                f"Effectivity rule violations ({len(effectivity_violations)}):\n  {lines}"
+            )
+
+    # For transition probability computation, use file-derived effectivity when skipping
+    # the check (so V/P reflect actual file structure). The rule-based effectivity is
+    # always kept in `details` so the enriched Excel highlights what OUGHT to be there.
+    tp_effectivity = file_effectivity if skip_effectivity_check else effectivity
 
     strategy_df = strategy_df_raw.copy()
     strategy_df.fillna(0.0, inplace=True)
 
     transition_probabilities = TransitionProbabilities(
         df=strategy_df,
-        effectivity=effectivity,
+        effectivity=tp_effectivity,
         players=players,
         states=states,
         protocol=config["protocol"],
@@ -465,6 +481,12 @@ def _run_verification(xlsx_path: Path) -> Tuple[bool, str, Dict[str, Any]]:
         "unanimity_required": config["unanimity_required"],
         "discounting": config["discounting"],
         "compact_strategy": compact_strategy,
+        "V": V,
+        "P": P,
+        "payoffs": payoffs,
+        "effectivity": effectivity,
+        "strategy_df": strategy_df_raw,
+        "state_names": states,
     }
     return success, message, details
 
@@ -499,12 +521,34 @@ def main() -> None:
         default=str(DEFAULT_STRATEGY_DIR),
         help="Default directory for profile files (used when profile is not an existing path).",
     )
+    parser.add_argument(
+        "--enrich",
+        type=str,
+        nargs="?",
+        const="__same__",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Write enriched file (adds Value Functions, Short-term Values, Transition Matrix "
+            "sheets). If PATH is omitted, overwrites the input file. "
+            "Enrichment happens even when not an equilibrium."
+        ),
+    )
 
     args = parser.parse_args()
 
     try:
         profile_path = _resolve_profile_path(args.profile, Path(args.strategy_dir))
-        success, message, details = _run_verification(profile_path)
+
+        effectivity_ok = True
+        try:
+            success, message, details = _run_verification(profile_path)
+        except ValueError as exc:
+            effectivity_ok = False
+            print(f"Warning: {exc}", file=sys.stderr)
+            success, message, details = _run_verification(profile_path, skip_effectivity_check=True)
+            success = False
+            message = "Effectivity rule violations (see above)."
 
         print(f"Profile: {profile_path}")
         print(
@@ -517,6 +561,24 @@ def main() -> None:
         )
         print(details["compact_strategy"])
 
+        if args.enrich is not None:
+            output_path = profile_path if args.enrich == "__same__" else Path(args.enrich)
+            metadata = _read_metadata_from_xlsx(profile_path) or None
+            write_strategy_table_excel(
+                df=details["strategy_df"],
+                excel_file_path=str(output_path),
+                players=details["players"],
+                effectivity=details["effectivity"],
+                states=details["state_names"],
+                metadata=metadata,
+                value_functions=details["V"],
+                geo_levels=None,
+                deploying_coalitions=None,
+                static_payoffs=details["payoffs"],
+                transition_matrix=details["P"],
+            )
+            print(f"Written: {output_path}")
+
         if success:
             print("Result: EQUILIBRIUM ✅")
             print(message)
@@ -525,6 +587,20 @@ def main() -> None:
         print("Result: NOT AN EQUILIBRIUM ❌")
         print(message)
         raise SystemExit(1)
+
+    except KeyError as exc:
+        key = exc.args[0]
+        if isinstance(key, tuple) and len(key) == 3:
+            state, row_type, player = key
+            print(
+                f"Verification failed: missing row ({state!r}, {row_type!r}, {player!r}) "
+                f"in strategy table — check that every acceptance row for {player!r} "
+                f"in state {state!r} is present in your Excel file.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"Verification failed: missing key {key!r} in strategy table.", file=sys.stderr)
+        raise SystemExit(2)
 
     except Exception as exc:
         print(f"Verification failed: {exc}", file=sys.stderr)

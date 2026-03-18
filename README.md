@@ -66,15 +66,56 @@ python multimodel_orchestrator.py --periods 2035-2060 2060-2080 2080-2100 --impa
 
 With more params:
 python3 multimodel_orchestrator.py \
-  --max-workers 3 \
+  --max-workers 8 \
   --periods 2035-2060 2060-2080 2080-2100 \
   --impact burke \
   --countries usa chn nde \
   --policy bau_impact \
-  --gamma_ineq=0 \
+  --gamma_ineq=0.5 \
   --max_gain=10 \
   --max_damage=0.9 \
   --t_ada_temp=5 \
-  --sai_damage_coef=0 \
+  --sai_damage_coef=0.1 \
   --fresh
 
+
+## Questions: 
+
+Did I implement the generate_effectivity_heyen_lehtomaa(players, states) correctly? It has the following conditions:
+1. Players JOINING a coalition must approve (consent to join)
+2. Players LEAVING a coalition must approve (can't be forced out)  
+It seemed that this is corresponding to the effectivity in the strategy tables. But did not come out so clear in the paper, particularly the second one. 
+... 
+
+After reconsidering, rules are not so bad. But could be formulated in slightly different way. e.g. proposer often does not vote (because already proposed something, so consent is assumed)
+
+derive_effectivity():
+Trivially, the proposer must approve the transition,
+and is therefore included in the effectivity correspondence.
+However, for convenience, we only include the proposer
+explicitly in the strategy table when the proposer is the
+only approval committee member, and thus can approve
+the proposed transition without consulting others.
+For every possible proposer, it is always possible to
+maintain the status quo without the approval of others.
+Therefore, for such a transition, check that the current
+proposer is the only member in the effectivity
+correspondence. Similarly, any country is allowed to
+walk out of its existing coalition.
+
+- It seems we currently assume that only one party deploys G. Makes somewhat sense as we are using a power_threshold of over 0.5 until now and for weak governance we have a free driver effect. But in general, we would also want to allow smaller coalitions than power=0.5 to deploy simultaneously, right? 
+
+- When we are in (FCTWH) and C suggests a move to TWH, who should be on the approval committee? This is in principle like two unilateral exits. So it should be C, F. How does this fit together with the unanimity rule of transition decision making? If we have unanimity (as well as simple majority in this case), C and F have both to agree that both can exit. Is that what we want? 
+If three parties want to leave, the three would be on the approval committee. If two want to leave and form a new counter coalition as in (CF)(TWH), now currently TWH would also be on the approval committee. So if TWH disapprove, CF can just leave unilaterally and then forma a coalition afterwards. Is this a good way of modelling? 
+An alternative to the current modelling would be that certain types of more complex transitions are outlawed. 
+
+- Can you think of any scenario in which we would get cycling instead of an equilibrium with n=3 players? 
+
+- should power thresholds smaller than 0.5 be allowed?
+
+- is it dynamic or not rather farsighted? farsighted in the sense that players look ahead and we end in the absorbing state. 
+
+## Notes Frederik
+
+- optional: we could define a github action for the npm run build command
+- fix the issue occuring for missing files 

@@ -202,6 +202,18 @@ SCENARIOS["power_threshold_RICE_n3"] = {
     "power_rule": "power_threshold",
 }
 
+SCENARIOS["power_threshold_RICE_n3_unequal_protocol"] = {
+    **_base_rice(),
+    "scenario_description": (
+        "3-player power threshold with equal power (1/3 each). "
+        "Players are inferred from the --payoff-table filename "
+        "(e.g. burke_usachnnde_2060.xlsx → CHN, NDE, USA). "
+        "Intended for use with --payoff-table to load RICE50x welfare payoffs."
+    ),
+    "power_rule": "power_threshold",
+    "protocol": {"CHN": 0, "NDE": 0.0, "USA": 1},
+}
+
 SCENARIOS["power_threshold_no_unanimity_RICE_n3"] = {
     **_base_rice(),
     "scenario_description": (

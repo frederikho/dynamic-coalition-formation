@@ -34,6 +34,7 @@ from lib.utils import (
     derive_effectivity,
     get_payoff_matrix,
     verify_equilibrium,
+    verify_equilibrium_detailed,
     get_geoengineering_levels,
     get_deploying_coalitions,
     list_members,
@@ -293,6 +294,10 @@ def _get_solver_params(config, user_params=None):
         'inner_cycle_check_interval': 20,
         'active_set_max_candidates': 1024,
         'active_set_refinement_iter': 10,
+        'active_set_max_initial_approvals': 8,
+        'active_set_max_initial_rows': 2,
+        'active_set_max_supports_per_row': 2,
+        'active_set_max_candidates_per_round': 256,
         'support_enumeration_max_candidates': 512,
         'support_enumeration_acceptance_fixpoint_iter': 20,
     }
@@ -397,6 +402,12 @@ def _print_solver_params(params, logger):
                   'update_k_acceptances', 'inner_cycle_check_interval',
                   'active_set_max_candidates',
                   'active_set_refinement_iter',
+                  'active_set_max_initial_approvals',
+                  'active_set_max_initial_rows',
+                  'active_set_max_supports_per_row',
+                  'active_set_max_candidates_per_round',
+                  'active_set_seed_rows',
+                  'active_set_freeze_seeded_proposals',
                   'support_enumeration_max_candidates',
                   'support_enumeration_acceptance_fixpoint_iter']
 
@@ -453,10 +464,22 @@ def _run_active_set_solver(solver, params, logger=None):
     try:
         max_candidates = int(params.get("active_set_max_candidates", 1024))
         refinement_iter = int(params.get("active_set_refinement_iter", 10))
+        max_initial_approvals = int(params.get("active_set_max_initial_approvals", 8))
+        max_initial_rows = int(params.get("active_set_max_initial_rows", 2))
+        max_supports_per_row = int(params.get("active_set_max_supports_per_row", 2))
+        max_candidates_per_round = int(params.get("active_set_max_candidates_per_round", 256))
+        seed_rows = params.get("active_set_seed_rows")
+        freeze_seeded_proposals = bool(params.get("active_set_freeze_seeded_proposals", False))
         return solve_with_active_set_n3(
             solver,
             max_candidates=max_candidates,
             refinement_iter=refinement_iter,
+            max_initial_approvals=max_initial_approvals,
+            max_initial_rows=max_initial_rows,
+            max_supports_per_row=max_supports_per_row,
+            max_candidates_per_round=max_candidates_per_round,
+            seed_rows=seed_rows,
+            freeze_seeded_proposals=freeze_seeded_proposals,
         )
     except KeyboardInterrupt:
         if logger:
@@ -737,12 +760,14 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         if verbose:
             logger.info(f"Saved payoff table to: {payoff_path}")
 
+    selected_solver_approach = solver_approach
+
     # Check if checkpoint exists and inform user
     checkpoint_dir = './checkpoints'
     checkpoint_path = Path(checkpoint_dir) / f"checkpoint_{config_hash}.pkl"
     checkpoint_exists = checkpoint_path.exists()
 
-    if verbose and checkpoint_exists:
+    if verbose and selected_solver_approach == "annealing" and checkpoint_exists:
         if load_from_checkpoint:
             logger.info(f"Found existing checkpoint: {checkpoint_path}")
             logger.info("Will resume from checkpoint. Use --fresh to start from scratch.")
@@ -751,7 +776,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
             logger.info(f"Found existing checkpoint: {checkpoint_path}")
             logger.info("Starting fresh (--fresh flag used). Checkpoint will be overwritten.")
             logger.info("")
-    elif verbose and not checkpoint_exists and load_from_checkpoint:
+    elif verbose and selected_solver_approach == "annealing" and not checkpoint_exists and load_from_checkpoint:
         logger.info("No existing checkpoint found. Starting fresh.")
         logger.info("")
 
@@ -779,8 +804,6 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     if verbose:
         logger.info(f"Random seed for initialization: {solver.random_seed}")
         logger.info("")
-
-    selected_solver_approach = solver_approach
 
     if selected_solver_approach in {"support_enumeration", "active_set"} and len(setup["players"]) != 3:
         raise ValueError(
@@ -847,9 +870,10 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     }
 
     # Verify equilibrium
-    success, message = verify_equilibrium(result)
+    success, message, verification_detail = verify_equilibrium_detailed(result)
     result['verification_success'] = success
     result['verification_message'] = message
+    result['verification_detail'] = verification_detail
 
     if verbose:
         logger.info("\n" + "=" * 80)
@@ -933,10 +957,17 @@ def _parse_players_from_payoff_table(path: Path) -> list[str]:
 
     players: set[str] = set()
     for segment in stem.split("_"):
-        try:
-            players.update(_parse_deployers(segment, _GLOBAL_TOKEN_MAP))
-        except ValueError:
-            pass  # segment is not a country combination (e.g. 'burke'), skip
+        # Try the segment as-is, then also strip a trailing '-...' suffix
+        # (e.g. 'usachnnde-100' → try 'usachnnde' as well).
+        candidates = [segment]
+        if "-" in segment:
+            candidates.append(segment.split("-")[0])
+        for candidate in candidates:
+            try:
+                players.update(_parse_deployers(candidate, _GLOBAL_TOKEN_MAP))
+                break
+            except ValueError:
+                pass  # not a country combination (e.g. 'burke', '-100'), skip
 
     if not players:
         raise ValueError(

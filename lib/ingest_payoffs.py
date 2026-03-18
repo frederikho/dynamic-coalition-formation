@@ -566,19 +566,23 @@ def write_payoff_table(
         ws.row_dimensions[row_idx].height = 15
 
     # ------------------------------------------------------------------
-    # Highlight best payoff (least negative) per player column
+    # Highlight top-3 payoffs (least negative) per player column
     # ------------------------------------------------------------------
-    best_fill = PatternFill(
-        start_color=COLORS["best_payoff"],
-        end_color=COLORS["best_payoff"],
-        fill_type="solid",
-    )
+    rank_fills = [
+        PatternFill(start_color="FFFFD966", end_color="FFFFD966", fill_type="solid"),  # 1st: gold
+        PatternFill(start_color="FFFFEB9C", end_color="FFFFEB9C", fill_type="solid"),  # 2nd: light gold
+        PatternFill(start_color="FFFFF2CC", end_color="FFFFF2CC", fill_type="solid"),  # 3rd: pale gold
+    ]
     for p_idx, player in enumerate(display_names):
         col_idx = 2 + p_idx
-        max_val = df[player].max()
+        sorted_vals = sorted(df[player].dropna().unique(), reverse=True)
+        top_vals = sorted_vals[:3]
         for row_offset, state in enumerate(states):
-            if math.isclose(df.loc[state, player], max_val, rel_tol=1e-13):
-                ws.cell(row=3 + row_offset, column=col_idx).fill = best_fill
+            val = df.loc[state, player]
+            for rank, top_val in enumerate(top_vals):
+                if math.isclose(val, float(top_val), rel_tol=1e-13):
+                    ws.cell(row=3 + row_offset, column=col_idx).fill = rank_fills[rank]
+                    break
 
     # ------------------------------------------------------------------
     # Metadata sheet

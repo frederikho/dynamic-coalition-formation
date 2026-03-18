@@ -199,6 +199,14 @@ async function loadGraph() {
     refreshBtn.disabled = true;
     showStatus('Computing transition graph...', 'info');
 
+    // Clear any previous node selection/details before loading a new profile.
+    // Otherwise the sidebar can show stale values from the last graph until the
+    // user clicks a node again.
+    nodeDetailsDiv.style.display = 'none';
+    selectedStateNameSpan.textContent = '';
+    nodePayoffsDiv.innerHTML = '';
+    outgoingTransitionsDiv.innerHTML = '';
+
     const graphData = await fetchGraph({
       profile: profileSelect.value
     });

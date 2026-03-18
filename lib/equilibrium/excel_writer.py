@@ -300,8 +300,17 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                 for next_state in states:
                     val = df.loc[(state, 'Acceptance', player), (proposer_label, next_state)]
 
-                    if pd.isna(val):
-                        # Grey: Not in approval committee
+                    # Determine whether this cell SHOULD be in the approval committee.
+                    # When effectivity is provided, use the rule-based answer (the "ought").
+                    # Fall back to NaN detection only when no effectivity dict is given.
+                    if effectivity is not None:
+                        eff_key = (proposer_name, state, next_state, player)
+                        should_be_in_committee = effectivity.get(eff_key, 0) == 1
+                    else:
+                        should_be_in_committee = not pd.isna(val)
+
+                    if not should_be_in_committee:
+                        # Grey: Not in approval committee per rules
                         ws.cell(row=current_row, column=col, value=None)
                         ws.cell(row=current_row, column=col).fill = PatternFill(
                             start_color=COLORS['nan_cell'],
@@ -309,9 +318,13 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                             fill_type='solid'
                         )
                     else:
-                        # Has value: Player is in approval committee
-                        ws.cell(row=current_row, column=col, value=float(val))
-                        ws.cell(row=current_row, column=col).number_format = '0.###'
+                        # In approval committee per rules: write actual value (may be NaN
+                        # if missing from file — cell will appear coloured but empty).
+                        if not pd.isna(val):
+                            ws.cell(row=current_row, column=col, value=float(val))
+                            ws.cell(row=current_row, column=col).number_format = '0.###'
+                        else:
+                            ws.cell(row=current_row, column=col, value=None)
 
                         # Dark orange if: player == proposer AND unilateral transition
                         # (transitions the proposer can do without consulting others)
@@ -326,7 +339,7 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                                 fill_type='solid'
                             )
                         else:
-                            # Light green: In approval committee, but not self-unilateral
+                            # Light green: In approval committee per rules
                             ws.cell(row=current_row, column=col).fill = PatternFill(
                                 start_color=COLORS['acceptance_row'],  # FFCCECE3
                                 end_color=COLORS['acceptance_row'],
@@ -583,14 +596,22 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
                     horizontal='right', vertical='center'
                 )
 
-        # Highlight max u per player column (amber, matching payoff table style)
-        _best_fill = PatternFill(start_color='FFFFEEBA', end_color='FFFFEEBA', fill_type='solid')
+        # Highlight top-3 u per player column in descending intensity.
+        _rank_fills = [
+            PatternFill(start_color='FFFFD966', end_color='FFFFD966', fill_type='solid'),  # 1st: gold
+            PatternFill(start_color='FFFFEB9C', end_color='FFFFEB9C', fill_type='solid'),  # 2nd: light gold
+            PatternFill(start_color='FFFFF2CC', end_color='FFFFF2CC', fill_type='solid'),  # 3rd: pale gold
+        ]
         for p_idx, player in enumerate(players):
             col_idx = 2 + p_idx
-            max_val = float(static_payoffs[player].max())
+            sorted_vals = sorted(static_payoffs[player].dropna().unique(), reverse=True)
+            top_vals = sorted_vals[:3]
             for row_idx, state in enumerate(states):
-                if math.isclose(float(static_payoffs.loc[state, player]), max_val, rel_tol=1e-13):
-                    ws_short.cell(row=3 + row_idx, column=col_idx).fill = _best_fill
+                val = float(static_payoffs.loc[state, player])
+                for rank, top_val in enumerate(top_vals):
+                    if math.isclose(val, float(top_val), rel_tol=1e-13):
+                        ws_short.cell(row=3 + row_idx, column=col_idx).fill = _rank_fills[rank]
+                        break
 
         # Borders
         for r in range(1, 3 + len(states)):
@@ -778,18 +799,22 @@ def write_payoff_table_excel(
         src.alignment = Alignment(horizontal="left", vertical="center")
         row += 1
 
-    # Highlight best payoff (max) per player column.
-    best_fill = PatternFill(
-        start_color="FFFFEEBA",
-        end_color="FFFFEEBA",
-        fill_type="solid",
-    )
+    # Highlight top-3 payoffs per player column in descending intensity.
+    rank_fills = [
+        PatternFill(start_color="FFFFD966", end_color="FFFFD966", fill_type="solid"),  # 1st: gold
+        PatternFill(start_color="FFFFEB9C", end_color="FFFFEB9C", fill_type="solid"),  # 2nd: light gold
+        PatternFill(start_color="FFFFF2CC", end_color="FFFFF2CC", fill_type="solid"),  # 3rd: pale gold
+    ]
     for p_idx, player in enumerate(players):
         col_idx = 2 + p_idx
-        max_val = float(payoff_df[player].max())
+        sorted_vals = sorted(payoff_df[player].dropna().unique(), reverse=True)
+        top_vals = sorted_vals[:3]
         for r_idx, state_key in enumerate(payoff_df.index.tolist(), start=3):
-            if math.isclose(float(payoff_df.loc[state_key, player]), max_val, rel_tol=1e-13):
-                ws.cell(row=r_idx, column=col_idx).fill = best_fill
+            val = float(payoff_df.loc[state_key, player])
+            for rank, top_val in enumerate(top_vals):
+                if math.isclose(val, float(top_val), rel_tol=1e-13):
+                    ws.cell(row=r_idx, column=col_idx).fill = rank_fills[rank]
+                    break
 
     thin = Side(style="thin", color="000000")
     for r in range(1, row):

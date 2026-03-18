@@ -981,8 +981,8 @@ def compute_transition_graph(
         
     except Exception as e:
         print(f"Warning: Could not compute stationary distribution: {e}")
-        import traceback
-        traceback.print_exc()
+        import traceback as _tb
+        _tb.print_exc()
         expected_G = None
         mixing_time = None
         absorption_time = None

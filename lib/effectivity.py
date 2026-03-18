@@ -131,6 +131,68 @@ def unanimous_consent(players: list, states: list) -> dict:
     return effectivity
 
 
+def check_effectivity(
+    file_effectivity: dict,
+    players: list,
+    states: list,
+    rule: str = "heyen_lehtomaa_2021",
+) -> list[str]:
+    """
+    Compare a file-derived effectivity against the rule-generated one.
+
+    Returns a list of violation strings (empty = no violations).
+
+    Two kinds of violations:
+      - EXTRA:   file includes a player in the committee who shouldn't be there.
+                 Always reported — this is an unconditional rule breach.
+      - MISSING: file excludes a player who should be in the committee.
+                 This is always reported, including when the whole committee is
+                 left blank in the file. Otherwise a feasible deviation can be
+                 silently reinterpreted as impossible during verification.
+
+    Status-quo transitions (x → x) are skipped (their committee is always just
+    the proposer and they are not represented as ordinary acceptance rows).
+
+    Args:
+        file_effectivity: Effectivity dict derived from the strategy Excel (via derive_effectivity).
+        players:          List of player names.
+        states:           List of state names.
+        rule:             Name of the rule to validate against (default: heyen_lehtomaa_2021).
+
+    Returns:
+        List of human-readable violation strings.
+    """
+    expected = EFFECTIVITY_RULES[rule](players, states)
+    violations = []
+
+    for proposer in players:
+        for current_state in states:
+            for next_state in states:
+                if current_state == next_state:
+                    continue
+
+                for responder in players:
+                    key = (proposer, current_state, next_state, responder)
+                    expected_val = expected.get(key, 0)
+                    file_val = file_effectivity.get(key, 0)
+                    if expected_val == file_val:
+                        continue
+                    if file_val == 1 and expected_val == 0:
+                        violations.append(
+                            f"EXTRA:   {responder} in committee for "
+                            f"{proposer}: {current_state} → {next_state} "
+                            f"(rule says not in committee)"
+                        )
+                    elif file_val == 0 and expected_val == 1:
+                        violations.append(
+                            f"MISSING: {responder} not in committee for "
+                            f"{proposer}: {current_state} → {next_state} "
+                            f"(rule says should be in committee)"
+                        )
+
+    return violations
+
+
 # Registry of available effectivity rules
 EFFECTIVITY_RULES = {
     'heyen_lehtomaa_2021': heyen_lehtomaa_2021,
