@@ -95,6 +95,9 @@ def _run_once(
         "verification_success": result["verification_success"],
         "stopping_reason": result.get("stopping_reason"),
         "runtime_seconds": result.get("runtime_seconds"),
+        "probe_seconds": None,
+        "solve_seconds": result.get("runtime_seconds"),
+        "worker_wall_seconds": result.get("runtime_seconds"),
         "verification_message": result.get("verification_message"),
         "verification_detail": result.get("verification_detail"),
         "active_set_detail": (result.get("solver_result") or {}).get("active_set"),
@@ -107,9 +110,11 @@ def _probe_once(
     payoff_table: str,
     run_idx: int,
     seed: int | None,
+    solver_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     import time
 
+    solver_params = solver_params or {}
     config = _build_config(scenario_name, payoff_table)
     setup = setup_experiment(config)
     solver = EquilibriumSolver(
@@ -122,6 +127,7 @@ def _probe_once(
         unanimity_required=setup["unanimity_required"],
         verbose=False,
         random_seed=seed,
+        initialization_mode=solver_params.get("initialization_mode", "uniform"),
         logger=NullLogger(),
     )
     t0 = time.perf_counter()
@@ -130,7 +136,10 @@ def _probe_once(
     return {
         "run": run_idx,
         "seed": solver.random_seed,
+        "runtime_seconds": probe_seconds,
         "probe_seconds": probe_seconds,
+        "solve_seconds": None,
+        "worker_wall_seconds": probe_seconds,
         "basin_signature": basin_signature,
     }
 
@@ -140,9 +149,11 @@ def _probe_basin_signature(
     payoff_table: str,
     solver_approach: str,
     seed: int | None,
+    solver_params: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if solver_approach != "active_set":
         return None
+    solver_params = solver_params or {}
     config = _build_config(scenario_name, payoff_table)
     setup = setup_experiment(config)
     solver = EquilibriumSolver(
@@ -155,6 +166,7 @@ def _probe_basin_signature(
         unanimity_required=setup["unanimity_required"],
         verbose=False,
         random_seed=seed,
+        initialization_mode=solver_params.get("initialization_mode", "uniform"),
         logger=NullLogger(),
     )
     return _build_basin_signature(_capture_exact_cycle(solver))
@@ -166,6 +178,7 @@ def _probe_once_subprocess(
     run_idx: int,
     seed: int | None,
 ) -> dict[str, Any]:
+    t0 = time.perf_counter()
     cmd = [
         sys.executable,
         str(Path(__file__).resolve()),
@@ -187,7 +200,9 @@ def _probe_once_subprocess(
         capture_output=True,
         text=True,
     )
-    return json.loads(completed.stdout)
+    result = json.loads(completed.stdout)
+    result["worker_wall_seconds"] = time.perf_counter() - t0
+    return result
 
 
 def _run_once_subprocess(
@@ -199,6 +214,7 @@ def _run_once_subprocess(
     seed: int | None,
     timeout_seconds: float,
 ) -> dict[str, Any]:
+    t0 = time.perf_counter()
     cmd = [
         sys.executable,
         str(Path(__file__).resolve()),
@@ -228,24 +244,36 @@ def _run_once_subprocess(
             timeout=timeout_seconds,
         )
     except subprocess.TimeoutExpired:
+        elapsed = time.perf_counter() - t0
         basin_signature = _probe_basin_signature(
             scenario_name=scenario_name,
             payoff_table=payoff_table,
             solver_approach=solver_approach,
             seed=seed,
+            solver_params=solver_params,
         )
         return {
             "run": run_idx,
             "seed": seed,
             "verification_success": False,
             "stopping_reason": "timeout",
-            "runtime_seconds": timeout_seconds,
+            "runtime_seconds": elapsed,
+            "probe_seconds": None,
+            "solve_seconds": elapsed,
+            "worker_wall_seconds": elapsed,
             "verification_message": f"Timed out after {timeout_seconds:.0f}s",
             "verification_detail": None,
             "active_set_detail": None,
             "basin_signature": basin_signature,
         }
-    return json.loads(completed.stdout)
+    result = json.loads(completed.stdout)
+    elapsed = time.perf_counter() - t0
+    result["worker_wall_seconds"] = elapsed
+    if result.get("solve_seconds") is None:
+        result["solve_seconds"] = result.get("runtime_seconds")
+    if result.get("probe_seconds") is None:
+        result["probe_seconds"] = None
+    return result
 
 
 def _progress_char(row: dict[str, Any]) -> str:
@@ -256,6 +284,21 @@ def _progress_char(row: dict[str, Any]) -> str:
     if row.get("stopping_reason") == "timeout":
         return "T"
     return "F"
+
+
+def _print_progress_char(
+    row: dict[str, Any],
+    completed: int,
+    total_runs: int,
+    progress_column: int,
+) -> int:
+    if progress_column % 100 == 0:
+        if progress_column > 0:
+            print()
+        prefix_width = len(f"({total_runs}/{total_runs}) ")
+        print(f"{f'({completed}/{total_runs})':<{prefix_width}}", end="", flush=True)
+    print(_progress_char(row), end="", flush=True)
+    return progress_column + 1
 
 
 def _summarize(results: list[dict[str, Any]], total_wall_seconds: float | None = None) -> None:
@@ -276,6 +319,9 @@ def _summarize(results: list[dict[str, Any]], total_wall_seconds: float | None =
     success_count = sum(1 for row in results if row["verification_success"])
     skipped_count = sum(1 for row in results if row.get("stopping_reason") == "skipped_known_basin")
     runtimes = [row["runtime_seconds"] for row in results if row.get("runtime_seconds") is not None]
+    probe_times = [row["probe_seconds"] for row in results if row.get("probe_seconds") is not None]
+    solve_times = [row["solve_seconds"] for row in results if row.get("solve_seconds") is not None]
+    worker_wall_times = [row["worker_wall_seconds"] for row in results if row.get("worker_wall_seconds") is not None]
     success_runtimes = [
         row["runtime_seconds"]
         for row in results
@@ -312,12 +358,25 @@ def _summarize(results: list[dict[str, Any]], total_wall_seconds: float | None =
     print("\nSummary")
     print("-" * 80)
     print(f"runs: {len(results)}")
-    if total_wall_seconds is not None:
-        print(f"wall_time: {total_wall_seconds:.2f}s")
     print(f"verified_success: {success_count}")
     print(f"verification_failed: {len(results) - success_count - skipped_count}")
     print(f"skipped_known_basin: {skipped_count}")
     print(f"timeouts: {timeout_count}")
+
+    print("\nTiming")
+    print("-" * 80)
+    if total_wall_seconds is not None:
+        print(f"wall_time: {total_wall_seconds:.2f}s")
+    if worker_wall_times:
+        print(f"worker_wall_sum: {sum(worker_wall_times):.2f}s")
+    if probe_times:
+        print(f"probe_sum: {sum(probe_times):.2f}s")
+        print(f"probe_mean: {statistics.mean(probe_times):.2f}s")
+        print(f"probe_max: {max(probe_times):.2f}s")
+    if solve_times:
+        print(f"solve_sum: {sum(solve_times):.2f}s")
+        print(f"solve_mean: {statistics.mean(solve_times):.2f}s")
+        print(f"solve_max: {max(solve_times):.2f}s")
     if runtimes:
         print(f"runtime_mean: {statistics.mean(runtimes):.2f}s")
         print(f"runtime_median: {statistics.median(runtimes):.2f}s")
@@ -438,6 +497,11 @@ def main() -> None:
         action="store_true",
         help="Print one character per completed run: S success, T timeout, F failed, . skipped known basin.",
     )
+    parser.add_argument(
+        "--stop-on-success",
+        action="store_true",
+        help="Stop early after the first verified success.",
+    )
     args = parser.parse_args()
 
     if args.worker:
@@ -480,6 +544,7 @@ def main() -> None:
     print(f"timeout: {args.timeout}")
     print(f"base_seed: {args.base_seed}")
     print(f"skip_known_basins: {args.skip_known_basins}")
+    print(f"stop_on_success: {args.stop_on_success}")
     if args.compact_progress:
         print("progress_legend: S=success T=timeout F=failed .=skipped_known_basin")
     if solver_params:
@@ -487,129 +552,178 @@ def main() -> None:
 
     results: list[dict[str, Any]] = []
     batch_t0 = time.perf_counter()
-    if args.skip_known_basins:
-        if args.solver_approach != "active_set":
-            parser.error("--skip-known-basins is currently only supported with --solver-approach active_set")
-        with ThreadPoolExecutor(max_workers=args.jobs) as executor:
-            pending = set()
-            future_meta: dict[Any, tuple] = {}
-            seen_basins: dict[str, int] = {}
+    interrupted = False
+    try:
+        if args.skip_known_basins:
+            if args.solver_approach != "active_set":
+                parser.error("--skip-known-basins is currently only supported with --solver-approach active_set")
+            probe_workers = 1
+            solve_workers = max(1, args.jobs - probe_workers)
+            probe_executor = ThreadPoolExecutor(max_workers=probe_workers)
+            solve_executor = ThreadPoolExecutor(max_workers=solve_workers)
+            try:
+                pending = set()
+                future_meta: dict[Any, tuple] = {}
+                seen_basins: dict[str, int] = {}
+                next_run_idx = 0
+                stop_submitting_probes = False
 
-            for run_idx in range(args.runs):
-                seed = None if args.base_seed is None else args.base_seed + run_idx
-                future = executor.submit(
-                    _probe_once_subprocess,
-                    args.scenario,
-                    args.payoff_table,
-                    run_idx,
-                    seed,
-                )
-                pending.add(future)
-                future_meta[future] = ("probe", run_idx, seed, None, None)
+                def submit_next_probe() -> None:
+                    nonlocal next_run_idx
+                    if stop_submitting_probes or next_run_idx >= args.runs:
+                        return
+                    run_idx = next_run_idx
+                    next_run_idx += 1
+                    seed = None if args.base_seed is None else args.base_seed + run_idx
+                    future = probe_executor.submit(
+                        _probe_once,
+                        args.scenario,
+                        args.payoff_table,
+                        run_idx,
+                        seed,
+                        solver_params,
+                    )
+                    pending.add(future)
+                    future_meta[future] = ("probe", run_idx, seed, None, None)
 
-            completed = 0
-            progress_column = 0
-            while pending:
-                done, pending = wait(pending, return_when=FIRST_COMPLETED)
-                for future in done:
-                    kind, run_idx, seed, basin_label, probe_seconds = future_meta.pop(future)
-                    if kind == "probe":
-                        probe_result = future.result()
-                        basin_signature = probe_result.get("basin_signature")
-                        basin_label = json.dumps(basin_signature, sort_keys=True)
-                        seed = probe_result.get("seed")
-                        probe_seconds = probe_result.get("probe_seconds")
-                        if basin_label in seen_basins:
-                            row = {
-                                "run": run_idx,
-                                "seed": seed,
-                                "verification_success": False,
-                                "stopping_reason": "skipped_known_basin",
-                                "runtime_seconds": probe_seconds,
-                                "verification_message": (
-                                    f"Skipped known basin first seen at run {seen_basins[basin_label]}."
-                                ),
-                                "verification_detail": None,
-                                "active_set_detail": None,
-                                "basin_signature": basin_signature,
-                            }
+                for _ in range(min(probe_workers, args.runs)):
+                    submit_next_probe()
+
+                completed = 0
+                progress_column = 0
+                while pending:
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        kind, run_idx, seed, basin_label, probe_seconds = future_meta.pop(future)
+                        if kind == "probe":
+                            probe_result = future.result()
+                            basin_signature = probe_result.get("basin_signature")
+                            basin_label = json.dumps(basin_signature, sort_keys=True)
+                            seed = probe_result.get("seed")
+                            probe_seconds = probe_result.get("probe_seconds")
+                            if basin_label in seen_basins:
+                                row = {
+                                    "run": run_idx,
+                                    "seed": seed,
+                                    "verification_success": False,
+                                    "stopping_reason": "skipped_known_basin",
+                                    "runtime_seconds": probe_seconds,
+                                    "probe_seconds": probe_seconds,
+                                    "solve_seconds": None,
+                                    "worker_wall_seconds": probe_seconds,
+                                    "verification_message": (
+                                        f"Skipped known basin first seen at run {seen_basins[basin_label]}."
+                                    ),
+                                    "verification_detail": None,
+                                    "active_set_detail": None,
+                                    "basin_signature": basin_signature,
+                                }
+                                results.append(row)
+                                completed += 1
+                                if args.compact_progress:
+                                    progress_column = _print_progress_char(
+                                        row,
+                                        completed,
+                                        args.runs,
+                                        progress_column,
+                                    )
+                                elif completed % max(1, min(10, args.runs // 10 or 1)) == 0 or completed == args.runs:
+                                    print(f"completed: {completed}/{args.runs}")
+                            else:
+                                seen_basins[basin_label] = run_idx
+                                solve_future = solve_executor.submit(
+                                    _run_once_subprocess,
+                                    args.scenario,
+                                    args.payoff_table,
+                                    args.solver_approach,
+                                    solver_params,
+                                    run_idx,
+                                    seed,
+                                    args.timeout,
+                                )
+                                pending.add(solve_future)
+                                future_meta[solve_future] = ("solve", run_idx, seed, basin_label, probe_seconds)
+                            submit_next_probe()
+                        else:
+                            row = future.result()
+                            if row.get("basin_signature") is None and basin_label is not None:
+                                row["basin_signature"] = json.loads(basin_label)
+                            if probe_seconds is not None:
+                                row["probe_seconds"] = probe_seconds
+                                if row.get("runtime_seconds") is not None:
+                                    row["runtime_seconds"] = row["runtime_seconds"] + probe_seconds
+                                if row.get("worker_wall_seconds") is not None:
+                                    row["worker_wall_seconds"] = row["worker_wall_seconds"] + probe_seconds
                             results.append(row)
                             completed += 1
                             if args.compact_progress:
-                                print(_progress_char(row), end="", flush=True)
-                                progress_column += 1
-                                if progress_column % 100 == 0:
-                                    print()
+                                progress_column = _print_progress_char(
+                                    row,
+                                    completed,
+                                    args.runs,
+                                    progress_column,
+                                )
                             elif completed % max(1, min(10, args.runs // 10 or 1)) == 0 or completed == args.runs:
                                 print(f"completed: {completed}/{args.runs}")
-                        else:
-                            seen_basins[basin_label] = run_idx
-                            solve_future = executor.submit(
-                                _run_once_subprocess,
-                                args.scenario,
-                                args.payoff_table,
-                                args.solver_approach,
-                                solver_params,
-                                run_idx,
-                                seed,
-                                args.timeout,
-                            )
-                            pending.add(solve_future)
-                            future_meta[solve_future] = ("solve", run_idx, seed, basin_label, probe_seconds)
-                    else:
-                        row = future.result()
-                        if row.get("basin_signature") is None and basin_label is not None:
-                            row["basin_signature"] = json.loads(basin_label)
-                        if row.get("runtime_seconds") is not None and probe_seconds is not None:
-                            row["runtime_seconds"] = row["runtime_seconds"] + probe_seconds
-                        results.append(row)
-                        completed += 1
-                        if args.compact_progress:
-                            print(_progress_char(row), end="", flush=True)
-                            progress_column += 1
-                            if progress_column % 100 == 0:
-                                print()
-                        elif completed % max(1, min(10, args.runs // 10 or 1)) == 0 or completed == args.runs:
-                            print(f"completed: {completed}/{args.runs}")
-            if args.compact_progress and progress_column % 100 != 0:
-                print()
-    else:
-        futures = []
-        with ThreadPoolExecutor(max_workers=args.jobs) as executor:
-            for run_idx in range(args.runs):
-                seed = None if args.base_seed is None else args.base_seed + run_idx
-                futures.append(
-                    executor.submit(
-                        _run_once_subprocess,
-                        args.scenario,
-                        args.payoff_table,
-                        args.solver_approach,
-                        solver_params,
-                        run_idx,
-                        seed,
-                        args.timeout,
+                            if args.stop_on_success and row.get("verification_success"):
+                                stop_submitting_probes = True
+                                for pending_future in list(pending):
+                                    pending_future.cancel()
+                                pending.clear()
+                                future_meta.clear()
+                                break
+                if args.compact_progress and progress_column % 100 != 0:
+                    print()
+            finally:
+                probe_executor.shutdown(wait=False, cancel_futures=True)
+                solve_executor.shutdown(wait=False, cancel_futures=True)
+        else:
+            executor = ThreadPoolExecutor(max_workers=args.jobs)
+            try:
+                futures = []
+                for run_idx in range(args.runs):
+                    seed = None if args.base_seed is None else args.base_seed + run_idx
+                    futures.append(
+                        executor.submit(
+                            _run_once_subprocess,
+                            args.scenario,
+                            args.payoff_table,
+                            args.solver_approach,
+                            solver_params,
+                            run_idx,
+                            seed,
+                            args.timeout,
+                        )
                     )
-                )
 
-            completed = 0
-            progress_column = 0
-            for future in as_completed(futures):
-                row = future.result()
-                results.append(row)
-                completed += 1
-                if args.compact_progress:
-                    print(_progress_char(row), end="", flush=True)
-                    progress_column += 1
-                    if progress_column % 100 == 0:
-                        print()
-                elif completed % max(1, min(10, args.runs // 10 or 1)) == 0 or completed == args.runs:
-                    print(f"completed: {completed}/{args.runs}")
-            if args.compact_progress and progress_column % 100 != 0:
-                print()
+                completed = 0
+                progress_column = 0
+                for future in as_completed(futures):
+                    row = future.result()
+                    results.append(row)
+                    completed += 1
+                    if args.compact_progress:
+                        progress_column = _print_progress_char(
+                            row,
+                            completed,
+                            args.runs,
+                            progress_column,
+                        )
+                    elif completed % max(1, min(10, args.runs // 10 or 1)) == 0 or completed == args.runs:
+                        print(f"completed: {completed}/{args.runs}")
+                if args.compact_progress and progress_column % 100 != 0:
+                    print()
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
+    except KeyboardInterrupt:
+        interrupted = True
+        print("\nInterrupted. Cancelling outstanding work.")
 
     results.sort(key=lambda row: row["run"])
     total_wall_seconds = time.perf_counter() - batch_t0
     _summarize(results, total_wall_seconds=total_wall_seconds)
+    if interrupted:
+        raise SystemExit(130)
 
 
 if __name__ == "__main__":

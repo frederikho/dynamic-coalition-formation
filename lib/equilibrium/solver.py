@@ -127,6 +127,7 @@ class EquilibriumSolver:
                  unanimity_required: bool,
                  verbose: bool = True,
                  random_seed: Optional[int] = None,
+                 initialization_mode: str = "uniform",
                  logger=None):
         """
         Args:
@@ -139,6 +140,7 @@ class EquilibriumSolver:
             unanimity_required: Whether unanimous approval is required
             verbose: Whether to print progress
             random_seed: Random seed for initialization (if None, generates one)
+            initialization_mode: Strategy initialization mode
             logger: Logger instance (if None, uses print statements)
         """
         self.players = players
@@ -155,6 +157,7 @@ class EquilibriumSolver:
         if random_seed is None:
             random_seed = np.random.randint(0, 2**31)
         self.random_seed = random_seed
+        self.initialization_mode = initialization_mode
 
         # Initialize strategy tables
         self.p_proposals = {}  # Proposal probabilities
@@ -177,32 +180,95 @@ class EquilibriumSolver:
             print(message)
 
     def _initialize_strategies(self):
-        """Initialize proposal and acceptance probabilities randomly with uniform distribution."""
+        """Initialize proposal and acceptance probabilities."""
         # Set random seed for reproducibility
         rng = np.random.RandomState(self.random_seed)
 
-        # Initialize proposal probabilities: random values that sum to 1 for each (proposer, current_state)
-        for proposer in self.players:
-            for current_state in self.states:
-                # Generate random values and normalize to sum to 1
-                random_values = rng.uniform(0, 1, len(self.states))
-                normalized = random_values / random_values.sum()
+        if self.initialization_mode == "uniform":
+            # Initialize proposal probabilities: random values that sum to 1 for each (proposer, current_state)
+            for proposer in self.players:
+                for current_state in self.states:
+                    random_values = rng.uniform(0, 1, len(self.states))
+                    normalized = random_values / random_values.sum()
 
-                for idx, next_state in enumerate(self.states):
-                    key = (proposer, current_state, next_state)
-                    self.p_proposals[key] = normalized[idx]
+                    for idx, next_state in enumerate(self.states):
+                        key = (proposer, current_state, next_state)
+                        self.p_proposals[key] = normalized[idx]
 
-        # Initialize acceptance probabilities: random uniform [0,1] for all committee members
-        for proposer in self.players:
-            for current_state in self.states:
-                for next_state in self.states:
-                    committee = get_approval_committee(
-                        self.effectivity, self.players,
-                        proposer, current_state, next_state
-                    )
-                    for approver in committee:
-                        key = (proposer, current_state, next_state, approver)
-                        self.r_acceptances[key] = rng.uniform(0, 1)
+            # Initialize acceptance probabilities: random uniform [0,1] for all committee members
+            for proposer in self.players:
+                for current_state in self.states:
+                    for next_state in self.states:
+                        committee = get_approval_committee(
+                            self.effectivity, self.players,
+                            proposer, current_state, next_state
+                        )
+                        for approver in committee:
+                            key = (proposer, current_state, next_state, approver)
+                            self.r_acceptances[key] = rng.uniform(0, 1)
+            return
+
+        if self.initialization_mode == "one_hot":
+            # Proposal rows start as one-hot distributions.
+            for proposer in self.players:
+                for current_state in self.states:
+                    chosen_idx = int(rng.randint(len(self.states)))
+                    for idx, next_state in enumerate(self.states):
+                        key = (proposer, current_state, next_state)
+                        self.p_proposals[key] = 1.0 if idx == chosen_idx else 0.0
+
+            # Acceptance keys are binary 0/1 draws.
+            for proposer in self.players:
+                for current_state in self.states:
+                    for next_state in self.states:
+                        committee = get_approval_committee(
+                            self.effectivity, self.players,
+                            proposer, current_state, next_state
+                        )
+                        for approver in committee:
+                            key = (proposer, current_state, next_state, approver)
+                            self.r_acceptances[key] = float(rng.randint(2))
+            return
+
+        if self.initialization_mode == "payoff_structured":
+            # Proposal rows start on a static-payoff argmax for the proposer.
+            # If the current state is tied for best, prefer staying put.
+            state_order = {state: idx for idx, state in enumerate(self.states)}
+            for proposer in self.players:
+                payoff_series = self.payoffs[proposer]
+                for current_state in self.states:
+                    current_payoff = float(payoff_series.loc[current_state])
+                    best_payoff = float(payoff_series.max())
+                    tied_best_states = [
+                        state for state in self.states
+                        if np.isclose(float(payoff_series.loc[state]), best_payoff, rtol=0.0, atol=1e-12)
+                    ]
+                    if current_state in tied_best_states:
+                        chosen_state = current_state
+                    else:
+                        chosen_state = min(tied_best_states, key=lambda state: state_order[state])
+
+                    for next_state in self.states:
+                        key = (proposer, current_state, next_state)
+                        self.p_proposals[key] = 1.0 if next_state == chosen_state else 0.0
+
+                    # Binary acceptance based on static payoff improvement for each committee member.
+                    for next_state in self.states:
+                        committee = get_approval_committee(
+                            self.effectivity, self.players,
+                            proposer, current_state, next_state
+                        )
+                        for approver in committee:
+                            key = (proposer, current_state, next_state, approver)
+                            current_value = float(self.payoffs.loc[current_state, approver])
+                            next_value = float(self.payoffs.loc[next_state, approver])
+                            self.r_acceptances[key] = 1.0 if next_value >= current_value else 0.0
+            return
+
+        raise ValueError(
+            f"Unknown initialization_mode={self.initialization_mode!r}. "
+            "Expected one of: 'uniform', 'one_hot', 'payoff_structured'."
+        )
 
     def _create_strategy_dataframe(self) -> pd.DataFrame:
         """Create a strategy DataFrame from current proposal and acceptance probabilities."""

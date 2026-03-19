@@ -300,6 +300,7 @@ def _get_solver_params(config, user_params=None):
         'active_set_max_candidates_per_round': 256,
         'support_enumeration_max_candidates': 512,
         'support_enumeration_acceptance_fixpoint_iter': 20,
+        'initialization_mode': 'uniform',
     }
 
     if len(config['players']) == 3:
@@ -409,7 +410,8 @@ def _print_solver_params(params, logger):
                   'active_set_seed_rows',
                   'active_set_freeze_seeded_proposals',
                   'support_enumeration_max_candidates',
-                  'support_enumeration_acceptance_fixpoint_iter']
+                  'support_enumeration_acceptance_fixpoint_iter',
+                  'initialization_mode']
 
     logger.info("Solver parameters:")
     for key in param_order:
@@ -798,6 +800,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         unanimity_required=setup['unanimity_required'],
         verbose=verbose,
         random_seed=random_seed,
+        initialization_mode=solver_params.get("initialization_mode", "uniform"),
         logger=logger
     )
 
@@ -1369,6 +1372,18 @@ Available scenarios (use --list-scenarios to see all):
             "'active_set' for the stricter cycle-guided active-set search."
         )
     )
+    parser.add_argument(
+        '--initialization-mode',
+        type=str,
+        choices=['uniform', 'one_hot', 'payoff_structured'],
+        default=None,
+        help=(
+            "Initialization mode for the starting strategy profile: "
+            "'uniform' for dense random proposals and continuous approvals, "
+            "'one_hot' for one-hot proposal rows and binary approvals, "
+            "'payoff_structured' for static-payoff argmax proposals and sign-based binary approvals."
+        )
+    )
 
     args = parser.parse_args()
 
@@ -1465,6 +1480,8 @@ Available scenarios (use --list-scenarios to see all):
         solver_params['max_cycles_at_tau_min'] = args.max_cycles_at_tau_min
     if args.cycle_break_tau_threshold is not None:
         solver_params['cycle_break_tau_threshold'] = args.cycle_break_tau_threshold
+    if args.initialization_mode is not None:
+        solver_params['initialization_mode'] = args.initialization_mode
 
     results_summary = []
 
