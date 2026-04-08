@@ -125,6 +125,7 @@ class EquilibriumSolver:
                  payoffs: pd.DataFrame,
                  discounting: float,
                  unanimity_required: bool,
+                 forbidden_proposals: frozenset = frozenset(),
                  verbose: bool = True,
                  random_seed: Optional[int] = None,
                  initialization_mode: str = "uniform",
@@ -150,6 +151,7 @@ class EquilibriumSolver:
         self.payoffs = payoffs
         self.discounting = discounting
         self.unanimity_required = unanimity_required
+        self.forbidden_proposals = forbidden_proposals
         self.verbose = verbose
         self.logger = logger
 
@@ -163,6 +165,7 @@ class EquilibriumSolver:
         self.p_proposals = {}  # Proposal probabilities
         self.r_acceptances = {}  # Acceptance probabilities
         self._initialize_strategies()
+        self._enforce_forbidden_proposals()
 
         # Create TransitionProbabilities object once for fast updates
         # (will be initialized with current strategy dicts in first use)
@@ -269,6 +272,31 @@ class EquilibriumSolver:
             f"Unknown initialization_mode={self.initialization_mode!r}. "
             "Expected one of: 'uniform', 'one_hot', 'payoff_structured'."
         )
+
+    def _enforce_forbidden_proposals(self):
+        """Zero out forbidden proposal probabilities and renormalize each row."""
+        if not self.forbidden_proposals:
+            return
+        for proposer in self.players:
+            for current_state in self.states:
+                # Zero forbidden entries
+                for next_state in self.states:
+                    if (proposer, current_state, next_state) in self.forbidden_proposals:
+                        self.p_proposals[(proposer, current_state, next_state)] = 0.0
+                # Renormalize
+                total = sum(
+                    self.p_proposals[(proposer, current_state, ns)]
+                    for ns in self.states
+                )
+                if total > 0:
+                    for next_state in self.states:
+                        key = (proposer, current_state, next_state)
+                        self.p_proposals[key] /= total
+                else:
+                    # All proposals were forbidden — fall back to status quo
+                    for next_state in self.states:
+                        key = (proposer, current_state, next_state)
+                        self.p_proposals[key] = 1.0 if next_state == current_state else 0.0
 
     def _create_strategy_dataframe(self) -> pd.DataFrame:
         """Create a strategy DataFrame from current proposal and acceptance probabilities."""
@@ -500,6 +528,11 @@ class EquilibriumSolver:
 
                     # Expected value: p_approved * V_next + p_rejected * V_current
                     expected_values[i] = p_approved * V_next + p_rejected * V_current
+
+                # Mask forbidden proposals before softmax
+                for i, next_state in enumerate(self.states):
+                    if (proposer, current_state, next_state) in self.forbidden_proposals:
+                        expected_values[i] = -np.inf
 
                 # Softmax over expected values
                 probs = softmax(expected_values, tau_p)
@@ -742,9 +775,11 @@ class EquilibriumSolver:
         # Project proposals: only propose states that maximize expected value
         for proposer in self.players:
             for current_state in self.states:
-                # Compute expected values
+                # Compute expected values, skipping forbidden proposals
                 expected_values = {}
                 for next_state in self.states:
+                    if (proposer, current_state, next_state) in self.forbidden_proposals:
+                        continue  # excluded from consideration
                     p_approved = P_approvals[(proposer, current_state, next_state)]
                     p_rejected = 1.0 - p_approved
 
@@ -759,7 +794,7 @@ class EquilibriumSolver:
                 max_value = max(expected_values.values())
                 argmax_states = [
                     state for state, val in expected_values.items()
-                    if np.isclose(val, max_value, atol=1e-9)
+                    if np.isclose(val, max_value, rtol=0.0, atol=1e-9)
                 ]
 
                 # Zero out non-argmax states and renormalize the existing weights

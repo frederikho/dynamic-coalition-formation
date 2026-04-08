@@ -21,6 +21,7 @@ from lib.coalition import Coalition
 from lib.state import State
 from lib.equilibrium.solver import EquilibriumSolver
 from lib.equilibrium.active_set_n3 import solve_with_active_set_n3
+from lib.equilibrium.ordinal_ranking import solve_with_ordinal_ranking_n3
 from lib.equilibrium.support_enumeration_n3 import solve_with_support_enumeration_n3
 from lib.equilibrium.scenarios import get_scenario, list_scenarios
 from lib.equilibrium.excel_writer import (
@@ -133,6 +134,47 @@ def _load_payoff_table(path: Path, states: list, players: list) -> tuple:
     return payoffs, geo_levels
 
 
+def _read_payoff_table_index(path: Path) -> list[str]:
+    """
+    Read the row index from a payoff table without interpreting it as framework states.
+
+    Path resolution matches _load_payoff_table.
+    """
+    _default_dir = Path(__file__).parent.parent.parent / "payoff_tables"
+    if not path.exists():
+        fallback = _default_dir / path.name
+        if fallback.exists():
+            path = fallback
+        else:
+            searched = [str(path.resolve()), str(fallback.resolve())]
+            raise FileNotFoundError(
+                f"Payoff table '{path.name}' not found.\n"
+                f"Searched:\n" + "\n".join(f"  {p}" for p in searched)
+            )
+    df = pd.read_excel(str(path), sheet_name="Payoffs", header=1, index_col=0)
+    return [str(idx) for idx in df.index.tolist()]
+
+
+def _synthetic_coalition_map(state_name: str, players: list) -> list | None:
+    """
+    Build a coalition map for a non-canonical state name such as '(CHN)' in a
+    2-player game where the standard Bell-number enumeration does not produce it.
+
+    Players named inside the parentheses form one coalition; remaining players
+    are singletons.  Returns None if no players can be parsed (e.g. '( )').
+
+    This is used when a payoff table defines a custom state space (e.g. a
+    reduced 3-state / 2-player model).  Because payoffs and geo levels are read
+    directly from the table, the synthetic map only serves to construct the
+    State object and does not affect computed payoffs.
+    """
+    coalition = sorted(list_members(state_name, players))
+    if not coalition:
+        return None
+    singletons = [[p] for p in sorted(players) if p not in coalition]
+    return [coalition] + singletons
+
+
 def setup_experiment(config):
     """
     Setup experiment configuration.
@@ -161,9 +203,39 @@ def setup_experiment(config):
     # Generate coalition structures dynamically based on number of players
     players = config["players"]
 
-    # Generate state names if not provided
+    allow_non_canonical = config.get("allow_non_canonical_states", False)
+
+    # Generate state names if not provided. When a payoff table supplies coalition
+    # rows that form a subset of the scenario's canonical state set, use that
+    # subset directly. This also supports reduced tables that still contain extra
+    # helper rows such as singleton states.
     if "state_names" not in config or config["state_names"] is None:
-        state_names = generate_coalition_structures(players)
+        canonical_state_names = generate_coalition_structures(players)
+        payoff_table_path = config.get("payoff_table", None)
+        if payoff_table_path is not None:
+            payoff_rows = _read_payoff_table_index(Path(payoff_table_path))
+            canonical_row_set = set(canonical_state_names)
+            payoff_state_subset = [
+                state_name for state_name in canonical_state_names if state_name in set(payoff_rows)
+            ]
+            if allow_non_canonical:
+                # Use all table rows that are either canonical or parseable as
+                # custom coalition structures, preserving table order.
+                non_canonical = [
+                    r for r in payoff_rows
+                    if r not in canonical_row_set
+                    and _synthetic_coalition_map(r, players) is not None
+                ]
+                active = set(payoff_state_subset) | set(non_canonical)
+                state_names = [r for r in payoff_rows if r in active]
+                if not state_names:
+                    state_names = canonical_state_names
+            elif payoff_state_subset:
+                state_names = payoff_state_subset
+            else:
+                state_names = canonical_state_names
+        else:
+            state_names = canonical_state_names
         config["state_names"] = state_names
     else:
         state_names = config["state_names"]
@@ -175,7 +247,15 @@ def setup_experiment(config):
     states = []
     for state_name in state_names:
         if state_name not in all_coalition_maps:
-            raise ValueError(f"Unknown state: {state_name}")
+            if not allow_non_canonical:
+                raise ValueError(f"Unknown state: {state_name}")
+            # Non-canonical state (e.g. '(CHN)' in a 2-player reduced model).
+            # Build a synthetic coalition map so a State object can be created;
+            # actual payoffs and geo levels will be overridden from the table.
+            synthetic = _synthetic_coalition_map(state_name, players)
+            if synthetic is None:
+                raise ValueError(f"Unknown state: {state_name}")
+            all_coalition_maps[state_name] = synthetic
 
         # Get the coalition map for this state
         coalition_player_lists = all_coalition_maps[state_name]
@@ -206,6 +286,7 @@ def setup_experiment(config):
     deploying_coalitions = get_deploying_coalitions(states=states)
 
     # Derive effectivity from template or generate
+    forbidden_proposals: frozenset = frozenset()
     template_file = config.get("template_file", None)
     if template_file and Path(template_file).exists():
         template_df = pd.read_excel(template_file, header=[0, 1], index_col=[0, 1, 2])
@@ -215,14 +296,17 @@ def setup_experiment(config):
             states=state_names
         )
     else:
-        # Generate effectivity based on Heyen & Lehtomaa (2021) rules
-        effectivity = heyen_lehtomaa_2021(players, state_names)
+        effectivity_rule = config.get("effectivity_rule", "heyen_lehtomaa_2021")
+        from lib.effectivity import get_effectivity, get_forbidden_proposals
+        effectivity = get_effectivity(effectivity_rule, players, state_names)
+        forbidden_proposals = get_forbidden_proposals(effectivity_rule, players, state_names)
 
     return {
         'players': config["players"],
         'states': states,
         'state_names': state_names,
         'effectivity': effectivity,
+        'forbidden_proposals': forbidden_proposals,
         'protocol': config["protocol"],
         'payoffs': payoffs,
         'geoengineering': geoengineering,
@@ -300,6 +384,14 @@ def _get_solver_params(config, user_params=None):
         'active_set_max_candidates_per_round': 256,
         'support_enumeration_max_candidates': 512,
         'support_enumeration_acceptance_fixpoint_iter': 20,
+        'ordinal_ranking_max_combinations': None,
+        'ordinal_ranking_shuffle': False,
+        'ordinal_ranking_random_seed': 0,
+        'ordinal_ranking_order': 'payoff',
+        'ordinal_ranking_progress_every': 100,
+        'ordinal_ranking_workers': 15,
+        'ordinal_ranking_batch_size': 20000,
+        'ordinal_ranking_weak_orders': False,
         'initialization_mode': 'uniform',
     }
 
@@ -411,6 +503,14 @@ def _print_solver_params(params, logger):
                   'active_set_freeze_seeded_proposals',
                   'support_enumeration_max_candidates',
                   'support_enumeration_acceptance_fixpoint_iter',
+                  'ordinal_ranking_max_combinations',
+                  'ordinal_ranking_shuffle',
+                  'ordinal_ranking_random_seed',
+                  'ordinal_ranking_order',
+                  'ordinal_ranking_progress_every',
+                  'ordinal_ranking_workers',
+                  'ordinal_ranking_batch_size',
+                  'ordinal_ranking_weak_orders',
                   'initialization_mode']
 
     logger.info("Solver parameters:")
@@ -499,6 +599,38 @@ def _run_support_enumeration_solver(solver, params, logger=None):
             solver,
             max_cycle_candidates=max_candidates,
             acceptance_fixpoint_iter=acceptance_fixpoint_iter,
+        )
+    except KeyboardInterrupt:
+        if logger:
+            logger.warning("Solver stopped. No output file saved.")
+        import sys
+        sys.exit(0)
+
+
+def _run_ordinal_ranking_solver(solver, params, logger=None):
+    """Run the exhaustive ordinal-ranking search for small n=3 cases."""
+    try:
+        max_combinations = params.get("ordinal_ranking_max_combinations")
+        if max_combinations is not None:
+            max_combinations = int(max_combinations)
+        shuffle = bool(params.get("ordinal_ranking_shuffle", False))
+        random_seed = int(params.get("ordinal_ranking_random_seed", 0))
+        ranking_order = str(params.get("ordinal_ranking_order", "lexicographic"))
+        progress_every = int(params.get("ordinal_ranking_progress_every", 0))
+        workers = int(params.get("ordinal_ranking_workers", 8))
+        batch_size = int(params.get("ordinal_ranking_batch_size", 20000))
+        weak_orders = bool(params.get("ordinal_ranking_weak_orders", False))
+        return solve_with_ordinal_ranking_n3(
+            solver,
+            max_combinations=max_combinations,
+            shuffle=shuffle,
+            random_seed=random_seed,
+            ranking_order=ranking_order,
+            progress_every=progress_every,
+            workers=workers,
+            batch_size=batch_size,
+            weak_orders=weak_orders,
+            logger=logger,
         )
     except KeyboardInterrupt:
         if logger:
@@ -626,6 +758,13 @@ def _build_metadata(config, setup, solver_params, solver_result,
                   'tau_margin', 'max_cycles_at_tau_min', 'cycle_break_tau_threshold',
                   'project_to_exact', 'update_k_players', 'link_player_updates',
                   'update_k_acceptances', 'inner_cycle_check_interval']
+    param_order.extend([
+        'ordinal_ranking_max_combinations',
+        'ordinal_ranking_shuffle',
+        'ordinal_ranking_random_seed',
+        'ordinal_ranking_order',
+        'ordinal_ranking_progress_every',
+    ])
     for key in param_order:
         if key in solver_params:
             metadata[f'solver_{key}'] = solver_params[key]
@@ -716,8 +855,8 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         diagnostics: If True, attach machine-readable run diagnostics
         approval_margin_threshold: Threshold used in diagnostics for
                                    classifying small approval margins
-        solver_approach: One of 'annealing', 'support_enumeration', or
-                         'active_set'
+        solver_approach: One of 'annealing', 'support_enumeration',
+                         'active_set', or 'ordinal_ranking'
 
     Returns:
         Dictionary with equilibrium results
@@ -798,6 +937,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         payoffs=setup['payoffs'],
         discounting=setup['discounting'],
         unanimity_required=setup['unanimity_required'],
+        forbidden_proposals=setup.get('forbidden_proposals', frozenset()),
         verbose=verbose,
         random_seed=random_seed,
         initialization_mode=solver_params.get("initialization_mode", "uniform"),
@@ -808,7 +948,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         logger.info(f"Random seed for initialization: {solver.random_seed}")
         logger.info("")
 
-    if selected_solver_approach in {"support_enumeration", "active_set"} and len(setup["players"]) != 3:
+    if selected_solver_approach in {"support_enumeration", "active_set", "ordinal_ranking"} and len(setup["players"]) != 3:
         raise ValueError(
             f"solver_approach='{selected_solver_approach}' is currently only supported for 3-player cases."
         )
@@ -831,6 +971,15 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
             solver_params,
             logger=logger,
         )
+    elif selected_solver_approach == "ordinal_ranking":
+        if verbose:
+            logger.info("Using ordinal-ranking solver.")
+            logger.info("")
+        found_strategy_df, solver_result = _run_ordinal_ranking_solver(
+            solver,
+            solver_params,
+            logger=logger,
+        )
     elif selected_solver_approach == "annealing":
         found_strategy_df, solver_result = _run_solver(
             solver,
@@ -843,7 +992,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     else:
         raise ValueError(
             f"Unknown solver_approach='{selected_solver_approach}'. "
-            "Expected one of: annealing, support_enumeration, active_set."
+            "Expected one of: annealing, support_enumeration, active_set, ordinal_ranking."
         )
 
     # Fill NaN values for non-committee members
@@ -1037,7 +1186,7 @@ def _compute_hardness_metrics(result: Dict[str, Any], approval_margin_threshold:
                 proposal_min_best_gap = best_gap if proposal_min_best_gap is None else min(proposal_min_best_gap, best_gap)
 
             max_value = max(expected_values)
-            argmax_count = sum(np.isclose(val, max_value, atol=1e-9) for val in expected_values)
+            argmax_count = sum(np.isclose(val, max_value, rtol=0.0, atol=1e-9) for val in expected_values)
             if argmax_count > 1:
                 proposal_ambiguous_rows += 1
 
@@ -1312,6 +1461,27 @@ Available scenarios (use --list-scenarios to see all):
         )
     )
     parser.add_argument(
+        '--allow-non-canonical-states',
+        action='store_true',
+        help=(
+            'Allow non-canonical state names from the payoff table (e.g. "(CHN)" in a '
+            '2-player reduced model where "(CHN)" and "(USA)" replace the grand coalition). '
+            'Synthetic coalition maps are built from the state names. '
+            'Only use this when the payoff table defines a custom, reduced state space.'
+        )
+    )
+    parser.add_argument(
+        '--effectivity-rule',
+        type=str,
+        default=None,
+        help=(
+            'Effectivity rule to use when generating approval committees. '
+            'Available rules: heyen_lehtomaa_2021 (default), unanimous_consent, deployer_exit. '
+            'deployer_exit is designed for reduced deployer-state models: the named deployer '
+            'can exit unilaterally to ( ), all other transitions require unanimity.'
+        )
+    )
+    parser.add_argument(
         '--auto-ingest',
         action='store_true',
         help=(
@@ -1364,12 +1534,13 @@ Available scenarios (use --list-scenarios to see all):
     parser.add_argument(
         '--solver-approach',
         type=str,
-        choices=['annealing', 'support_enumeration', 'active_set'],
+        choices=['annealing', 'support_enumeration', 'active_set', 'ordinal_ranking'],
         default='annealing',
         help=(
             "Solver approach to use: 'annealing' for the legacy smoothed solver, "
             "'support_enumeration' for the cycle-guided support search, "
-            "'active_set' for the stricter cycle-guided active-set search."
+            "'active_set' for the stricter cycle-guided active-set search, "
+            "'ordinal_ranking' for exhaustive search over ordinal value orders."
         )
     )
     parser.add_argument(
@@ -1383,6 +1554,53 @@ Available scenarios (use --list-scenarios to see all):
             "'one_hot' for one-hot proposal rows and binary approvals, "
             "'payoff_structured' for static-payoff argmax proposals and sign-based binary approvals."
         )
+    )
+    parser.add_argument(
+        '--ordinal-ranking-max-combinations',
+        type=int,
+        default=None,
+        help='Optional cap on ranking triples tested by solver_approach=ordinal_ranking'
+    )
+    parser.add_argument(
+        '--ordinal-ranking-order',
+        type=str,
+        choices=['lexicographic', 'payoff'],
+        default=None,
+        help="Deterministic ranking enumeration order for solver_approach=ordinal_ranking (default: payoff)"
+    )
+    parser.add_argument(
+        '--ordinal-ranking-shuffle',
+        action='store_true',
+        help='Enumerate ordinal-ranking triples in random order'
+    )
+    parser.add_argument(
+        '--ordinal-ranking-random-seed',
+        type=int,
+        default=None,
+        help='Random seed used with --ordinal-ranking-shuffle'
+    )
+    parser.add_argument(
+        '--ordinal-ranking-progress-every',
+        type=int,
+        default=None,
+        help='Print ordinal-ranking progress every N combinations (default: 100; 0 disables progress bar)'
+    )
+    parser.add_argument(
+        '--ordinal-ranking-workers',
+        type=int,
+        default=None,
+        help='Process workers for solver_approach=ordinal_ranking (default: 8)'
+    )
+    parser.add_argument(
+        '--ordinal-ranking-batch-size',
+        type=int,
+        default=None,
+        help='Batch size for solver_approach=ordinal_ranking multiprocessing (default: 5000)'
+    )
+    parser.add_argument(
+        '--ordinal-ranking-weak-orders',
+        action='store_true',
+        help='Allow tied value orders (weak orders) in solver_approach=ordinal_ranking'
     )
 
     args = parser.parse_args()
@@ -1482,6 +1700,22 @@ Available scenarios (use --list-scenarios to see all):
         solver_params['cycle_break_tau_threshold'] = args.cycle_break_tau_threshold
     if args.initialization_mode is not None:
         solver_params['initialization_mode'] = args.initialization_mode
+    if args.ordinal_ranking_max_combinations is not None:
+        solver_params['ordinal_ranking_max_combinations'] = args.ordinal_ranking_max_combinations
+    if args.ordinal_ranking_order is not None:
+        solver_params['ordinal_ranking_order'] = args.ordinal_ranking_order
+    if args.ordinal_ranking_shuffle:
+        solver_params['ordinal_ranking_shuffle'] = True
+    if args.ordinal_ranking_random_seed is not None:
+        solver_params['ordinal_ranking_random_seed'] = args.ordinal_ranking_random_seed
+    if args.ordinal_ranking_progress_every is not None:
+        solver_params['ordinal_ranking_progress_every'] = args.ordinal_ranking_progress_every
+    if args.ordinal_ranking_workers is not None:
+        solver_params['ordinal_ranking_workers'] = args.ordinal_ranking_workers
+    if args.ordinal_ranking_batch_size is not None:
+        solver_params['ordinal_ranking_batch_size'] = args.ordinal_ranking_batch_size
+    if args.ordinal_ranking_weak_orders:
+        solver_params['ordinal_ranking_weak_orders'] = True
 
     results_summary = []
 
@@ -1495,6 +1729,14 @@ Available scenarios (use --list-scenarios to see all):
         # Inject payoff table path into config if provided
         if args.payoff_table is not None:
             config['payoff_table'] = args.payoff_table
+
+        # Inject non-canonical states flag if set
+        if args.allow_non_canonical_states:
+            config['allow_non_canonical_states'] = True
+
+        # Inject effectivity rule if specified
+        if args.effectivity_rule is not None:
+            config['effectivity_rule'] = args.effectivity_rule
 
         # When players are not hardcoded in the scenario, derive them from the filename
         if config.get('players') is None:

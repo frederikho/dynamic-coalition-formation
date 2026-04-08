@@ -131,6 +131,27 @@ SCENARIOS["power_threshold_n3"] = {
     "power_rule": "power_threshold",
 }
 
+SCENARIOS["power_threshold_d98_n3"] = {
+    **get_base_config_n3(),
+    "scenario_description": "3-player power threshold requiring majority support (>50%).",
+    "power_rule": "power_threshold",
+    "discounting": 0.98,
+}
+
+SCENARIOS["power_threshold_d96_n3"] = {
+    **get_base_config_n3(),
+    "scenario_description": "3-player power threshold requiring majority support (>50%).",
+    "power_rule": "power_threshold",
+    "discounting": 0.96,
+}
+
+SCENARIOS["power_threshold_d90_n3"] = {
+    **get_base_config_n3(),
+    "scenario_description": "3-player power threshold requiring majority support (>50%).",
+    "power_rule": "power_threshold",
+    "discounting": 0.90,
+}
+
 SCENARIOS["power_threshold_no_unanimity_n3"] = {
     **get_base_config_n3(),
     "scenario_description": "Power threshold without unanimity; W less vulnerable (0.75), T more vulnerable (1.25).",

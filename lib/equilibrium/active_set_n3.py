@@ -333,7 +333,7 @@ def _project_to_exact_equilibrium_fast(
             max_value = max(expected_values.values())
             argmax_states = [
                 state for state, value in expected_values.items()
-                if np.isclose(value, max_value, atol=1e-9)
+                if np.isclose(value, max_value, rtol=0.0, atol=1e-9)
             ]
             argmax_set = set(argmax_states)
             total_weight = sum(
@@ -621,7 +621,7 @@ def _refine_candidate(
 
             support_vals = {ns: expected_values[ns] for ns in support}
             max_support = max(support_vals.values())
-            winners = [ns for ns, val in support_vals.items() if np.isclose(val, max_support, atol=1e-9)]
+            winners = [ns for ns, val in support_vals.items() if np.isclose(val, max_support, rtol=0.0, atol=1e-9)]
             for next_state in solver.states:
                 key = (proposer, current_state, next_state)
                 if next_state in winners:

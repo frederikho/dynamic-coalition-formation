@@ -88,6 +88,84 @@ def heyen_lehtomaa_2021(players: list, states: list) -> dict:
     return effectivity
 
 
+def deployer_exit(players: list, states: list) -> dict:
+    """
+    Effectivity rule for reduced deployer-state models (e.g. a 2-player / 3-state
+    'battle of the sexes' setup with states '( )', '(CHN)', '(USA)').
+
+    Rules:
+    - Status quo (x → x): only proposer approves.
+    - (X) → ( ): only player X must approve.  If X is the proposer the transition
+                  is self-approved (unilateral exit).  If another player proposes,
+                  X must consent.
+    - All other non-status-quo transitions: every non-proposer must approve
+                  (unanimity among all players except the proposer).
+    """
+    from lib.utils import list_members
+
+    effectivity = {}
+    for proposer in players:
+        for current_state in states:
+            for next_state in states:
+                for responder in players:
+                    key = (proposer, current_state, next_state, responder)
+
+                    if current_state == next_state:
+                        effectivity[key] = 1 if responder == proposer else 0
+                        continue
+
+                    # (X) → ( ): only the named deployer X must approve
+                    current_deployers = list_members(current_state, players)
+                    if next_state == "( )" and len(current_deployers) == 1:
+                        deployer = current_deployers[0]
+                        effectivity[key] = 1 if responder == deployer else 0
+                    else:
+                        # All other transitions: unanimity (every non-proposer approves)
+                        effectivity[key] = 0 if responder == proposer else 1
+
+    return effectivity
+
+
+def deployer_exit_forbidden_proposals(players: list, states: list) -> frozenset:
+    """
+    Return forbidden (proposer, current_state, next_state) triples for deployer_exit.
+
+    Non-deployers cannot propose exiting a deployer state to ( ).  That is, for
+    any state '(X)', only player X may propose the transition '(X) → ( )'.
+    """
+    from lib.utils import list_members
+    forbidden = set()
+    for current_state in states:
+        if current_state == "( )":
+            continue
+        deployers = list_members(current_state, players)
+        if len(deployers) != 1:
+            continue
+        deployer = deployers[0]
+        for proposer in players:
+            if proposer != deployer:
+                forbidden.add((proposer, current_state, "( )"))
+    return frozenset(forbidden)
+
+
+# Registry of forbidden-proposal functions, keyed by effectivity rule name.
+# Rules with no forbidden proposals are absent from this registry.
+FORBIDDEN_PROPOSALS_RULES = {
+    'deployer_exit': deployer_exit_forbidden_proposals,
+}
+
+
+def get_forbidden_proposals(rule_name: str, players: list, states: list) -> frozenset:
+    """Return forbidden (proposer, current_state, next_state) triples for a rule.
+
+    Returns an empty frozenset if the rule has no forbidden proposals.
+    """
+    fn = FORBIDDEN_PROPOSALS_RULES.get(rule_name)
+    if fn is None:
+        return frozenset()
+    return fn(players, states)
+
+
 def unanimous_consent(players: list, states: list) -> dict:
     """
     Alternative effectivity rule: All players must unanimously approve all transitions.
@@ -197,6 +275,7 @@ def check_effectivity(
 EFFECTIVITY_RULES = {
     'heyen_lehtomaa_2021': heyen_lehtomaa_2021,
     'unanimous_consent': unanimous_consent,
+    'deployer_exit': deployer_exit,
 }
 
 

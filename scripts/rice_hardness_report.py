@@ -143,6 +143,7 @@ def _run_single_case(
     approval_margin_threshold: float,
     verbose: bool,
     solver_approach: str,
+    solver_params: Dict[str, Any] | None,
 ) -> Dict[str, Any]:
     config = get_scenario(scenario_name)
     players = _parse_players_from_payoff_table(payoff_table)
@@ -153,7 +154,7 @@ def _run_single_case(
     result = find_equilibrium(
         config,
         output_file="auto",
-        solver_params=None,
+        solver_params=solver_params,
         verbose=verbose,
         description=None,
         load_from_checkpoint=False,
@@ -209,9 +210,40 @@ def main() -> None:
     parser.add_argument(
         "--solver-approach",
         type=str,
-        choices=["annealing", "support_enumeration", "active_set"],
+        choices=["annealing", "support_enumeration", "active_set", "ordinal_ranking"],
         default="annealing",
         help="Solver approach to use for every attempted payoff table (default: annealing)",
+    )
+    parser.add_argument(
+        "--ordinal-ranking-max-combinations",
+        type=int,
+        default=None,
+        help="Optional cap for solver_approach=ordinal_ranking",
+    )
+    parser.add_argument(
+        "--ordinal-ranking-order",
+        type=str,
+        choices=["lexicographic", "payoff"],
+        default=None,
+        help="Ranking order for solver_approach=ordinal_ranking",
+    )
+    parser.add_argument(
+        "--ordinal-ranking-workers",
+        type=int,
+        default=None,
+        help="Process workers for solver_approach=ordinal_ranking",
+    )
+    parser.add_argument(
+        "--ordinal-ranking-batch-size",
+        type=int,
+        default=None,
+        help="Batch size for solver_approach=ordinal_ranking",
+    )
+    parser.add_argument(
+        "--ordinal-ranking-progress-every",
+        type=int,
+        default=None,
+        help="Progress interval for solver_approach=ordinal_ranking",
     )
 
     args = parser.parse_args()
@@ -223,6 +255,20 @@ def main() -> None:
     invalid_files = [path for path in all_xlsx if path.name not in valid_set]
 
     results: List[Dict[str, Any]] = []
+    solver_params: Dict[str, Any] = {}
+    if args.ordinal_ranking_max_combinations is not None:
+        solver_params["ordinal_ranking_max_combinations"] = args.ordinal_ranking_max_combinations
+    if args.ordinal_ranking_order is not None:
+        solver_params["ordinal_ranking_order"] = args.ordinal_ranking_order
+    if args.ordinal_ranking_workers is not None:
+        solver_params["ordinal_ranking_workers"] = args.ordinal_ranking_workers
+    if args.ordinal_ranking_batch_size is not None:
+        solver_params["ordinal_ranking_batch_size"] = args.ordinal_ranking_batch_size
+    if args.ordinal_ranking_progress_every is not None:
+        solver_params["ordinal_ranking_progress_every"] = args.ordinal_ranking_progress_every
+    if not solver_params:
+        solver_params = None
+
     for payoff_table in valid_files:
         try:
             diagnostics = _run_single_case(
@@ -231,6 +277,7 @@ def main() -> None:
                 approval_margin_threshold=args.approval_margin_threshold,
                 verbose=not args.quiet,
                 solver_approach=args.solver_approach,
+                solver_params=solver_params,
             )
         except Exception as exc:
             diagnostics = _parse_filename_metadata(payoff_table)

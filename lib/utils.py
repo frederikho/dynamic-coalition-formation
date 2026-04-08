@@ -454,7 +454,7 @@ def verify_proposals_detailed(players: List[str], states: List[str],
             # long-run payoff.
             argmaxes = [key for key, val in expected_values.items()
                         if np.isclose(val, max(expected_values.values()),
-                        atol=1e-9)]
+                        rtol=0.0, atol=1e-9)]
 
             try:
                 # Any state with a positive proposal probability must be one

@@ -76,6 +76,11 @@ def _run_once(
     seed: int | None,
 ) -> dict[str, Any]:
     config = _build_config(scenario_name, payoff_table)
+    solver_params = dict(solver_params)
+    if solver_approach == "ordinal_ranking" and "ordinal_ranking_progress_every" not in solver_params:
+        solver_params["ordinal_ranking_progress_every"] = 0
+    if solver_approach == "ordinal_ranking" and "ordinal_ranking_workers" not in solver_params:
+        solver_params["ordinal_ranking_workers"] = 1
     result = find_equilibrium(
         config=config,
         output_file=None,
@@ -464,7 +469,7 @@ def main() -> None:
     parser.add_argument(
         "--solver-approach",
         default="active_set",
-        choices=["annealing", "support_enumeration", "active_set"],
+        choices=["annealing", "support_enumeration", "active_set", "ordinal_ranking"],
         help="Solver approach to use for every run",
     )
     parser.add_argument("--runs", type=int, default=100, help="Number of repeated runs")
