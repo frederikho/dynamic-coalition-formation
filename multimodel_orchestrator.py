@@ -472,7 +472,7 @@ def _build_gams_jobs(
     # 3. Coalition runs — all subsets of size 2 up to N (including grand coalition)
     for size in range(2, len(countries) + 1):
         for subset in combinations(countries, size):
-            coalition_code = "".join(subset)
+            coalition_code = "".join(sorted(subset))
             cmd = base + [
                 "--cooperation=coalitions",
                 "--sel_coalition=sai_farsighted",
@@ -615,6 +615,7 @@ def run_ingest(
     policy: str,
     impact: str,
     extra_metadata: Optional[dict[str, object]] = None,
+    average_payoffs: bool = False,
 ) -> None:
     """Ingest welfare and W_SAI from GDX files into a payoff table Excel file.
 
@@ -627,6 +628,7 @@ def run_ingest(
         policy:            Policy name used to filter matching GDX filenames.
         impact:            Impact function used to filter matching GDX filenames.
         extra_metadata:    Optional metadata key/value pairs for the Excel file.
+        average_payoffs:   If True, compute mean per period instead of sum.
     """
     from lib.ingest_payoffs import ingest
 
@@ -634,6 +636,8 @@ def run_ingest(
     _log(f"  Payoff table:    {payoff_table_path}")
     stem_prefix = f"results_ssp2_{policy}_{impact}"
     _log(f"  GDX filter:      stem starts with '{stem_prefix}'")
+    if average_payoffs:
+        _log("  Payoff mode:     average per period (undiscounted)")
 
     buf = io.StringIO()
     with redirect_stdout(buf):
@@ -646,6 +650,7 @@ def run_ingest(
             end_inclusive=end_inclusive,
             extra_metadata=extra_metadata,
             required_stem_prefix=stem_prefix,
+            average=average_payoffs,
         )
 
     # Surface the key lines from ingest output
@@ -919,6 +924,7 @@ def orchestrate(
     extra_gams_args: Optional[list[str]] = None,
     payoff_metadata: Optional[dict[str, object]] = None,
     payoff_range: Optional[tuple[Optional[int], int]] = None,
+    average_payoffs: bool = False,
 ) -> list[dict]:
     """Run the full multi-period orchestration.
 
@@ -978,6 +984,8 @@ def orchestrate(
         _log(f"  Extra GAMS args: {extra_gams_args}")
     if payoff_metadata:
         _log(f"  Payoff metadata extras: {payoff_metadata}")
+    if average_payoffs:
+        _log("  Payoff mode:  average per period (undiscounted)")
 
     if not rice_dir.exists():
         raise RuntimeError(f"RICE50x directory not found: {rice_dir}")
@@ -1054,6 +1062,7 @@ def orchestrate(
                 policy=policy,
                 impact=impact,
                 extra_metadata=payoff_metadata,
+                average_payoffs=average_payoffs,
             )
 
         # ── Step 3: Find equilibrium ─────────────────────────────────────────
@@ -1380,6 +1389,16 @@ def main() -> None:
             "or 'YYYY-YYYY' for a fixed range across all phases."
         ),
     )
+    parser.add_argument(
+        "--average-payoffs",
+        action="store_true",
+        default=False,
+        help=(
+            "Compute payoffs as the average (mean) over matched periods instead "
+            "of summing them. Useful when using a single period and wanting an "
+            "undiscounted per-period welfare measure."
+        ),
+    )
 
     args = parser.parse_args()
     _validate_periods(args.periods)
@@ -1421,6 +1440,7 @@ def main() -> None:
             extra_gams_args=extra_gams_args or None,
             payoff_metadata=payoff_metadata,
             payoff_range=args.payoff_range,
+            average_payoffs=args.average_payoffs,
         )
     except (RuntimeError, ValueError, FileNotFoundError) as exc:
         cmd_str = " ".join(sys.argv)

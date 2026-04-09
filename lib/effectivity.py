@@ -166,6 +166,41 @@ def get_forbidden_proposals(rule_name: str, players: list, states: list) -> froz
     return fn(players, states)
 
 
+def free_exit(players: list, states: list) -> dict:
+    """
+    Effectivity rule for a dynamic battle-of-the-sexes game with free unilateral exit.
+
+    There is one 'no-coordination' state N (identified as any state where
+    list_members returns an empty list, e.g. 'N' or '( )') and one or more
+    'coordination' states (e.g. '(CHN)', '(USA)').
+
+    Rules:
+    - Status quo (x → x): only proposer approves.
+    - Any state → N (exit to no-coordination): only the proposer must approve.
+      Either player can dissolve the current coordination unilaterally.
+    - All other transitions (N → coordination, or coordination → coordination):
+      every player except the proposer must approve (unanimity among non-proposers).
+      Entering or switching a coordination state requires the other side's consent.
+    """
+    effectivity = {}
+    for proposer in players:
+        for current_state in states:
+            for next_state in states:
+                for responder in players:
+                    key = (proposer, current_state, next_state, responder)
+                    if current_state == next_state:
+                        effectivity[key] = 1 if responder == proposer else 0
+                        continue
+                    next_members = list_members(next_state, players)
+                    if not next_members:
+                        # Transition to no-coordination state: proposer only
+                        effectivity[key] = 1 if responder == proposer else 0
+                    else:
+                        # Entering or switching coordination: unanimity (all non-proposers)
+                        effectivity[key] = 0 if responder == proposer else 1
+    return effectivity
+
+
 def unanimous_consent(players: list, states: list) -> dict:
     """
     Alternative effectivity rule: All players must unanimously approve all transitions.
@@ -276,6 +311,7 @@ EFFECTIVITY_RULES = {
     'heyen_lehtomaa_2021': heyen_lehtomaa_2021,
     'unanimous_consent': unanimous_consent,
     'deployer_exit': deployer_exit,
+    'free_exit': free_exit,
 }
 
 

@@ -85,13 +85,17 @@ def _load_payoff_table(
     state_names = [s.name for s in state_objects]
     payoffs = pd.DataFrame(index=state_names, columns=players, dtype=np.float64)
     for state in state_objects:
-        key = _deployer_key(state)
-        if key not in df.index:
-            raise ValueError(
-                f"Payoff table {path.name} has no row for deployer key '{key}' "
-                f"(needed by state '{state.name}').\n"
-                f"Available keys: {df.index.tolist()}"
-            )
+        # Prefer direct state name match; fall back to computed deployer key.
+        if state.name in df.index:
+            key = state.name
+        else:
+            key = _deployer_key(state)
+            if key not in df.index:
+                raise ValueError(
+                    f"Payoff table {path.name} has no row for deployer key '{key}' "
+                    f"(needed by state '{state.name}').\n"
+                    f"Available keys: {df.index.tolist()}"
+                )
         payoffs.loc[state.name] = df.loc[key, players].values
     return payoffs
 
@@ -370,7 +374,7 @@ def _parse_coalition_structure(state_name: str, all_countries: List[Country]) ->
     return coalitions
 
 
-def _run_verification(xlsx_path: Path, skip_effectivity_check: bool = False) -> Tuple[bool, str, Dict[str, Any]]:
+def _run_verification(xlsx_path: Path, skip_effectivity_check: bool = False, effectivity_rule: str = "heyen_lehtomaa_2021") -> Tuple[bool, str, Dict[str, Any]]:
     strategy_df_raw = pd.read_excel(xlsx_path, header=[0, 1], index_col=[0, 1, 2])
 
     config = _build_config(xlsx_path, strategy_df_raw)
@@ -417,10 +421,10 @@ def _run_verification(xlsx_path: Path, skip_effectivity_check: bool = False) -> 
     geoengineering = get_geoengineering_levels(states=state_objects)
 
     file_effectivity = derive_effectivity(df=strategy_df_raw, players=players, states=states)
-    effectivity = get_effectivity("heyen_lehtomaa_2021", players, states)
+    effectivity = get_effectivity(effectivity_rule, players, states)
 
     if not skip_effectivity_check:
-        effectivity_violations = check_effectivity(file_effectivity, players, states)
+        effectivity_violations = check_effectivity(file_effectivity, players, states, rule=effectivity_rule)
         if effectivity_violations:
             lines = "\n  ".join(effectivity_violations)
             raise ValueError(
@@ -522,6 +526,13 @@ def main() -> None:
         help="Default directory for profile files (used when profile is not an existing path).",
     )
     parser.add_argument(
+        "--effectivity-rule",
+        type=str,
+        default="heyen_lehtomaa_2021",
+        choices=["heyen_lehtomaa_2021", "unanimous_consent", "deployer_exit", "free_exit"],
+        help="Effectivity rule to validate against (default: heyen_lehtomaa_2021).",
+    )
+    parser.add_argument(
         "--enrich",
         type=str,
         nargs="?",
@@ -542,11 +553,11 @@ def main() -> None:
 
         effectivity_ok = True
         try:
-            success, message, details = _run_verification(profile_path)
+            success, message, details = _run_verification(profile_path, effectivity_rule=args.effectivity_rule)
         except ValueError as exc:
             effectivity_ok = False
             print(f"Warning: {exc}", file=sys.stderr)
-            success, message, details = _run_verification(profile_path, skip_effectivity_check=True)
+            success, message, details = _run_verification(profile_path, skip_effectivity_check=True, effectivity_rule=args.effectivity_rule)
             success = False
             message = "Effectivity rule violations (see above)."
 

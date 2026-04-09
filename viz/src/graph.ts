@@ -8,6 +8,14 @@ import { computeAbsorbingSets } from './absorbing';
 cytoscape.use(coseBilkent);
 cytoscape.use(cola);
 
+const PENTAGON_COORDS = [
+  { x: 0,    y: -180 },
+  { x: 171,  y: -55  },
+  { x: 106,  y:  145 },
+  { x: -106, y:  145 },
+  { x: -171, y: -55  },
+];
+
 // Standard player order for normalization (single-character player names only)
 const STANDARD_ORDER = ['H', 'W', 'T', 'C', 'F', 'A', 'B', 'D', 'E', 'G'];
 
@@ -50,14 +58,6 @@ function normalizeStateName(stateName: string): string {
 function getPentagonPositions(stateNames: string[]): Record<string, { x: number; y: number }> {
   if (stateNames.length !== 5) return {};
 
-  const COORDS = [
-    { x: 0,    y: -180 },   // 0: top         → '( )'
-    { x: 171,  y: -55  },   // 1: upper-right  → pair
-    { x: 106,  y:  145 },   // 2: lower-right  → pair
-    { x: -106, y:  145 },   // 3: lower-left   → grand coalition
-    { x: -171, y: -55  },   // 4: upper-left   → pair
-  ];
-
   const emptyState = stateNames.find(s => s === '( )');
   if (!emptyState) return {};
 
@@ -76,8 +76,26 @@ function getPentagonPositions(stateNames: string[]): Record<string, { x: number;
   //          grand coalition at lower-left (matches original paper layout)
   const ordered = [emptyState, pairs[0], pairs[1], grandCoalition, pairs[2]];
   const positionMap: Record<string, { x: number; y: number }> = {};
-  ordered.forEach((state, i) => { positionMap[state] = COORDS[i]; });
+  ordered.forEach((state, i) => { positionMap[state] = PENTAGON_COORDS[i]; });
   return positionMap;
+}
+
+// Preset positions for reduced 4-state case (3-country model)
+// Reuse the 5-state pentagon layout, omitting the grand coalition slot.
+function getReducedPentagonPositions(stateNames: string[]): Record<string, { x: number; y: number }> {
+  if (stateNames.length !== 4) return {};
+
+  const emptyState = stateNames.find(s => s === '( )');
+  if (!emptyState) return {};
+
+  const pairs = stateNames.filter(s => s !== '( )').sort();
+  if (pairs.length !== 3) return {};
+  return {
+    [emptyState]: PENTAGON_COORDS[0],
+    [pairs[0]]: PENTAGON_COORDS[1],
+    [pairs[1]]: PENTAGON_COORDS[2],
+    [pairs[2]]: PENTAGON_COORDS[4],
+  };
 }
 
 // Two-circle layout for n=4 case (15 states)
@@ -275,6 +293,7 @@ export class GraphRenderer {
     showSelfLoops?: boolean;
     showEdgeLabels?: boolean;
     showNodeLabels?: boolean;
+    showGeoLevel?: boolean;
   }) {
     // Save current positions before destroying
     if (this.cy) {
@@ -289,6 +308,7 @@ export class GraphRenderer {
     const showSelfLoops = options?.showSelfLoops !== false; // default true
     const showEdgeLabels = options?.showEdgeLabels !== false; // default true
     const showNodeLabels = options?.showNodeLabels !== false; // default true
+    const showGeoLevel = options?.showGeoLevel !== false; // default true
 
     // Filter edges by probability threshold
     let filteredEdges: typeof graphData.edges;
@@ -332,7 +352,9 @@ export class GraphRenderer {
 
     // Get preset positions for specific cases
     let presetPositions: Record<string, { x: number; y: number }> = {};
-    if (graphData.nodes.length === 5) {
+    if (graphData.nodes.length === 4) {
+      presetPositions = getReducedPentagonPositions(graphData.nodes.map(n => n.id));
+    } else if (graphData.nodes.length === 5) {
       presetPositions = getPentagonPositions(graphData.nodes.map(n => n.id));
     } else if (graphData.nodes.length === 15) {
       presetPositions = getTwoCirclePositions(graphData.nodes.map(n => n.id));
@@ -419,7 +441,7 @@ export class GraphRenderer {
         const geoLevel = node.meta?.geo_level || 0;
         const deployingCoalition = node.meta?.deploying_coalition || '';
         const normalizedLabel = normalizeStateName(node.label);
-        const label = `${normalizedLabel}\nG=${geoLevel.toFixed(2)}`;
+        const label = showGeoLevel ? `${normalizedLabel}\nG=${geoLevel.toFixed(2)}` : normalizedLabel;
 
         // Border should only appear when the state has exactly one coalition (the deployer)
         // Count coalitions in state name: "(CF)" has 1, "(CF)(TW)" has 2, "( )" has 0
@@ -689,9 +711,9 @@ export class GraphRenderer {
   ) {
     switch (layoutMode) {
       case 'default':
-        // Use preset positions for n=5/15 or when preset positions were computed,
+        // Use preset positions for n=4/5/15 or when preset positions were computed,
         // otherwise force-directed
-        if (usePresetPositions || graphData.nodes.length === 5 || graphData.nodes.length === 15) {
+        if (usePresetPositions || graphData.nodes.length === 4 || graphData.nodes.length === 5 || graphData.nodes.length === 15) {
           return { name: 'preset' };
         } else {
           return {

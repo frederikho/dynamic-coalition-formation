@@ -1,4 +1,4 @@
-"""Active-set equilibrium search for 3-player cases."""
+"""Active-set equilibrium search."""
 
 from __future__ import annotations
 
@@ -855,7 +855,7 @@ def solve_with_active_set_n3(
     seed_rows: List[Tuple[str, str]] | None = None,
     freeze_seeded_proposals: bool = False,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """Attempt a 3-player equilibrium solve using a cycle-guided active-set search."""
+    """Attempt an equilibrium solve using a cycle-guided active-set search."""
     if seed_rows:
         cycle_info = None
     else:

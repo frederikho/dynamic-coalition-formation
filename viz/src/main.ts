@@ -37,12 +37,13 @@ let highlightTimeoutId: number | null = null;
 let showSelfLoops = true;
 let showEdgeLabels = true;
 let showNodeLabels = true;
+let showGeoLevel = true;
 
 function getRenderOptions() {
   const filterMode = getFilterMode();
   const coloringMode = getNodeColoringMode();
   const layoutMode = getLayoutMode();
-  return { coloringMode, filterMode, layoutMode, showSelfLoops, showEdgeLabels, showNodeLabels };
+  return { coloringMode, filterMode, layoutMode, showSelfLoops, showEdgeLabels, showNodeLabels, showGeoLevel };
 }
 
 // Initialize graph renderer
@@ -1103,6 +1104,7 @@ layoutModeRadios.forEach(radio => {
 // Keyboard shortcuts for quick toggles (temporary display changes)
 // s = toggle self-loops, e = toggle edge labels, l = toggle node labels
 document.addEventListener('keydown', (ev) => {
+  if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
   const key = ev.key.toLowerCase();
   let changed = false;
   if (key === 's') {
@@ -1116,6 +1118,10 @@ document.addEventListener('keydown', (ev) => {
   } else if (key === 'l') {
     showNodeLabels = !showNodeLabels;
     showStatus(`Node labels ${showNodeLabels ? 'shown' : 'hidden'}`, 'info');
+    changed = true;
+  } else if (key === 'g') {
+    showGeoLevel = !showGeoLevel;
+    showStatus(`G values ${showGeoLevel ? 'shown' : 'hidden'}`, 'info');
     changed = true;
   }
 

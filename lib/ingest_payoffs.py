@@ -189,11 +189,12 @@ def _in_year_range(
     return lower_ok and upper_ok
 
 
-def _sai_col_name(start_year: int | None, end_year: int) -> str:
+def _sai_col_name(start_year: int | None, end_year: int, *, average: bool = False) -> str:
     """Return the W_SAI column label for the given year range."""
+    agg = "avg" if average else "sum"
     if start_year is None:
-        return f"W_SAI_sum_≤{end_year}"
-    return f"W_SAI_sum_{start_year}-{end_year}"
+        return f"W_SAI_{agg}_≤{end_year}"
+    return f"W_SAI_{agg}_{start_year}-{end_year}"
 
 
 def compute_sai_sum(
@@ -202,12 +203,14 @@ def compute_sai_sum(
     end_year: int,
     *,
     end_inclusive: bool = True,
+    average: bool = False,
 ) -> float:
     """
-    Sum W_SAI level values for all periods whose calendar year falls within
+    Aggregate W_SAI level values for all periods whose calendar year falls within
     [start_year, end_year] by default, or [start_year, end_year) when
     end_inclusive=False. start_year=None means no lower bound.
 
+    When average=True, returns the mean across matched periods instead of the sum.
     Uses the `year` parameter from the same GDX file to map period indices to
     calendar years.  If W_SAI is absent from the GDX file (e.g. a no-deployment
     scenario), returns 0.0.
@@ -219,6 +222,7 @@ def compute_sai_sum(
         return 0.0
 
     total = 0.0
+    count = 0
     for period_key, calendar_year in year_map.items():
         if _in_year_range(
             calendar_year,
@@ -227,6 +231,11 @@ def compute_sai_sum(
             end_inclusive=end_inclusive,
         ):
             total += sai_levels.get(period_key, 0.0)
+            count += 1
+    if average:
+        if count == 0:
+            return 0.0
+        return total / count
     return total
 
 
@@ -237,25 +246,30 @@ def compute_welfare_sums(
     end_year: int,
     *,
     end_inclusive: bool = True,
+    average: bool = False,
 ) -> dict[str, float]:
     """
-    Sum `welfare_regional_t` for each region over all periods whose calendar year
-    falls within [start_year, end_year] by default, or [start_year, end_year)
+    Aggregate `welfare_regional_t` for each region over all periods whose calendar
+    year falls within [start_year, end_year] by default, or [start_year, end_year)
     when end_inclusive=False. start_year=None means no lower bound.
+
+    When average=True, returns the mean across matched periods instead of the sum.
 
     Args:
         gdx_path:     Path to the GDX file.
         region_codes: List of lowercase GAMS region codes (e.g. ['nde', 'usa', 'chn']).
         start_year:   First year to include (None = no lower bound).
         end_year:     Last year bound.
+        average:      If True, divide by the number of matched periods.
 
     Returns:
-        Dict mapping region code (lowercase) → summed welfare float.
+        Dict mapping region code (lowercase) → aggregated welfare float.
     """
     year_map = parse_gdx_parameter(gdx_path, YEAR_SYMBOL)
     welfare_by_region_period = parse_gdx_parameter_2d(gdx_path, WELFARE_SYMBOL)
 
     totals: dict[str, float] = {code.lower(): 0.0 for code in region_codes}
+    count = 0
     for period_key, calendar_year in year_map.items():
         if _in_year_range(
             calendar_year,
@@ -263,9 +277,13 @@ def compute_welfare_sums(
             end_year,
             end_inclusive=end_inclusive,
         ):
+            count += 1
             for code in region_codes:
                 key = (period_key.lower(), code.lower())
                 totals[code.lower()] += welfare_by_region_period.get(key, 0.0)
+    if average and count > 0:
+        for code in region_codes:
+            totals[code.lower()] /= count
     return totals
 
 
@@ -449,6 +467,7 @@ def write_payoff_table(
     start_year: int | None,
     end_year: int,
     extra_metadata: dict[str, object] | None = None,
+    average: bool = False,
 ) -> None:
     """
     Write the payoff DataFrame to a formatted Excel file.
@@ -466,7 +485,7 @@ def write_payoff_table(
         extra_metadata: Optional additional metadata key/value pairs.
     """
     display_names = [d for _, d in players]
-    sai_col = _sai_col_name(start_year, end_year)
+    sai_col = _sai_col_name(start_year, end_year, average=average)
     states = df.index.tolist()
     n_players = len(display_names)
 
@@ -491,9 +510,10 @@ def write_payoff_table(
     # Row 1: Title (merged)
     # ------------------------------------------------------------------
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
+    agg_label = "avg (per period)" if sai_col.startswith("W_SAI_avg") else "sum"
     title_cell = ws.cell(
         row=1, column=1,
-        value=f"Precomputed Payoffs — {WELFARE_SYMBOL}  |  {SAI_SYMBOL}: {sai_col}",
+        value=f"Precomputed Payoffs [{agg_label}] — {WELFARE_SYMBOL}  |  {SAI_SYMBOL}: {sai_col}",
     )
     title_cell.font = Font(name="Calibri", bold=True, size=12, color="FFFFFFFF")
     title_cell.fill = PatternFill(start_color=COLORS["title"],
@@ -680,8 +700,9 @@ def ingest(
     end_inclusive: bool = True,
     extra_metadata: dict[str, object] | None = None,
     required_stem_prefix: str | None = None,
+    average: bool = False,
 ) -> None:
-    sai_col = _sai_col_name(start_year, end_year)
+    sai_col = _sai_col_name(start_year, end_year, average=average)
 
     # --- Discover which GDX files map to which deployer keys ------------------
     key_to_file, skipped = discover_state_files(
@@ -751,12 +772,14 @@ def ingest(
             start_year,
             end_year,
             end_inclusive=end_inclusive,
+            average=average,
         )
         sai_sum = compute_sai_sum(
             gdx_path,
             start_year,
             end_year,
             end_inclusive=end_inclusive,
+            average=average,
         )
 
         row: dict = {"state": state_name, "source_file": gdx_path.name}
@@ -775,6 +798,10 @@ def ingest(
 
     _check_sai_ordering(df, sai_col)
 
+    combined_metadata: dict[str, object] = {"welfare_aggregation": "average" if average else "sum"}
+    if extra_metadata:
+        combined_metadata.update(extra_metadata)
+
     write_payoff_table(
         df,
         output_path,
@@ -782,7 +809,8 @@ def ingest(
         str(input_dir),
         start_year,
         end_year,
-        extra_metadata=extra_metadata,
+        extra_metadata=combined_metadata,
+        average=average,
     )
 
     print(f"\nWrote payoff table → {output_path}")

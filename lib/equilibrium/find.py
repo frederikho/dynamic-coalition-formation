@@ -170,7 +170,8 @@ def _synthetic_coalition_map(state_name: str, players: list) -> list | None:
     """
     coalition = sorted(list_members(state_name, players))
     if not coalition:
-        return None
+        # No player names found — treat as all-singletons (e.g. 'N', 'none', 'empty').
+        return [[p] for p in sorted(players)]
     singletons = [[p] for p in sorted(players) if p not in coalition]
     return [coalition] + singletons
 
@@ -362,7 +363,7 @@ def _get_solver_params(config, user_params=None):
         'tau_r_init': 1e-6,
         'tau_decay': 0.6,
         'tau_min': 1e-8,
-        'max_outer_iter': 400,
+        'max_outer_iter': 10,
         'max_inner_iter': 100,
         'damping': 0,
         'inner_tol': 1e-10,
@@ -948,9 +949,9 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         logger.info(f"Random seed for initialization: {solver.random_seed}")
         logger.info("")
 
-    if selected_solver_approach in {"support_enumeration", "active_set", "ordinal_ranking"} and len(setup["players"]) != 3:
+    if selected_solver_approach == "support_enumeration" and len(setup["players"]) != 3:
         raise ValueError(
-            f"solver_approach='{selected_solver_approach}' is currently only supported for 3-player cases."
+            "solver_approach='support_enumeration' is currently only supported for 3-player cases."
         )
 
     if selected_solver_approach == "active_set":
@@ -1476,9 +1477,9 @@ Available scenarios (use --list-scenarios to see all):
         default=None,
         help=(
             'Effectivity rule to use when generating approval committees. '
-            'Available rules: heyen_lehtomaa_2021 (default), unanimous_consent, deployer_exit. '
-            'deployer_exit is designed for reduced deployer-state models: the named deployer '
-            'can exit unilaterally to ( ), all other transitions require unanimity.'
+            'Available rules: heyen_lehtomaa_2021 (default), unanimous_consent, deployer_exit, free_exit. '
+            'deployer_exit: the named deployer can exit unilaterally to ( ), all other transitions require unanimity. '
+            'free_exit: any player can exit to the no-coordination state unilaterally; entering/switching coordination requires unanimity.'
         )
     )
     parser.add_argument(
