@@ -29,6 +29,12 @@ import sys
 import numpy as np
 import pandas as pd
 
+try:
+    import numba as _numba
+    _NUMBA_AVAILABLE = True
+except ImportError:
+    _NUMBA_AVAILABLE = False
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 if str(REPO_ROOT) not in sys.path:
@@ -41,6 +47,271 @@ from lib.equilibrium.solver import EquilibriumSolver
 from lib.effectivity import heyen_lehtomaa_2021
 from lib.utils import get_approval_committee, verify_equilibrium_detailed
 from lib.verify_cli import _run_verification
+
+
+# ---------------------------------------------------------------------------
+# Numba-accelerated inner-loop functions
+# ---------------------------------------------------------------------------
+# These functions accept only numpy arrays (no Python lists/dicts) so they can
+# be JIT-compiled to native code.  Compiled artifacts are cached to disk so
+# subsequent runs incur no recompilation overhead.
+#
+# Inputs:
+#   tiers_arr  : (n_players, n_states)              int8  — tier rank per player/state
+#   comm_arr   : (n_players, n_states, n_states, K) int8  — approver indices, -1 = padding
+#   comm_size  : (n_players, n_states, n_states)    int8  — number of actual committee members
+#   protocol   : (n_players,)                       float64
+#   payoffs    : (n_states, n_players)              float64
+# ---------------------------------------------------------------------------
+
+if _NUMBA_AVAILABLE:
+    @_numba.njit(cache=True)
+    def _build_arrays_weak_nb(tiers_arr, comm_arr, comm_size, protocol_arr):
+        """Numba JIT version of _build_induced_arrays_weak.
+
+        Returns (proposal_probs, approval_action, approval_pass, P).
+        """
+        n_players = tiers_arr.shape[0]
+        n_states = tiers_arr.shape[1]
+
+        proposal_probs = np.zeros((n_players, n_states, n_states))
+        approval_action = np.zeros((n_players, n_players, n_states, n_states))
+        approval_pass = np.zeros((n_players, n_states, n_states))
+        P = np.zeros((n_states, n_states))
+
+        for pi in range(n_players):
+            for ci in range(n_states):
+                best_tier = tiers_arr[pi, ci]
+                approved_mask = np.zeros(n_states, dtype=np.bool_)
+
+                for ni in range(n_states):
+                    all_approve = True
+                    for k in range(comm_size[pi, ci, ni]):
+                        ai = comm_arr[pi, ci, ni, k]
+                        if tiers_arr[ai, ni] <= tiers_arr[ai, ci]:
+                            approval_action[pi, ai, ci, ni] = 1.0
+                        else:
+                            all_approve = False
+                            # approval_action stays 0.0
+
+                    if all_approve:
+                        approval_pass[pi, ci, ni] = 1.0
+                        approved_mask[ni] = True
+                        if tiers_arr[pi, ni] < best_tier:
+                            best_tier = tiers_arr[pi, ni]
+
+                winner_count = 0
+                for ni in range(n_states):
+                    if approved_mask[ni] and tiers_arr[pi, ni] == best_tier:
+                        winner_count += 1
+
+                if winner_count > 0:
+                    mass = 1.0 / winner_count
+                    for ni in range(n_states):
+                        if approved_mask[ni] and tiers_arr[pi, ni] == best_tier:
+                            proposal_probs[pi, ci, ni] = mass
+                            P[ci, ni] += protocol_arr[pi] * mass
+
+        return proposal_probs, approval_action, approval_pass, P
+
+    @_numba.njit(cache=True)
+    def _verify_fast_nb(proposal_probs, approval_action, approval_pass, V, comm_arr, comm_size):
+        """Numba JIT equilibrium verifier.  Returns True iff strategy is an equilibrium.
+
+        Only returns a bool (no error details).  Call the Python verifier for
+        diagnostics when this returns False and you need to know why.
+        """
+        n_players = V.shape[1]
+        n_states = V.shape[0]
+        tol = 1e-9
+
+        # --- Proposal check ---
+        for pi in range(n_players):
+            for ci in range(n_states):
+                v_current = V[ci, pi]
+                best_ev = -1e18
+
+                for ni in range(n_states):
+                    p_pass = approval_pass[pi, ci, ni]
+                    ev = p_pass * V[ni, pi] + (1.0 - p_pass) * v_current
+                    if ev > best_ev + tol:
+                        best_ev = ev
+
+                for ni in range(n_states):
+                    if proposal_probs[pi, ci, ni] > 0.0:
+                        p_pass = approval_pass[pi, ci, ni]
+                        ev = p_pass * V[ni, pi] + (1.0 - p_pass) * v_current
+                        if abs(ev - best_ev) > tol:
+                            return False
+
+        # --- Approval check ---
+        for pi in range(n_players):
+            for ci in range(n_states):
+                for ni in range(n_states):
+                    for k in range(comm_size[pi, ci, ni]):
+                        ai = comm_arr[pi, ci, ni, k]
+                        v_c = V[ci, ai]
+                        v_n = V[ni, ai]
+                        p_approve = approval_action[pi, ai, ci, ni]
+                        diff = v_n - v_c
+                        if diff > tol:
+                            if abs(p_approve - 1.0) > 1e-12:
+                                return False
+                        elif diff < -tol:
+                            if abs(p_approve) > 1e-12:
+                                return False
+                        # else indifferent — any value in [0,1] is fine
+
+        return True
+
+    @_numba.njit(cache=True)
+    def _solve_V_nb(P, payoff_array, discounting):
+        """Numba JIT value-function solver.  Equivalent to _solve_values_fast_array."""
+        n = P.shape[0]
+        A = np.eye(n) - discounting * P
+        B = (1.0 - discounting) * payoff_array
+        return np.linalg.solve(A, B)
+
+    @_numba.njit(cache=True)
+    def _residuals_nb_core(
+        alpha_raw,
+        canon_probs, canon_action, canon_pass,
+        fa_arr, n_fa,
+        pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
+        aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
+        comm_arr, comm_size,
+        tiers,
+        protocol_arr, payoff_array, discounting,
+        n_players, n_states,
+    ):
+        """Numba JIT residual for _solve_weak_equalities.
+
+        Replaces the Python closures _build_P / _residuals / _residuals_sigmoid.
+        alpha_raw[0:n_fa]  : unconstrained approval params (sigmoid → [0,1])
+        alpha_raw[n_fa:]   : unconstrained logit params for proposal ties (softmax)
+        Returns a residual vector of length == alpha_raw.shape[0].
+        """
+        # Step 1: sigmoid for approval params; logit params stay unconstrained
+        alpha_phys = alpha_raw.copy()
+        for k in range(n_fa):
+            x = alpha_raw[k]
+            z = x
+            if z > 50.0:
+                z = 50.0
+            elif z < -50.0:
+                z = -50.0
+            if z >= 0.0:
+                alpha_phys[k] = 1.0 / (1.0 + math.exp(-z))
+            else:
+                ez = math.exp(z)
+                alpha_phys[k] = ez / (1.0 + ez)
+
+        # Step 2: copy canonical arrays (one copy per residual eval)
+        action = canon_action.copy()
+        pass_ = canon_pass.copy()
+        probs = canon_probs.copy()
+
+        # Step 3: patch free approval cells
+        for k in range(n_fa):
+            pi = int(fa_arr[k, 0])
+            ai = int(fa_arr[k, 1])
+            ci = int(fa_arr[k, 2])
+            ni = int(fa_arr[k, 3])
+            action[pi, ai, ci, ni] = alpha_phys[k]
+
+        # Step 4: patch proposal-tie rows via softmax of logit params
+        var_idx = n_fa
+        for t in range(n_pt):
+            pi = int(pt_pi_arr[t])
+            si = int(pt_si_arr[t])
+            nw = int(pt_nwidxs_arr[t])
+            nl = nw - 1  # number of free logit params; last logit = 0
+            # Numerically stable softmax (last logit fixed at 0)
+            max_logit = 0.0
+            for j in range(nl):
+                lj = alpha_phys[var_idx + j]
+                if lj > max_logit:
+                    max_logit = lj
+            sum_exp = math.exp(-max_logit)  # contribution of the last element (logit=0)
+            for j in range(nl):
+                sum_exp += math.exp(alpha_phys[var_idx + j] - max_logit)
+            for ns in range(n_states):
+                probs[pi, si, ns] = 0.0
+            for j in range(nl):
+                wj = int(pt_widxs_arr[t, j])
+                probs[pi, si, wj] = math.exp(alpha_phys[var_idx + j] - max_logit) / sum_exp
+            wlast = int(pt_widxs_arr[t, nw - 1])
+            probs[pi, si, wlast] = math.exp(-max_logit) / sum_exp
+            var_idx += nl
+
+        # Step 5: rebuild pass_ for all affected (pi,ci); also rebuild probs for non-PT rows
+        for a in range(n_aff):
+            pi = int(aff_pi_arr[a])
+            ci = int(aff_ci_arr[a])
+            for ni in range(n_states):
+                prob = 1.0
+                for k in range(int(comm_size[pi, ci, ni])):
+                    ai_k = int(comm_arr[pi, ci, ni, k])
+                    prob *= action[pi, ai_k, ci, ni]
+                pass_[pi, ci, ni] = prob
+            if not aff_is_pt_arr[a]:
+                # Recompute proposal probs from updated pass_
+                best_t = int(tiers[pi, ci])
+                for ni in range(n_states):
+                    if pass_[pi, ci, ni] > 0.0:
+                        t_ni = int(tiers[pi, ni])
+                        if t_ni < best_t:
+                            best_t = t_ni
+                for ns in range(n_states):
+                    probs[pi, ci, ns] = 0.0
+                count_w = 0
+                for ni in range(n_states):
+                    if pass_[pi, ci, ni] > 0.0 and int(tiers[pi, ni]) == best_t:
+                        count_w += 1
+                if count_w > 0:
+                    m = 1.0 / count_w
+                    for ni in range(n_states):
+                        if pass_[pi, ci, ni] > 0.0 and int(tiers[pi, ni]) == best_t:
+                            probs[pi, ci, ni] = m
+
+        # Step 6: aggregate P matrix
+        P = np.zeros((n_states, n_states))
+        for pi in range(n_players):
+            for ci in range(n_states):
+                for ni in range(n_states):
+                    P[ci, ni] += protocol_arr[pi] * probs[pi, ci, ni] * pass_[pi, ci, ni]
+        for ci in range(n_states):
+            row_sum = 0.0
+            for ni in range(n_states):
+                row_sum += P[ci, ni]
+            P[ci, ci] += 1.0 - row_sum
+
+        # Step 7: solve V = (I - δP)^{-1}(1-δ)U
+        A = np.eye(n_states) - discounting * P
+        B = (1.0 - discounting) * payoff_array
+        V = np.linalg.solve(A, B)
+
+        # Step 8: compute residuals
+        res = np.empty(alpha_raw.shape[0])
+        for k in range(n_fa):
+            ai = int(fa_arr[k, 1])
+            ci = int(fa_arr[k, 2])
+            ni = int(fa_arr[k, 3])
+            res[k] = V[ni, ai] - V[ci, ai]
+        res_idx = n_fa
+        for t in range(n_pt):
+            pi = int(pt_pi_arr[t])
+            si = int(pt_si_arr[t])
+            nw = int(pt_nwidxs_arr[t])
+            w0 = int(pt_widxs_arr[t, 0])
+            ev0 = pass_[pi, si, w0] * V[w0, pi] + (1.0 - pass_[pi, si, w0]) * V[si, pi]
+            for j in range(1, nw):
+                wj = int(pt_widxs_arr[t, j])
+                evj = pass_[pi, si, wj] * V[wj, pi] + (1.0 - pass_[pi, si, wj]) * V[si, pi]
+                res[res_idx] = evj - ev0
+                res_idx += 1
+
+        return res
 
 
 def _resolve_payoff_file(value: str) -> Path:
@@ -416,6 +687,7 @@ def _weak_tie_structure(
     committee_idxs: list[list[list[tuple[int, ...]]]],
 ) -> tuple[list[tuple[str, str, str, str]], list[tuple[str, str, tuple[str, ...]]]]:
     free_approvals: list[tuple[str, str, str, str]] = []
+    free_approvals_set: set[tuple[str, str, str, str]] = set()  # O(1) membership
     proposal_rows: list[tuple[str, str, tuple[str, ...]]] = []
 
     for proposer_idx, proposer in enumerate(players):
@@ -432,7 +704,8 @@ def _weak_tie_structure(
                     current_tier = int(tiers[approver_idx][current_idx])
                     if next_idx != current_idx and next_tier == current_tier:
                         key = (proposer, current_state, next_state, players[approver_idx])
-                        if key not in free_approvals:
+                        if key not in free_approvals_set:
+                            free_approvals_set.add(key)
                             free_approvals.append(key)
                     if next_tier > current_tier:
                         approved = False
@@ -546,6 +819,14 @@ def _solve_weak_equalities(
     committee_idxs: list[list[list[tuple[int, ...]]]],
     max_vars: int | None,
     max_br_iters: int = 50,
+    _precomputed_tie_structure: tuple[
+        list[tuple[str, str, str, str]],
+        list[tuple[str, str, tuple[str, ...]]],
+    ] | None = None,
+    _precomputed_canon_arrays: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    _numba_comm_arr: "np.ndarray | None" = None,
+    _numba_comm_size: "np.ndarray | None" = None,
+    _numba_tiers: "np.ndarray | None" = None,
 ) -> dict[str, Any] | None:
     """
     Solve for the free approval/proposal probabilities that make V self-consistent
@@ -562,8 +843,15 @@ def _solve_weak_equalities(
       3. Parameterises approvals via sigmoid (unconstrained -> [0,1]) so scipy can
          work in R^n without box constraints.
       4. Tries multiple starting points (including grid points) for robustness.
+      5. Exits early as soon as a solution is found (no need to try all starting points).
+
+    Pass _precomputed_tie_structure and _precomputed_canon_arrays from the call site
+    to avoid recomputing them when they are already available.
     """
-    free_approvals, proposal_rows = _weak_tie_structure(players, states, tiers, committee_idxs)
+    if _precomputed_tie_structure is not None:
+        free_approvals, proposal_rows = _precomputed_tie_structure
+    else:
+        free_approvals, proposal_rows = _weak_tie_structure(players, states, tiers, committee_idxs)
     n_free_approvals = len(free_approvals)
     n_proposal_vars = sum(len(winners) - 1 for _p, _s, winners in proposal_rows)
     n_vars = n_free_approvals + n_proposal_vars
@@ -580,10 +868,18 @@ def _solve_weak_equalities(
     payoff_array = payoffs.loc[states, players].to_numpy(dtype=np.float64)
 
     # Pre-build canonical arrays once; we patch only free cells per evaluation.
-    canon_probs, canon_action, canon_pass, _ = _build_induced_arrays_weak(
-        players=players, tiers=tiers,
-        committee_idxs=committee_idxs, protocol_arr=protocol_arr,
-    )
+    # Accept pre-computed arrays from the call site to avoid double work.
+    if _precomputed_canon_arrays is not None:
+        canon_probs, canon_action, canon_pass = (
+            _precomputed_canon_arrays[0].copy(),
+            _precomputed_canon_arrays[1].copy(),
+            _precomputed_canon_arrays[2].copy(),
+        )
+    else:
+        canon_probs, canon_action, canon_pass, _ = _build_induced_arrays_weak(
+            players=players, tiers=tiers,
+            committee_idxs=committee_idxs, protocol_arr=protocol_arr,
+        )
 
     # Numeric indices for free approvals: (proposer_idx, approver_idx, src_idx, dst_idx)
     fa_idx: list[tuple[int, int, int, int]] = [
@@ -597,6 +893,62 @@ def _solve_weak_equalities(
     ]
     # Which (proposer, src) pairs have a proposal tie (so we don't double-update)
     pt_set: set[tuple[int, int]] = {(pi, si) for pi, si, _ in pt_idx}
+
+    # ------------------------------------------------------------------
+    # Numba-accelerated residual path (when comm_arr / tiers are passed)
+    # ------------------------------------------------------------------
+    _use_nb = (
+        _NUMBA_AVAILABLE
+        and _numba_comm_arr is not None
+        and _numba_comm_size is not None
+        and _numba_tiers is not None
+    )
+    if _use_nb:
+        # Encode fa_idx as (n_fa, 4) int8 array
+        _n_fa = n_free_approvals
+        _fa_arr = np.array(fa_idx, dtype=np.int8).reshape(max(_n_fa, 1), 4)
+
+        # Encode pt_idx
+        _n_pt = len(pt_idx)
+        _max_nw = max((len(w) for _, _, w in pt_idx), default=1)
+        _pt_pi = np.zeros(max(_n_pt, 1), dtype=np.int8)
+        _pt_si = np.zeros(max(_n_pt, 1), dtype=np.int8)
+        _pt_widxs = np.zeros((max(_n_pt, 1), max(_max_nw, 1)), dtype=np.int8)
+        _pt_nwidxs = np.zeros(max(_n_pt, 1), dtype=np.int8)
+        for _t, (_tpi, _tsi, _twidxs) in enumerate(pt_idx):
+            _pt_pi[_t] = _tpi
+            _pt_si[_t] = _tsi
+            _pt_nwidxs[_t] = len(_twidxs)
+            for _j, _wj in enumerate(_twidxs):
+                _pt_widxs[_t, _j] = _wj
+
+        # Compute all affected (pi,ci) pairs and whether each is a PT row
+        _affected: set[tuple[int, int]] = set()
+        for _pi, _ai, _ci, _ni in fa_idx:
+            _affected.add((_pi, _ci))
+        for _pi, _si, _ in pt_idx:
+            _affected.add((_pi, _si))
+        _aff_list = sorted(_affected)
+        _n_aff = len(_aff_list)
+        if _n_aff == 0:
+            _aff_pi = np.zeros(1, dtype=np.int8)
+            _aff_ci = np.zeros(1, dtype=np.int8)
+            _aff_is_pt = np.zeros(1, dtype=np.bool_)
+        else:
+            _aff_pi = np.array([_p for _p, _ in _aff_list], dtype=np.int8)
+            _aff_ci = np.array([_c for _, _c in _aff_list], dtype=np.int8)
+            _aff_is_pt = np.array([(_p, _c) in pt_set for _p, _c in _aff_list], dtype=np.bool_)
+
+        def _nb_residuals(raw: np.ndarray) -> np.ndarray:
+            return _residuals_nb_core(
+                raw, canon_probs, canon_action, canon_pass,
+                _fa_arr, _n_fa,
+                _pt_pi, _pt_si, _pt_widxs, _pt_nwidxs, _n_pt,
+                _aff_pi, _aff_ci, _aff_is_pt, _n_aff,
+                _numba_comm_arr, _numba_comm_size, _numba_tiers,
+                protocol_arr, payoff_array, discounting,
+                n_players, n_states,
+            )
 
     def _build_P(alpha_phys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Return (P, probs, pass_) from physical free parameters alpha_phys in [0,1]^n."""
@@ -695,20 +1047,25 @@ def _solve_weak_equalities(
         ) from exc
 
     rng = np.random.RandomState(42)
-    # Seed points: logit(0.5)=0, logit(0.1)≈-2.2, logit(0.9)≈2.2, plus randoms
+    # Grid points covering low/mid/high approval values (sigmoid(-4)≈0.02, sigmoid(-2.2)≈0.1,
+    # sigmoid(0)=0.5, sigmoid(2.2)≈0.9, sigmoid(4)≈0.98) plus two random starts.
+    # Fewer starting points than before, but early-exit as soon as a solution is found.
     guesses: list[np.ndarray] = [
         np.zeros(n_vars),
         np.full(n_vars, -2.2),
         np.full(n_vars, 2.2),
-    ] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(7)]
+        np.full(n_vars, -4.0),
+        np.full(n_vars, 4.0),
+    ] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(2)]
 
     best_phys: np.ndarray | None = None
     best_resid = np.inf
 
+    _scipy_fn = _nb_residuals if _use_nb else _residuals_sigmoid
     for guess in guesses:
         try:
-            sol = scipy_root(_residuals_sigmoid, guess, method="hybr",
-                             options={"maxfev": 600})
+            sol = scipy_root(_scipy_fn, guess, method="hybr",
+                             options={"maxfev": 200})
         except Exception:
             continue
         if not sol.success:
@@ -721,6 +1078,8 @@ def _solve_weak_equalities(
         if r < best_resid:
             best_resid = r
             best_phys = phys
+        if best_resid < 1e-7:
+            break  # solution found — no need to try remaining starting points
 
     if best_phys is None or best_resid > 1e-7:
         return None
@@ -950,6 +1309,20 @@ def _ranking_tuples(
             return
 
 
+def _random_ordering(
+    n_orders: int,
+    n_players: int,
+    random_seed: int = 0,
+) -> tuple[np.ndarray, ...]:
+    rng = np.random.RandomState(random_seed)
+    orders: list[np.ndarray] = []
+    for _ in range(n_players):
+        order = np.arange(n_orders, dtype=np.int64)
+        rng.shuffle(order)
+        orders.append(order)
+    return tuple(orders)
+
+
 def _payoff_ordering(
     payoff_array: np.ndarray,
     states: list[str],
@@ -1006,6 +1379,8 @@ def _search_payoff_table(
     weak_exact_reduced: bool,
     weak_equality_solve: bool,
     weak_equality_max_vars: int | None,
+    worker_id: int = 0,
+    n_workers: int = 1,
 ) -> dict[str, Any]:
     setup = __import__("lib.equilibrium.find", fromlist=["setup_experiment"]).setup_experiment(config)
     players = setup["players"]
@@ -1045,9 +1420,64 @@ def _search_payoff_table(
 
     payoff_array = payoffs.loc[states, players].to_numpy(dtype=np.float64)
     protocol_arr = np.array([float(protocol[player]) for player in players], dtype=np.float64)
+
+    # Pre-compute committee arrays in numpy format for the Numba fast path.
+    # comm_arr[pi, ci, ni, k] = approver index k for (proposer pi, from ci, to ni); -1 = padding.
+    # comm_size[pi, ci, ni]   = number of committee members for that transition.
+    _max_comm = max(
+        len(committee_idxs[pi][ci][ni])
+        for pi in range(n_players)
+        for ci in range(n_states)
+        for ni in range(n_states)
+    )
+    comm_arr_nb = np.full((n_players, n_states, n_states, max(_max_comm, 1)), -1, dtype=np.int8)
+    comm_size_nb = np.zeros((n_players, n_states, n_states), dtype=np.int8)
+    for _pi in range(n_players):
+        for _ci in range(n_states):
+            for _ni in range(n_states):
+                for _k, _ai in enumerate(committee_idxs[_pi][_ci][_ni]):
+                    comm_arr_nb[_pi, _ci, _ni, _k] = _ai
+                comm_size_nb[_pi, _ci, _ni] = len(committee_idxs[_pi][_ci][_ni])
+
+    # Warm up the Numba JIT on first call (compiles once, then cached).
+    _use_numba = _NUMBA_AVAILABLE and weak_orders  # strict-order path uses a different function
+    # Pre-allocate tier buffer (avoid np.stack per iteration)
+    _tiers_buf = np.empty((n_players, n_states), dtype=np.int8)
+
+    if _use_numba:
+        _build_arrays_weak_nb(_tiers_buf, comm_arr_nb, comm_size_nb, protocol_arr)
+        _dummy_P = np.eye(n_states)
+        _solve_V_nb(_dummy_P, payoff_array, discounting)
+        _dummy_pp = np.zeros((n_players, n_states, n_states))
+        _dummy_aa = np.zeros((n_players, n_players, n_states, n_states))
+        _dummy_ap = np.ones((n_players, n_states, n_states))
+        _dummy_V = np.zeros((n_states, n_players))
+        _verify_fast_nb(_dummy_pp, _dummy_aa, _dummy_ap, _dummy_V, comm_arr_nb, comm_size_nb)
+        # Warm up the Numba residual function for _solve_weak_equalities
+        _dummy_raw = np.zeros(1, dtype=np.float64)
+        _dummy_fa = np.zeros((1, 4), dtype=np.int8)
+        _dummy_pt_pi = np.zeros(1, dtype=np.int8)
+        _dummy_pt_si = np.zeros(1, dtype=np.int8)
+        _dummy_pt_widxs = np.zeros((1, 1), dtype=np.int8)
+        _dummy_pt_nwidxs = np.zeros(1, dtype=np.int8)
+        _dummy_aff_pi = np.zeros(1, dtype=np.int8)
+        _dummy_aff_ci = np.zeros(1, dtype=np.int8)
+        _dummy_aff_is_pt = np.zeros(1, dtype=np.bool_)
+        _residuals_nb_core(
+            _dummy_raw, _dummy_pp, _dummy_aa, _dummy_ap,
+            _dummy_fa, 1,
+            _dummy_pt_pi, _dummy_pt_si, _dummy_pt_widxs, _dummy_pt_nwidxs, 0,
+            _dummy_aff_pi, _dummy_aff_ci, _dummy_aff_is_pt, 0,
+            comm_arr_nb, comm_size_nb, _tiers_buf,
+            protocol_arr, payoff_array, discounting,
+            n_players, n_states,
+        )
+
     perm_orders = None
     if ranking_order == "payoff":
         perm_orders = _payoff_ordering(payoff_array, states, players, order_arrays)
+    elif ranking_order == "random":
+        perm_orders = _random_ordering(n_orders, n_players, random_seed)
     solver = None
     if use_reference_verifier:
         solver = EquilibriumSolver(
@@ -1083,6 +1513,8 @@ def _search_payoff_table(
             random_seed=random_seed,
             perm_orders=perm_orders,
         ):
+            if n_workers > 1 and done % n_workers != worker_id:
+                continue
             ranks = tuple(pos[perm_idx] for perm_idx in perm_tuple)
             if weak_orders and weak_exact_reduced:
                 n_value_params = _weak_value_param_count(ranks)
@@ -1094,12 +1526,22 @@ def _search_payoff_table(
                 else:
                     weak_exact_nontrivial += 1
             if weak_orders:
-                proposal_probs, approval_action, approval_pass, P_array = _build_induced_arrays_weak(
-                    players=players,
-                    tiers=ranks,
-                    committee_idxs=committee_idxs,
-                    protocol_arr=protocol_arr,
-                )
+                if _use_numba:
+                    # Fast path: Numba JIT — fill pre-allocated buffer (avoids np.stack per iter)
+                    for _pi, _perm_idx in enumerate(perm_tuple):
+                        _tiers_buf[_pi] = pos[_perm_idx]
+                    proposal_probs, approval_action, approval_pass, P_array = _build_arrays_weak_nb(
+                        _tiers_buf, comm_arr_nb, comm_size_nb, protocol_arr,
+                    )
+                    V_array = _solve_V_nb(P_array, payoff_array, discounting)
+                else:
+                    proposal_probs, approval_action, approval_pass, P_array = _build_induced_arrays_weak(
+                        players=players,
+                        tiers=ranks,
+                        committee_idxs=committee_idxs,
+                        protocol_arr=protocol_arr,
+                    )
+                    V_array = _solve_values_fast_array(P_array, payoff_array, discounting)
                 proposal_choice = None
             else:
                 proposal_choice, approval_action, approval_pass, P_array = _build_induced_arrays(
@@ -1109,7 +1551,7 @@ def _search_payoff_table(
                     protocol_arr=protocol_arr,
                 )
                 proposal_probs = None
-            V_array = _solve_values_fast_array(P_array, payoff_array, discounting)
+                V_array = _solve_values_fast_array(P_array, payoff_array, discounting)
             if use_reference_verifier:
                 assert solver is not None
                 if weak_orders:
@@ -1132,34 +1574,83 @@ def _search_payoff_table(
                 }
                 verified, message, detail = verify_equilibrium_detailed(result)
             else:
-                verified, message, detail = _verify_equilibrium_fast(
-                    players=players,
-                    states=states,
-                    effectivity=effectivity,
-                    P_proposals=None,
-                    P_approvals=None,
-                    V_df=None,
-                    proposal_choice=proposal_choice,
-                    proposal_probs=proposal_probs,
-                    approval_action=approval_action,
-                    approval_pass=approval_pass,
-                    V_array=V_array,
-                    committee_idxs=committee_idxs,
-                )
+                if _use_numba:
+                    # Fast path: Numba verifier returns just a bool.
+                    # If it passes, great. If it fails, the Python verifier is only
+                    # called when we need the detailed error message (i.e. never in the
+                    # hot loop — failures are simply skipped).
+                    verified = _verify_fast_nb(
+                        proposal_probs, approval_action, approval_pass,
+                        V_array, comm_arr_nb, comm_size_nb,
+                    )
+                    message = "All tests passed." if verified else ""
+                    detail = None
+                else:
+                    verified, message, detail = _verify_equilibrium_fast(
+                        players=players,
+                        states=states,
+                        effectivity=effectivity,
+                        P_proposals=None,
+                        P_approvals=None,
+                        V_df=None,
+                        proposal_choice=proposal_choice,
+                        proposal_probs=proposal_probs,
+                        approval_action=approval_action,
+                        approval_pass=approval_pass,
+                        V_array=V_array,
+                        committee_idxs=committee_idxs,
+                    )
             solved_payload: dict[str, Any] | None = None
             if (not verified) and weak_orders and weak_equality_solve:
-                solved_payload = _solve_weak_equalities(
-                    players=players,
-                    states=states,
-                    effectivity=effectivity,
-                    protocol=protocol,
-                    payoffs=payoffs,
-                    discounting=discounting,
-                    unanimity_required=unanimity_required,
-                    tiers=ranks,
-                    committee_idxs=committee_idxs,
-                    max_vars=weak_equality_max_vars,
-                )
+                # Fast pre-check: count how many (approver, transition) pairs are tied
+                # across all players' orderings. This gives a cheap lower bound on n_free
+                # without calling the full _weak_tie_structure. If the lower bound already
+                # exceeds max_vars, skip the expensive exact computation entirely.
+                _skip = False
+                if weak_equality_max_vars is not None:
+                    _lb = 0
+                    for _ai, _r in enumerate(ranks):
+                        # Count transitions within the same tier for this player
+                        # (each is a potential free approval in some committee)
+                        _tiers_arr = _r
+                        for _ci in range(n_states):
+                            _tc = int(_tiers_arr[_ci])
+                            for _ni in range(n_states):
+                                if _ni != _ci and int(_tiers_arr[_ni]) == _tc:
+                                    _lb += 1
+                                    if _lb > weak_equality_max_vars:
+                                        _skip = True
+                                        break
+                            if _skip:
+                                break
+                        if _skip:
+                            break
+
+                if not _skip:
+                    # Compute exact tie structure and pass it in to avoid recomputation
+                    # inside _solve_weak_equalities.
+                    tie_struct = _weak_tie_structure(players, states, ranks, committee_idxs)
+                    _n_free = len(tie_struct[0]) + sum(
+                        len(w) - 1 for _, _, w in tie_struct[1]
+                    )
+                    if _n_free > 0 and (weak_equality_max_vars is None or _n_free <= weak_equality_max_vars):
+                        solved_payload = _solve_weak_equalities(
+                            players=players,
+                            states=states,
+                            effectivity=effectivity,
+                            protocol=protocol,
+                            payoffs=payoffs,
+                            discounting=discounting,
+                            unanimity_required=unanimity_required,
+                            tiers=ranks,
+                            committee_idxs=committee_idxs,
+                            max_vars=weak_equality_max_vars,
+                            _precomputed_tie_structure=tie_struct,
+                            _precomputed_canon_arrays=(proposal_probs, approval_action, approval_pass),
+                            _numba_comm_arr=comm_arr_nb if _use_numba else None,
+                            _numba_comm_size=comm_size_nb if _use_numba else None,
+                            _numba_tiers=_tiers_buf if _use_numba else None,
+                        )
                 if solved_payload is not None:
                     verified = True
                     message = solved_payload["verification_message"]
@@ -1497,6 +1988,56 @@ def _format_weak_order(states: list[str], tiers: np.ndarray) -> str:
     return " > ".join(ordered)
 
 
+def _worker_search(args: tuple) -> dict[str, Any]:
+    """Top-level picklable function used by ProcessPoolExecutor workers."""
+    (
+        config, max_combinations, stop_on_success, use_reference_verifier,
+        shuffle, random_seed, ranking_order, weak_orders_flag, weak_exact_reduced,
+        weak_equality_solve, weak_equality_max_vars, worker_id, n_workers,
+    ) = args
+    return _search_payoff_table(
+        config=config,
+        max_combinations=max_combinations,
+        progress_every=0,  # workers don't print progress individually
+        stop_on_success=stop_on_success,
+        use_reference_verifier=use_reference_verifier,
+        shuffle=shuffle,
+        random_seed=random_seed,
+        ranking_order=ranking_order,
+        weak_orders=weak_orders_flag,
+        weak_exact_reduced=weak_exact_reduced,
+        weak_equality_solve=weak_equality_solve,
+        weak_equality_max_vars=weak_equality_max_vars,
+        worker_id=worker_id,
+        n_workers=n_workers,
+    )
+
+
+def _merge_worker_results(worker_results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Merge results from multiple parallel workers into a single result dict."""
+    base = worker_results[0]
+    merged: dict[str, Any] = {
+        k: base[k]
+        for k in ("players", "states", "effectivity", "protocol", "payoffs",
+                  "discounting", "unanimity_required", "config",
+                  "total", "order_arrays", "weak_orders", "weak_exact_reduced",
+                  "weak_equality_solve", "interrupted")
+    }
+    merged["tested"] = sum(r["tested"] for r in worker_results)
+    merged["elapsed"] = max(r["elapsed"] for r in worker_results)  # wall time = longest worker
+    merged["rate"] = merged["tested"] / merged["elapsed"] if merged["elapsed"] > 0 else float("nan")
+    merged["verified_successes"] = sum(r["verified_successes"] for r in worker_results)
+    merged["all_successes"] = [s for r in worker_results for s in r["all_successes"]]
+    merged["first_success"] = next(
+        (r["first_success"] for r in worker_results if r["first_success"] is not None), None
+    )
+    merged["weak_exact_zero_params"] = sum(r.get("weak_exact_zero_params", 0) for r in worker_results)
+    merged["weak_exact_deterministic"] = sum(r.get("weak_exact_deterministic", 0) for r in worker_results)
+    merged["weak_exact_nontrivial"] = sum(r.get("weak_exact_nontrivial", 0) for r in worker_results)
+    merged["interrupted"] = any(r["interrupted"] for r in worker_results)
+    return merged
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Enumerate strict ranking triples against a payoff table and verify them."
@@ -1531,7 +2072,7 @@ def main() -> None:
     parser.add_argument("--random-seed", type=int, default=0, help="Seed for --shuffle")
     parser.add_argument(
         "--ranking-order",
-        choices=("lexicographic", "payoff"),
+        choices=("lexicographic", "payoff", "random"),
         default="lexicographic",
         help="Deterministic ranking enumeration order for payoff-table mode",
     )
@@ -1560,6 +2101,12 @@ def main() -> None:
         "--use-reference-verifier",
         action="store_true",
         help="Use the existing DataFrame-based verifier in payoff-table mode (slower, for cross-checking)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of parallel worker processes (default: 1). Use --workers 0 to auto-detect CPU count.",
     )
     args = parser.parse_args()
     payoff_path = _resolve_payoff_file(args.file)
@@ -1614,22 +2161,46 @@ def main() -> None:
     if args.write_all_output_dir:
         print(f"write_all_output_dir: {args.write_all_output_dir}")
         print(f"dedup_by: {args.dedup_by}")
+    import multiprocessing as _mp
+    n_workers = args.workers if args.workers > 0 else _mp.cpu_count()
+    if n_workers > 1:
+        print(f"workers: {n_workers}")
     print()
 
-    result = _search_payoff_table(
-        config=config,
-        max_combinations=args.max_combinations,
-        progress_every=args.progress_every,
-        stop_on_success=args.stop_on_success,
-        use_reference_verifier=args.use_reference_verifier,
-        shuffle=args.shuffle,
-        random_seed=args.random_seed,
-        ranking_order=args.ranking_order,
-        weak_orders=args.weak_orders,
-        weak_exact_reduced=args.weak_exact_reduced,
-        weak_equality_solve=args.weak_equality_solve,
-        weak_equality_max_vars=args.weak_equality_max_vars,
-    )
+    if n_workers <= 1:
+        result = _search_payoff_table(
+            config=config,
+            max_combinations=args.max_combinations,
+            progress_every=args.progress_every,
+            stop_on_success=args.stop_on_success,
+            use_reference_verifier=args.use_reference_verifier,
+            shuffle=args.shuffle,
+            random_seed=args.random_seed,
+            ranking_order=args.ranking_order,
+            weak_orders=args.weak_orders,
+            weak_exact_reduced=args.weak_exact_reduced,
+            weak_equality_solve=args.weak_equality_solve,
+            weak_equality_max_vars=args.weak_equality_max_vars,
+        )
+    else:
+        from concurrent.futures import ProcessPoolExecutor
+        worker_args = [
+            (
+                config, args.max_combinations, args.stop_on_success,
+                args.use_reference_verifier, args.shuffle, args.random_seed,
+                args.ranking_order, args.weak_orders, args.weak_exact_reduced,
+                args.weak_equality_solve, args.weak_equality_max_vars,
+                worker_id, n_workers,
+            )
+            for worker_id in range(n_workers)
+        ]
+        import time as _time
+        _par_start = _time.perf_counter()
+        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+            worker_results = list(executor.map(_worker_search, worker_args))
+        _par_elapsed = _time.perf_counter() - _par_start
+        result = _merge_worker_results(worker_results)
+        result["elapsed"] = _par_elapsed  # use actual wall time
     states = result["states"]
     order_arrays = result["order_arrays"]
     print("Summary")
