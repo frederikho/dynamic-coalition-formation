@@ -321,6 +321,13 @@ def _parse_coalition_structure(state_name: str, all_countries: List[Country]) ->
     """
     country_map = {c.name: c for c in all_countries}
 
+    if len(all_countries) == 2 and state_name in {"N", "A", "B"}:
+        if state_name == "N":
+            return [Coalition([c]) for c in all_countries]
+        chosen = all_countries[0] if state_name == "A" else all_countries[1]
+        remaining = [c for c in all_countries if c.name != chosen.name]
+        return [Coalition([chosen])] + [Coalition([c]) for c in remaining]
+
     if state_name == "( )":
         return [Coalition([c]) for c in all_countries]
 

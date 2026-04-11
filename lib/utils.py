@@ -155,6 +155,15 @@ def list_members(state: str, players: List[str] = None) -> List[str]:
     that names like 'IND', 'USA', 'RUS' are parsed correctly from strings like
     '(INDRUS)'.
     """
+    if players is not None and len(players) == 2:
+        reduced_aliases = {
+            "N": [],
+            "A": [players[0]],
+            "B": [players[1]],
+        }
+        if state in reduced_aliases:
+            return reduced_aliases[state].copy()
+
     import re
     coalition_strs = re.findall(r'\(([A-Z0-9]*)\)', state)
     members = []

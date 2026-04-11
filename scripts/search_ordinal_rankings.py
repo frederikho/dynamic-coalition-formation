@@ -150,20 +150,35 @@ def _print_progress(done: int, total: int, start_time: float, width: int = 30) -
     print(msg, end="", flush=True)
 
 
-def _build_payoff_config(scenario_name: str, payoff_table: str) -> dict[str, Any]:
+def _build_payoff_config(
+    scenario_name: str,
+    payoff_table: str,
+    *,
+    allow_non_canonical_states: bool = False,
+    effectivity_rule: str | None = None,
+) -> dict[str, Any]:
     config = get_scenario(scenario_name)
     config["payoff_table"] = payoff_table
     if config.get("players") is None:
         from lib.equilibrium.find import _parse_players_from_payoff_table
         config = fill_players(config, _parse_players_from_payoff_table(Path(payoff_table)))
+    if allow_non_canonical_states:
+        config["allow_non_canonical_states"] = True
+    if effectivity_rule is not None:
+        config["effectivity_rule"] = effectivity_rule
     return config
 
 
-def _build_inferred_payoff_config(payoff_path: Path) -> dict[str, Any]:
+def _build_inferred_payoff_config(
+    payoff_path: Path,
+    *,
+    allow_non_canonical_states: bool = False,
+    effectivity_rule: str | None = None,
+) -> dict[str, Any]:
     players = _infer_players_from_payoff_table(payoff_path)
     uniform = 1.0 / len(players)
     default_scalar = {player: 0.0 for player in players}
-    return {
+    config = {
         "scenario_name": f"ordinal_search_{payoff_path.stem}",
         "players": players,
         "power_rule": "power_threshold",
@@ -178,6 +193,11 @@ def _build_inferred_payoff_config(payoff_path: Path) -> dict[str, Any]:
         "power": {player: uniform for player in players},
         "payoff_table": str(payoff_path),
     }
+    if allow_non_canonical_states:
+        config["allow_non_canonical_states"] = True
+    if effectivity_rule is not None:
+        config["effectivity_rule"] = effectivity_rule
+    return config
 
 
 def _induce_profile_from_rankings(
@@ -527,149 +547,237 @@ def _solve_weak_equalities(
     max_vars: int | None,
     max_br_iters: int = 50,
 ) -> dict[str, Any] | None:
+    """
+    Solve for the free approval/proposal probabilities that make V self-consistent
+    with the assumed weak ordinal ranking.
+
+    The old implementation ran a 50-iteration BR loop inside every scipy residual
+    evaluation and used the slow strategy-dataframe path — O(seconds) per candidate.
+
+    This replacement:
+      1. Uses the fast array-based V solver (no DataFrame overhead).
+      2. Builds a residual function with NO BR loop: proposals outside the tied set
+         are determined by strict tier preferences and stay fixed; only the free
+         approval/proposal variables are searched over.
+      3. Parameterises approvals via sigmoid (unconstrained -> [0,1]) so scipy can
+         work in R^n without box constraints.
+      4. Tries multiple starting points (including grid points) for robustness.
+    """
+    free_approvals, proposal_rows = _weak_tie_structure(players, states, tiers, committee_idxs)
+    n_free_approvals = len(free_approvals)
+    n_proposal_vars = sum(len(winners) - 1 for _p, _s, winners in proposal_rows)
+    n_vars = n_free_approvals + n_proposal_vars
+    if n_vars == 0:
+        return None
+    if max_vars is not None and n_vars > max_vars:
+        return None
+
+    n_players = len(players)
+    n_states = len(states)
+    player_idx = {p: i for i, p in enumerate(players)}
+    state_idx = {s: i for i, s in enumerate(states)}
+    protocol_arr = np.array([protocol[p] for p in players], dtype=np.float64)
+    payoff_array = payoffs.loc[states, players].to_numpy(dtype=np.float64)
+
+    # Pre-build canonical arrays once; we patch only free cells per evaluation.
+    canon_probs, canon_action, canon_pass, _ = _build_induced_arrays_weak(
+        players=players, tiers=tiers,
+        committee_idxs=committee_idxs, protocol_arr=protocol_arr,
+    )
+
+    # Numeric indices for free approvals: (proposer_idx, approver_idx, src_idx, dst_idx)
+    fa_idx: list[tuple[int, int, int, int]] = [
+        (player_idx[prop], player_idx[appr], state_idx[src], state_idx[dst])
+        for prop, src, dst, appr in free_approvals
+    ]
+    # Numeric indices for proposal ties: (proposer_idx, src_idx, [dst_idx, ...])
+    pt_idx: list[tuple[int, int, list[int]]] = [
+        (player_idx[prop], state_idx[src], [state_idx[w] for w in winners])
+        for prop, src, winners in proposal_rows
+    ]
+    # Which (proposer, src) pairs have a proposal tie (so we don't double-update)
+    pt_set: set[tuple[int, int]] = {(pi, si) for pi, si, _ in pt_idx}
+
+    def _build_P(alpha_phys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Return (P, probs, pass_) from physical free parameters alpha_phys in [0,1]^n."""
+        action = canon_action.copy()
+        pass_ = canon_pass.copy()
+        probs = canon_probs.copy()
+
+        # 1. Patch free approval cells
+        for k, (pi, ai, ci, ni) in enumerate(fa_idx):
+            action[pi, ai, ci, ni] = alpha_phys[k]
+
+        # 2. Patch proposal-tie cells with logit-parameterised probs
+        var_idx = n_free_approvals
+        for pi, si, widxs in pt_idx:
+            if len(widxs) > 1:
+                logits = np.zeros(len(widxs))
+                logits[:-1] = alpha_phys[var_idx: var_idx + len(widxs) - 1]
+                var_idx += len(widxs) - 1
+                pw = softmax(logits, temperature=1.0)
+            else:
+                pw = np.array([1.0])
+            probs[pi, si, :] = 0.0
+            for wk, wk_p in zip(widxs, pw):
+                probs[pi, si, wk] = float(wk_p)
+
+        # 3. Rebuild pass_ and probs for rows whose approvals changed
+        affected: set[tuple[int, int]] = {(pi, ci) for pi, _ai, ci, _ni in fa_idx}
+        for pi, si, _ in pt_idx:
+            affected.add((pi, si))
+
+        for pi, ci in affected:
+            # Recompute pass_ as product of all committee member approvals.
+            # This correctly handles fractional approvals (e.g. 0.06) — do NOT
+            # reduce to binary; that would treat any non-zero value as full approval.
+            for ni in range(n_states):
+                prob = 1.0
+                for ai in committee_idxs[pi][ci][ni]:
+                    prob *= action[pi, ai, ci, ni]
+                pass_[pi, ci, ni] = prob
+            # Recompute proposal probs (only for rows without explicit proposal tie)
+            if (pi, ci) not in pt_set:
+                tier_p = tiers[pi]
+                best_t = int(tier_p[ci])
+                approved: list[int] = []
+                for ni in range(n_states):
+                    if pass_[pi, ci, ni]:
+                        approved.append(ni)
+                        best_t = min(best_t, int(tier_p[ni]))
+                winners_l = [ni for ni in approved if int(tier_p[ni]) == best_t]
+                probs[pi, ci, :] = 0.0
+                if winners_l:
+                    m = 1.0 / len(winners_l)
+                    for ni in winners_l:
+                        probs[pi, ci, ni] = m
+
+        # 4. Aggregate P
+        # The einsum gives the probability mass of ACCEPTED transitions.
+        # Rejected proposals (pass_ < 1) return the proposer to the current state,
+        # so we add the missing probability to the diagonal to keep rows stochastic.
+        P = np.einsum('i,ijk,ijk->jk', protocol_arr, probs, pass_)
+        row_sums = P.sum(axis=1)
+        np.fill_diagonal(P, P.diagonal() + (1.0 - row_sums))
+        return P, probs, pass_
+
+    def _residuals(alpha_phys: np.ndarray) -> np.ndarray:
+        P, probs, pass_ = _build_P(alpha_phys)
+        V = _solve_values_fast_array(P, payoff_array, discounting)
+        res: list[float] = []
+        # Approval residuals: V[dst, appr] - V[src, appr] == 0
+        for _k, (_pi, ai, ci, ni) in enumerate(fa_idx):
+            res.append(float(V[ni, ai]) - float(V[ci, ai]))
+        # Proposal residuals: equal expected value across tied winners
+        for pi, si, widxs in pt_idx:
+            ev0 = float(pass_[pi, si, widxs[0]]) * float(V[widxs[0], pi]) \
+                  + (1.0 - float(pass_[pi, si, widxs[0]])) * float(V[si, pi])
+            for wk in widxs[1:]:
+                evk = float(pass_[pi, si, wk]) * float(V[wk, pi]) \
+                      + (1.0 - float(pass_[pi, si, wk])) * float(V[si, pi])
+                res.append(evk - ev0)
+        return np.array(res, dtype=np.float64)
+
+    # Wrap with sigmoid for unconstrained optimisation of the approval vars;
+    # proposal logits stay unconstrained as-is.
+    def _residuals_sigmoid(raw: np.ndarray) -> np.ndarray:
+        phys = raw.copy()
+        for k in range(n_free_approvals):
+            phys[k] = _sigmoid_scalar(float(raw[k]))
+        return _residuals(phys)
+
     try:
-        from scipy.optimize import root
+        from scipy.optimize import root as scipy_root
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "Weak equality refinement requires SciPy. Install it in the active environment "
             "or run without --weak-equality-solve."
         ) from exc
 
-    solver = EquilibriumSolver(
-        players=players,
-        states=states,
-        effectivity=effectivity,
-        protocol=protocol,
-        payoffs=payoffs,
-        discounting=discounting,
-        unanimity_required=unanimity_required,
-        verbose=False,
-        random_seed=0,
-        initialization_mode="uniform",
-        logger=None,
-    )
-    _set_canonical_weak_profile(solver, players, states, tiers, committee_idxs)
-    free_approvals, proposal_rows = _weak_tie_structure(players, states, tiers, committee_idxs)
+    rng = np.random.RandomState(42)
+    # Seed points: logit(0.5)=0, logit(0.1)≈-2.2, logit(0.9)≈2.2, plus randoms
+    guesses: list[np.ndarray] = [
+        np.zeros(n_vars),
+        np.full(n_vars, -2.2),
+        np.full(n_vars, 2.2),
+    ] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(7)]
 
-    n_vars = len(free_approvals) + sum(len(winners) - 1 for _proposer, _current, winners in proposal_rows)
-    if n_vars == 0:
-        return None
-    if max_vars is not None and n_vars > max_vars:
-        return None
-
-    fixed_supports = {(proposer, current_state): winners for proposer, current_state, winners in proposal_rows}
-
-    def _compute_current() -> tuple[pd.DataFrame, pd.DataFrame, dict[tuple, float], dict[tuple, float]]:
-        strategy_df = solver._create_strategy_dataframe()
-        P, _P_proposals, P_approvals = solver._compute_transition_probabilities(strategy_df)
-        V = solver._solve_value_functions(P)
-        return strategy_df, P, P_approvals, V
-
-    def _apply_params(params: np.ndarray) -> None:
-        _set_canonical_weak_profile(solver, players, states, tiers, committee_idxs)
-        idx = 0
-        for key in free_approvals:
-            solver.r_acceptances[key] = _sigmoid_scalar(float(params[idx]))
-            idx += 1
-        for proposer, current_state, winners in proposal_rows:
-            logits = np.zeros(len(winners), dtype=np.float64)
-            if len(winners) > 1:
-                logits[:-1] = params[idx:idx + len(winners) - 1]
-                idx += len(winners) - 1
-            probs = softmax(logits, temperature=1.0)
-            for next_state in states:
-                key = (proposer, current_state, next_state)
-                solver.p_proposals[key] = 0.0
-            for winner, prob in zip(winners, probs):
-                solver.p_proposals[(proposer, current_state, winner)] = float(prob)
-
-    def _residuals(params: np.ndarray) -> np.ndarray:
-        _apply_params(params)
-        for _ in range(max_br_iters):
-            _strategy_df, _P, P_approvals, V = _compute_current()
-            changed = _update_proposals_from_values(
-                solver,
-                V,
-                players,
-                states,
-                P_approvals,
-                fixed_supports=fixed_supports,
-            )
-            if not changed:
-                break
-        _strategy_df, _P, P_approvals, V = _compute_current()
-
-        residuals: list[float] = []
-        for proposer, current_state, winners in proposal_rows:
-            baseline = winners[0]
-            baseline_value = float(P_approvals[(proposer, current_state, baseline)]) * float(V.loc[baseline, proposer]) + (
-                1.0 - float(P_approvals[(proposer, current_state, baseline)])
-            ) * float(V.loc[current_state, proposer])
-            for next_state in winners[1:]:
-                expected = float(P_approvals[(proposer, current_state, next_state)]) * float(V.loc[next_state, proposer]) + (
-                    1.0 - float(P_approvals[(proposer, current_state, next_state)])
-                ) * float(V.loc[current_state, proposer])
-                residuals.append(expected - baseline_value)
-
-        for proposer, current_state, next_state, approver in free_approvals:
-            residuals.append(float(V.loc[next_state, approver]) - float(V.loc[current_state, approver]))
-
-        return np.array(residuals, dtype=np.float64)
-
-    guesses = [np.zeros(n_vars, dtype=np.float64)]
-    if n_vars:
-        guesses.append(np.full(n_vars, 2.0, dtype=np.float64))
-        guesses.append(np.full(n_vars, -2.0, dtype=np.float64))
+    best_phys: np.ndarray | None = None
+    best_resid = np.inf
 
     for guess in guesses:
-        solved = root(_residuals, guess, method="hybr")
-        if not solved.success:
+        try:
+            sol = scipy_root(_residuals_sigmoid, guess, method="hybr",
+                             options={"maxfev": 600})
+        except Exception:
             continue
-        residual = _residuals(np.asarray(solved.x, dtype=np.float64))
-        if residual.size and float(np.max(np.abs(residual))) > 1e-7:
+        if not sol.success:
             continue
-        _apply_params(np.asarray(solved.x, dtype=np.float64))
-        for _ in range(max_br_iters):
-            strategy_df, P, P_approvals, V = _compute_current()
-            changed = _update_proposals_from_values(
-                solver,
-                V,
-                players,
-                states,
-                P_approvals,
-                fixed_supports=fixed_supports,
-            )
-            if not changed:
-                break
-        strategy_df, P, P_approvals, V = _compute_current()
-        verified, message, detail = verify_equilibrium_detailed(
-            {
-                "players": players,
-                "states": states,
-                "state_names": states,
-                "effectivity": effectivity,
-                "P": P,
-                "P_proposals": solver.p_proposals.copy(),
-                "P_approvals": P_approvals,
-                "V": V,
-                "strategy_df": strategy_df,
-            }
-        )
-        if verified:
-            return {
-                "strategy_df": strategy_df.copy(),
-                "P": P.copy(),
-                "V": V.copy(),
-                "P_proposals": solver.p_proposals.copy(),
-                "P_approvals": dict(P_approvals),
-                "verification_success": verified,
-                "verification_message": message,
-                "verification_detail": detail,
-                "free_approvals": list(free_approvals),
-                "proposal_rows": list(proposal_rows),
-            }
+        raw = np.asarray(sol.x, dtype=np.float64)
+        phys = raw.copy()
+        for k in range(n_free_approvals):
+            phys[k] = _sigmoid_scalar(float(raw[k]))
+        r = float(np.max(np.abs(_residuals(phys))))
+        if r < best_resid:
+            best_resid = r
+            best_phys = phys
 
-    return None
+    if best_phys is None or best_resid > 1e-7:
+        return None
+
+    # --- Build EquilibriumSolver result for verification ---
+    P_arr, probs_arr, pass_arr = _build_P(best_phys)
+    V_arr = _solve_values_fast_array(P_arr, payoff_array, discounting)
+
+    solver = EquilibriumSolver(
+        players=players, states=states, effectivity=effectivity,
+        protocol=protocol, payoffs=payoffs, discounting=discounting,
+        unanimity_required=unanimity_required, verbose=False,
+        random_seed=0, initialization_mode="uniform", logger=None,
+    )
+    _set_canonical_weak_profile(solver, players, states, tiers, committee_idxs)
+    for k, (prop, src, dst, appr) in enumerate(free_approvals):
+        solver.r_acceptances[(prop, src, dst, appr)] = float(best_phys[k])
+    var_idx = n_free_approvals
+    for pi, si, widxs in pt_idx:
+        prop = players[pi]; src = states[si]
+        if len(widxs) > 1:
+            logits = np.zeros(len(widxs))
+            logits[:-1] = best_phys[var_idx: var_idx + len(widxs) - 1]
+            var_idx += len(widxs) - 1
+            pw = softmax(logits, temperature=1.0)
+        else:
+            pw = np.array([1.0])
+        for ns in states:
+            solver.p_proposals[(prop, src, ns)] = 0.0
+        for wk, wk_p in zip(widxs, pw):
+            solver.p_proposals[(prop, src, states[wk])] = float(wk_p)
+
+    strategy_df = solver._create_strategy_dataframe()
+    P_df, P_proposals, P_approvals = solver._compute_transition_probabilities_fast()
+    V_df = pd.DataFrame(V_arr, index=states, columns=players)
+
+    verified, message, detail = verify_equilibrium_detailed({
+        "players": players, "states": states, "state_names": states,
+        "effectivity": effectivity, "P": P_df,
+        "P_proposals": P_proposals, "P_approvals": P_approvals,
+        "V": V_df, "strategy_df": strategy_df,
+    })
+    if not verified:
+        return None
+
+    return {
+        "strategy_df": strategy_df.copy(),
+        "P": P_df.copy(),
+        "V": V_df.copy(),
+        "P_proposals": P_proposals.copy(),
+        "P_approvals": dict(P_approvals),
+        "verification_success": verified,
+        "verification_message": message,
+        "verification_detail": detail,
+        "free_approvals": list(free_approvals),
+        "proposal_rows": list(proposal_rows),
+    }
 
 
 def _solve_values_fast_array(P: np.ndarray, payoff_array: np.ndarray, discounting: float) -> np.ndarray:
@@ -801,48 +909,45 @@ def _verify_equilibrium_fast(
     return True, "All tests passed.", None
 
 
-def _ranking_triplets(
+def _ranking_tuples(
     state_perms: np.ndarray,
+    n_players: int,
     max_combinations: int | None,
     shuffle: bool = False,
     random_seed: int = 0,
-    perm_orders: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+    perm_orders: tuple[np.ndarray, ...] | None = None,
 ):
     n_perms = state_perms.shape[0]
     if perm_orders is None:
         default_order = np.arange(n_perms, dtype=np.int64)
-        perm_orders = (default_order, default_order, default_order)
-    total = n_perms ** 3
+        perm_orders = tuple(default_order for _ in range(n_players))
+    total = n_perms ** n_players
     if max_combinations is not None:
         total = min(total, max_combinations)
     if shuffle:
         rng = np.random.RandomState(random_seed)
-        flat_total = n_perms ** 3
+        flat_total = n_perms ** n_players
         if total == flat_total:
             order = np.arange(flat_total, dtype=np.int64)
             rng.shuffle(order)
         else:
             order = rng.choice(flat_total, size=total, replace=False)
         for done, flat_idx in enumerate(order):
-            perm_a = int(flat_idx // (n_perms * n_perms))
-            rem = int(flat_idx % (n_perms * n_perms))
-            perm_b = int(rem // n_perms)
-            perm_c = int(rem % n_perms)
-            yield done, total, perm_a, perm_b, perm_c
+            digits = [0] * n_players
+            value = int(flat_idx)
+            for pos in range(n_players - 1, -1, -1):
+                digits[pos] = value % n_perms
+                value //= n_perms
+            yield done, total, tuple(digits)
         return
 
     done = 0
-    order_a, order_b, order_c = perm_orders
-    for pos_a in range(n_perms):
-        perm_a = int(order_a[pos_a])
-        for pos_b in range(n_perms):
-            perm_b = int(order_b[pos_b])
-            for pos_c in range(n_perms):
-                perm_c = int(order_c[pos_c])
-                yield done, total, perm_a, perm_b, perm_c
-                done += 1
-                if done >= total:
-                    return
+    for positions in itertools.product(range(n_perms), repeat=n_players):
+        perm_tuple = tuple(int(perm_orders[player_idx][pos]) for player_idx, pos in enumerate(positions))
+        yield done, total, perm_tuple
+        done += 1
+        if done >= total:
+            return
 
 
 def _payoff_ordering(
@@ -850,7 +955,7 @@ def _payoff_ordering(
     states: list[str],
     players: list[str],
     order_arrays: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, ...]:
     del states
     orders: list[np.ndarray] = []
     for player_idx, _player in enumerate(players):
@@ -885,7 +990,7 @@ def _payoff_ordering(
 
         scored.sort()
         orders.append(np.array([perm_idx for _k, _f, perm_idx in scored], dtype=np.int64))
-    return tuple(orders)  # type: ignore[return-value]
+    return tuple(orders)
 
 
 def _search_payoff_table(
@@ -913,9 +1018,6 @@ def _search_payoff_table(
 
     n_players = len(players)
     n_states = len(states)
-    if n_players != 3:
-        raise ValueError("This script currently expects exactly 3 players.")
-
     if weak_orders:
         order_arrays = _generate_weak_orders(n_states)
     else:
@@ -973,14 +1075,15 @@ def _search_payoff_table(
 
     interrupted = False
     try:
-        for done, total, perm_a, perm_b, perm_c in _ranking_triplets(
+        for done, total, perm_tuple in _ranking_tuples(
             order_arrays,
+            n_players,
             max_combinations,
             shuffle=shuffle,
             random_seed=random_seed,
             perm_orders=perm_orders,
         ):
-            ranks = (pos[perm_a], pos[perm_b], pos[perm_c])
+            ranks = tuple(pos[perm_idx] for perm_idx in perm_tuple)
             if weak_orders and weak_exact_reduced:
                 n_value_params = _weak_value_param_count(ranks)
                 n_strategy_free = _weak_free_var_count(players, states, ranks, committee_idxs)
@@ -1065,12 +1168,8 @@ def _search_payoff_table(
             if verified:
                 verified_successes += 1
                 success: dict[str, Any] = {
-                    "perms": (perm_a, perm_b, perm_c),
-                    "rankings": (
-                        order_arrays[perm_a].copy(),
-                        order_arrays[perm_b].copy(),
-                        order_arrays[perm_c].copy(),
-                    ),
+                    "perms": perm_tuple,
+                    "rankings": tuple(order_arrays[perm_idx].copy() for perm_idx in perm_tuple),
                 }
                 if solved_payload is not None:
                     success.update({
@@ -1258,6 +1357,7 @@ def _verify_via_old_cli_pipeline(
     effectivity: dict[tuple, int],
     V: pd.DataFrame,
     P: pd.DataFrame,
+    effectivity_rule: str = "heyen_lehtomaa_2021",
 ) -> tuple[bool, str, dict[str, Any]]:
     metadata = _build_excel_metadata(config, payoff_table_path)
     with tempfile.NamedTemporaryFile(prefix="ordinal_candidate_", suffix=".xlsx", delete=False) as tmp:
@@ -1276,7 +1376,7 @@ def _verify_via_old_cli_pipeline(
             static_payoffs=None,
             transition_matrix=P,
         )
-        return _run_verification(temp_path)
+        return _run_verification(temp_path, effectivity_rule=effectivity_rule)
     finally:
         temp_path.unlink(missing_ok=True)
 
@@ -1332,14 +1432,14 @@ def _write_all_successes(
             continue
         seen_keys.add(dedup_key)
 
-        perm_a, perm_b, perm_c = success["perms"]
-        suffix = f"{idx:04d}_a{perm_a}_b{perm_b}_c{perm_c}"
+        perm_tuple = tuple(int(perm) for perm in success["perms"])
+        suffix = f"{idx:04d}_" + "_".join(f"p{player_idx}{perm_idx}" for player_idx, perm_idx in enumerate(perm_tuple))
         output_path = output_dir / f"{payoff_path.stem}_{suffix}.xlsx"
         metadata = dict(metadata_base)
         metadata["ordinal_ranking_weak_orders"] = result["weak_orders"]
-        metadata["ordinal_perm_a"] = perm_a
-        metadata["ordinal_perm_b"] = perm_b
-        metadata["ordinal_perm_c"] = perm_c
+        metadata["ordinal_perms"] = ",".join(str(perm) for perm in perm_tuple)
+        for player_idx, perm_idx in enumerate(perm_tuple):
+            metadata[f"ordinal_perm_{player_idx}"] = perm_idx
         write_strategy_table_excel(
             df=reference["strategy_df"],
             excel_file_path=str(output_path),
@@ -1356,10 +1456,10 @@ def _write_all_successes(
         row = {
             "index": idx,
             "output_file": _display_path(output_path),
-            "perm_a": perm_a,
-            "perm_b": perm_b,
-            "perm_c": perm_c,
+            "ordinal_perms": ",".join(str(perm) for perm in perm_tuple),
         }
+        for player_idx, perm_idx in enumerate(perm_tuple):
+            row[f"perm_{player_idx}"] = perm_idx
         for player, ranking in zip(result["players"], success["rankings"]):
             row[f"ranking_{player}"] = (
                 _format_weak_order(result["states"], ranking)
@@ -1403,6 +1503,18 @@ def main() -> None:
     )
     parser.add_argument("file", help="Payoff table path or basename under payoff_tables/")
     parser.add_argument("--scenario", type=str, default=None, help="Optional scenario override for payoff-table search")
+    parser.add_argument(
+        "--allow-non-canonical-states",
+        action="store_true",
+        help="Allow non-canonical state names from reduced payoff tables.",
+    )
+    parser.add_argument(
+        "--effectivity-rule",
+        type=str,
+        default=None,
+        choices=("heyen_lehtomaa_2021", "unanimous_consent", "deployer_exit", "free_exit"),
+        help="Effectivity rule used to generate approval committees.",
+    )
     parser.add_argument("--max-combinations", type=int, default=None, help="Cap the number of ranking triples to test")
     parser.add_argument("--progress-every", type=int, default=10000, help="Update progress every N combinations")
     parser.add_argument("--stop-on-success", action="store_true", help="Stop immediately on first verified equilibrium in payoff-table mode")
@@ -1452,10 +1564,19 @@ def main() -> None:
     args = parser.parse_args()
     payoff_path = _resolve_payoff_file(args.file)
     if args.scenario:
-        config = _build_payoff_config(args.scenario, str(payoff_path))
+        config = _build_payoff_config(
+            args.scenario,
+            str(payoff_path),
+            allow_non_canonical_states=args.allow_non_canonical_states,
+            effectivity_rule=args.effectivity_rule,
+        )
         config_source = f"scenario:{args.scenario}"
     else:
-        config = _build_inferred_payoff_config(payoff_path)
+        config = _build_inferred_payoff_config(
+            payoff_path,
+            allow_non_canonical_states=args.allow_non_canonical_states,
+            effectivity_rule=args.effectivity_rule,
+        )
         config_source = "inferred"
     players = config["players"]
     print("Ordinal Ranking Verification Search")
@@ -1463,6 +1584,9 @@ def main() -> None:
     print(f"file: {payoff_path.relative_to(REPO_ROOT)}")
     print(f"config_source: {config_source}")
     print(f"players: {players}")
+    print(f"allow_non_canonical_states: {args.allow_non_canonical_states}")
+    if args.effectivity_rule is not None:
+        print(f"effectivity_rule: {args.effectivity_rule}")
     setup_preview = __import__("lib.equilibrium.find", fromlist=["setup_experiment"]).setup_experiment(config)
     state_count = len(setup_preview["state_names"])
     if args.weak_orders:
@@ -1535,29 +1659,34 @@ def main() -> None:
 
     if result["first_success"] is not None:
         success = result["first_success"]
-        perm_a, perm_b, perm_c = success["perms"]
+        perm_tuple = tuple(int(perm) for perm in success["perms"])
         reference = _materialize_success_result(result, success)
-        cli_success, cli_message, cli_details = _verify_via_old_cli_pipeline(
-            config=result["config"],
-            payoff_table_path=result["config"]["payoff_table"],
-            strategy_df=reference["strategy_df"],
-            players=result["players"],
-            states=result["states"],
+        cli_details: dict[str, Any] | None = None
+        try:
+            cli_success, cli_message, cli_details = _verify_via_old_cli_pipeline(
+                config=result["config"],
+                payoff_table_path=result["config"]["payoff_table"],
+                strategy_df=reference["strategy_df"],
+                players=result["players"],
+                states=result["states"],
             effectivity=result["effectivity"],
             V=reference["V"],
             P=reference["P"],
+            effectivity_rule=args.effectivity_rule or "heyen_lehtomaa_2021",
         )
+        except Exception as exc:
+            cli_success = False
+            cli_message = f"legacy verifier unavailable: {exc}"
+            cli_details = {"exception": repr(exc)}
         print()
         print("First Verified Success")
         print("-" * 80)
-        if args.weak_orders:
-            print(f"{players[0]}: {_format_weak_order(states, order_arrays[perm_a])}")
-            print(f"{players[1]}: {_format_weak_order(states, order_arrays[perm_b])}")
-            print(f"{players[2]}: {_format_weak_order(states, order_arrays[perm_c])}")
-        else:
-            print(f"{players[0]}: {_format_ranking(states, order_arrays[perm_a])}")
-            print(f"{players[1]}: {_format_ranking(states, order_arrays[perm_b])}")
-            print(f"{players[2]}: {_format_ranking(states, order_arrays[perm_c])}")
+        for player_idx, player in enumerate(players):
+            order = order_arrays[perm_tuple[player_idx]]
+            if args.weak_orders:
+                print(f"{player}: {_format_weak_order(states, order)}")
+            else:
+                print(f"{player}: {_format_ranking(states, order)}")
         print(f"reference_verification: {reference['verification_success']}")
         print(f"reference_message: {reference['verification_message']}")
         print(f"cli_verification: {cli_success}")

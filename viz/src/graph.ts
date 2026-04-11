@@ -16,6 +16,12 @@ const PENTAGON_COORDS = [
   { x: -171, y: -55  },
 ];
 
+const TRIANGLE_COORDS = {
+  N: { x: 0, y: -160 },
+  A: { x: -140, y: 110 },
+  B: { x: 140, y: 110 },
+};
+
 // Standard player order for normalization (single-character player names only)
 const STANDARD_ORDER = ['H', 'W', 'T', 'C', 'F', 'A', 'B', 'D', 'E', 'G'];
 
@@ -95,6 +101,17 @@ function getReducedPentagonPositions(stateNames: string[]): Record<string, { x: 
     [pairs[0]]: PENTAGON_COORDS[1],
     [pairs[1]]: PENTAGON_COORDS[2],
     [pairs[2]]: PENTAGON_COORDS[4],
+  };
+}
+
+function getReducedTrianglePositions(stateNames: string[]): Record<string, { x: number; y: number }> {
+  if (stateNames.length !== 3) return {};
+  const required = ['N', 'A', 'B'];
+  if (!required.every(state => stateNames.includes(state))) return {};
+  return {
+    N: TRIANGLE_COORDS.N,
+    A: TRIANGLE_COORDS.A,
+    B: TRIANGLE_COORDS.B,
   };
 }
 
@@ -352,7 +369,9 @@ export class GraphRenderer {
 
     // Get preset positions for specific cases
     let presetPositions: Record<string, { x: number; y: number }> = {};
-    if (graphData.nodes.length === 4) {
+    if (graphData.nodes.length === 3) {
+      presetPositions = getReducedTrianglePositions(graphData.nodes.map(n => n.id));
+    } else if (graphData.nodes.length === 4) {
       presetPositions = getReducedPentagonPositions(graphData.nodes.map(n => n.id));
     } else if (graphData.nodes.length === 5) {
       presetPositions = getPentagonPositions(graphData.nodes.map(n => n.id));
@@ -713,7 +732,7 @@ export class GraphRenderer {
       case 'default':
         // Use preset positions for n=4/5/15 or when preset positions were computed,
         // otherwise force-directed
-        if (usePresetPositions || graphData.nodes.length === 4 || graphData.nodes.length === 5 || graphData.nodes.length === 15) {
+        if (usePresetPositions || graphData.nodes.length === 3 || graphData.nodes.length === 4 || graphData.nodes.length === 5 || graphData.nodes.length === 15) {
           return { name: 'preset' };
         } else {
           return {
