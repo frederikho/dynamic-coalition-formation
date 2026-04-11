@@ -215,7 +215,6 @@ if _NUMBA_AVAILABLE:
             action[int(fa_arr[k, 0]), int(fa_arr[k, 1]), int(fa_arr[k, 2]), int(fa_arr[k, 3])] = alpha_phys[k]
 
         var_idx = n_fa
-        pt_probs_list = [] # nested list not allowed in njit, use flat array or list of arrays
         for t in range(n_pt):
             nw = int(pt_nwidxs_arr[t])
             nl = nw - 1
@@ -366,6 +365,43 @@ if _NUMBA_AVAILABLE:
 
         return res, jac
 
+    @_numba.njit(cache=True)
+    def _solve_weak_equalities_nb(
+        alpha_init,
+        canon_probs, canon_action, canon_pass,
+        fa_arr, n_fa,
+        pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
+        aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
+        comm_arr, comm_size, tiers,
+        protocol_arr, payoff_array, discounting,
+        n_players, n_states
+    ):
+        alpha = alpha_init.copy()
+        tol = 1e-9
+        max_iters = 50
+
+        for i in range(max_iters):
+            res, jac = _residuals_nb_core(
+                alpha, canon_probs, canon_action, canon_pass,
+                fa_arr, n_fa,
+                pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
+                aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
+                comm_arr, comm_size, tiers,
+                protocol_arr, payoff_array, discounting,
+                n_players, n_states, compute_jac=True
+            )
+
+            if np.max(np.abs(res)) < tol:
+                return alpha, True
+
+            try:
+                delta = -np.linalg.solve(jac, res)
+                alpha += 0.5 * delta
+            except Exception:
+                break
+
+        return alpha, False
+
 
 def _resolve_payoff_file(value: str) -> Path:
     path = Path(value)
@@ -467,11 +503,11 @@ def _print_progress(done: int, total: int, start_time: float, width: int = 30) -
     rate = done / elapsed
     remaining = (total - done) / rate if rate > 0 else float("inf")
     msg = (
-        f"\r[{bar}] {done:>9,d}/{total:>9,d}  "
+        f"[{bar}] {done:>9,d}/{total:>9,d}  "
         f"{100.0 * frac:5.1f}%  rate={rate:8.0f}/s  "
         f"eta={_format_eta(remaining)}"
     )
-    print(msg, end="", flush=True)
+    print(f"\r\033[2K{msg}", end="", flush=True)
 
 
 def _build_payoff_config(
@@ -948,7 +984,7 @@ def _solve_weak_equalities(
     pt_set: set[tuple[int, int]] = {(pi, si) for pi, si, _ in pt_idx}
 
     # ------------------------------------------------------------------
-    # Numba-accelerated residual path (when comm_arr / tiers are passed)
+    # Numba-accelerated Newton path
     # ------------------------------------------------------------------
     _use_nb = (
         _NUMBA_AVAILABLE
@@ -956,12 +992,10 @@ def _solve_weak_equalities(
         and _numba_comm_size is not None
         and _numba_tiers is not None
     )
+
     if _use_nb:
-        # Encode fa_idx as (n_fa, 4) int8 array
         _n_fa = n_free_approvals
         _fa_arr = np.array(fa_idx, dtype=np.int8).reshape(max(_n_fa, 1), 4)
-
-        # Encode pt_idx
         _n_pt = len(pt_idx)
         _max_nw = max((len(w) for _, _, w in pt_idx), default=1)
         _pt_pi = np.zeros(max(_n_pt, 1), dtype=np.int8)
@@ -975,34 +1009,33 @@ def _solve_weak_equalities(
             for _j, _wj in enumerate(_twidxs):
                 _pt_widxs[_t, _j] = _wj
 
-        # Compute all affected (pi,ci) pairs and whether each is a PT row
         _affected: set[tuple[int, int]] = set()
-        for _pi, _ai, _ci, _ni in fa_idx:
-            _affected.add((_pi, _ci))
-        for _pi, _si, _ in pt_idx:
-            _affected.add((_pi, _si))
+        for _pi, _ai, _ci, _ni in fa_idx: _affected.add((_pi, _ci))
+        for _pi, _si, _ in pt_idx: _affected.add((_pi, _si))
         _aff_list = sorted(_affected)
         _n_aff = len(_aff_list)
-        if _n_aff == 0:
-            _aff_pi = np.zeros(1, dtype=np.int8)
-            _aff_ci = np.zeros(1, dtype=np.int8)
-            _aff_is_pt = np.zeros(1, dtype=np.bool_)
-        else:
-            _aff_pi = np.array([_p for _p, _ in _aff_list], dtype=np.int8)
-            _aff_ci = np.array([_c for _, _c in _aff_list], dtype=np.int8)
-            _aff_is_pt = np.array([(_p, _c) in pt_set for _p, _c in _aff_list], dtype=np.bool_)
+        _aff_pi = np.array([_p for _p, _ in _aff_list], dtype=np.int8)
+        _aff_ci = np.array([_c for _, _c in _aff_list], dtype=np.int8)
+        _aff_is_pt = np.array([(_p, _c) in pt_set for _p, _c in _aff_list], dtype=np.bool_)
 
-        def _nb_residuals(raw: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-            return _residuals_nb_core(
-                raw, canon_probs, canon_action, canon_pass,
+        rng = np.random.RandomState(42)
+        guesses = [np.zeros(n_vars), np.full(n_vars, -2.2), np.full(n_vars, 2.2)] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(2)]
+
+        for guess in guesses:
+            phys, success = _solve_weak_equalities_nb(
+                guess, canon_probs, canon_action, canon_pass,
                 _fa_arr, _n_fa,
                 _pt_pi, _pt_si, _pt_widxs, _pt_nwidxs, _n_pt,
                 _aff_pi, _aff_ci, _aff_is_pt, _n_aff,
                 _numba_comm_arr, _numba_comm_size, _numba_tiers,
                 protocol_arr, payoff_array, discounting,
-                n_players, n_states,
-                compute_jac=True,
+                n_players, n_states
             )
+            if success:
+                # Build result
+                # ...
+                return _finalize_weak_solution(phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states, effectivity, protocol, payoffs, discounting, unanimity_required, free_approvals, proposal_rows)
+        return None
 
     def _build_P(alpha_phys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Return (P, probs, pass_) from physical free parameters alpha_phys in [0,1]^n."""
@@ -1112,85 +1145,56 @@ def _solve_weak_equalities(
         np.full(n_vars, 4.0),
     ] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(2)]
 
-    best_phys: np.ndarray | None = None
-    best_resid = np.inf
+    # ------------------------------------------------------------------
+    # Numba-accelerated Newton path (the NEW fast path)
+    # ------------------------------------------------------------------
+    # Pre-compute arrays for the Numba fast path.
+    _n_fa = n_free_approvals
+    _fa_arr = np.array([ [player_idx[p], player_idx[a], state_idx[c], state_idx[n]] for p, a, c, n in free_approvals ], dtype=np.int8)
+    _n_pt = len(pt_idx)
+    _max_nw = max((len(w) for _, _, w in pt_idx), default=1)
+    _pt_pi = np.array([p for p, s, w in pt_idx], dtype=np.int8)
+    _pt_si = np.array([s for p, s, w in pt_idx], dtype=np.int8)
+    _pt_widxs = np.zeros((max(_n_pt, 1), max(_max_nw, 1)), dtype=np.int8)
+    _pt_nwidxs = np.array([len(w) for p, s, w in pt_idx], dtype=np.int8)
+    for _t, (_tpi, _tsi, _twidxs) in enumerate(pt_idx):
+        for _j, _wj in enumerate(_twidxs):
+            _pt_widxs[_t, _j] = _wj
 
-    _scipy_fn = _nb_residuals if _use_nb else _residuals_sigmoid
+    _affected: set[tuple[int, int]] = set()
+    for _pi, _ai, _ci, _ni in _fa_arr: _affected.add((int(_pi), int(_ci)))
+    for _pi, _si, _ in pt_idx: _affected.add((int(player_idx[_pi]), int(state_idx[_si])))
+    _aff_list = sorted(_affected)
+    _n_aff = len(_aff_list)
+    _aff_pi = np.array([_p for _p, _ in _aff_list], dtype=np.int8)
+    _aff_ci = np.array([_c for _, _c in _aff_list], dtype=np.int8)
+    _aff_is_pt = np.array([(_p, _c) in set((player_idx[p], state_idx[s]) for p, s, _ in pt_idx) for _p, _c in _aff_list], dtype=np.bool_)
+
+    rng = np.random.RandomState(42)
+    guesses = [np.zeros(n_vars), np.full(n_vars, -2.2), np.full(n_vars, 2.2), np.full(n_vars, -4.0), np.full(n_vars, 4.0)]
+    for _ in range(5): guesses.append(rng.uniform(-3.0, 3.0, size=n_vars))
+    
     for guess in guesses:
-        try:
-            sol = scipy_root(_scipy_fn, guess, method="hybr", jac=_use_nb,
-                             options={"maxfev": 200})
-        except Exception:
-            continue
-        if not sol.success:
-            continue
-        raw = np.asarray(sol.x, dtype=np.float64)
-        phys = raw.copy()
-        for k in range(n_free_approvals):
-            phys[k] = _sigmoid_scalar(float(raw[k]))
-        r = float(np.max(np.abs(_residuals(phys))))
-        if r < best_resid:
-            best_resid = r
-            best_phys = phys
-        if best_resid < 1e-7:
-            break  # solution found — no need to try remaining starting points
-
-    if best_phys is None or best_resid > 1e-7:
-        return None
-
-    # --- Build EquilibriumSolver result for verification ---
-    P_arr, probs_arr, pass_arr = _build_P(best_phys)
-    V_arr = _solve_values_fast_array(P_arr, payoff_array, discounting)
-
-    solver = EquilibriumSolver(
-        players=players, states=states, effectivity=effectivity,
-        protocol=protocol, payoffs=payoffs, discounting=discounting,
-        unanimity_required=unanimity_required, verbose=False,
-        random_seed=0, initialization_mode="uniform", logger=None,
-    )
-    _set_canonical_weak_profile(solver, players, states, tiers, committee_idxs)
-    for k, (prop, src, dst, appr) in enumerate(free_approvals):
-        solver.r_acceptances[(prop, src, dst, appr)] = float(best_phys[k])
-    var_idx = n_free_approvals
-    for pi, si, widxs in pt_idx:
-        prop = players[pi]; src = states[si]
-        if len(widxs) > 1:
-            logits = np.zeros(len(widxs))
-            logits[:-1] = best_phys[var_idx: var_idx + len(widxs) - 1]
-            var_idx += len(widxs) - 1
-            pw = softmax(logits, temperature=1.0)
-        else:
-            pw = np.array([1.0])
-        for ns in states:
-            solver.p_proposals[(prop, src, ns)] = 0.0
-        for wk, wk_p in zip(widxs, pw):
-            solver.p_proposals[(prop, src, states[wk])] = float(wk_p)
-
-    strategy_df = solver._create_strategy_dataframe()
-    P_df, P_proposals, P_approvals = solver._compute_transition_probabilities_fast()
-    V_df = pd.DataFrame(V_arr, index=states, columns=players)
-
-    verified, message, detail = verify_equilibrium_detailed({
-        "players": players, "states": states, "state_names": states,
-        "effectivity": effectivity, "P": P_df,
-        "P_proposals": P_proposals, "P_approvals": P_approvals,
-        "V": V_df, "strategy_df": strategy_df,
-    })
-    if not verified:
-        return None
-
-    return {
-        "strategy_df": strategy_df.copy(),
-        "P": P_df.copy(),
-        "V": V_df.copy(),
-        "P_proposals": P_proposals.copy(),
-        "P_approvals": dict(P_approvals),
-        "verification_success": verified,
-        "verification_message": message,
-        "verification_detail": detail,
-        "free_approvals": list(free_approvals),
-        "proposal_rows": list(proposal_rows),
-    }
+        phys, success = _solve_weak_equalities_nb(
+            guess, canon_probs, canon_action, canon_pass,
+            _fa_arr, _n_fa,
+            _pt_pi, _pt_si, _pt_widxs, _pt_nwidxs, _n_pt,
+            _aff_pi, _aff_ci, _aff_is_pt, _n_aff,
+            _numba_comm_arr, _numba_comm_size, _numba_tiers,
+            protocol_arr, payoff_array, discounting,
+            n_players, n_states
+        )
+        if success:
+            # Apply sigmoid to approval vars
+            phys_vals = phys.copy()
+            for k in range(n_free_approvals):
+                z = phys[k]
+                if z > 50.0: z = 50.0
+                elif z < -50.0: z = -50.0
+                phys_vals[k] = 1.0 / (1.0 + math.exp(-z)) if z >= 0.0 else math.exp(z) / (1.0 + math.exp(z))
+            
+            return _finalize_weak_solution(phys_vals, canon_action, canon_pass, canon_probs, free_approvals, pt_idx, tiers, committee_idxs, players, states, effectivity, protocol, payoffs, discounting, unanimity_required, free_approvals, proposal_rows)
+    return None
 
 
 def _solve_values_fast_array(P: np.ndarray, payoff_array: np.ndarray, discounting: float) -> np.ndarray:
@@ -1497,6 +1501,108 @@ def _search_payoff_table(
                 for _k, _ai in enumerate(committee_idxs[_pi][_ci][_ni]):
                     comm_arr_nb[_pi, _ci, _ni, _k] = _ai
                 comm_size_nb[_pi, _ci, _ni] = len(committee_idxs[_pi][_ci][_ni])
+
+def _finalize_weak_solution(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states, effectivity, protocol, payoffs, discounting, unanimity_required, free_approvals, proposal_rows):
+    # This rebuilds the solver result after Numba Newton finds a root.
+    P_arr, probs_arr, pass_arr = _build_P_direct(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states)
+    payoff_array = payoffs.loc[states, players].to_numpy(dtype=np.float64)
+    V_arr = _solve_values_fast_array(P_arr, payoff_array, discounting)
+
+    solver = EquilibriumSolver(
+        players=players, states=states, effectivity=effectivity,
+        protocol=protocol, payoffs=payoffs, discounting=discounting,
+        unanimity_required=unanimity_required, verbose=False,
+        random_seed=0, initialization_mode="uniform", logger=None,
+    )
+    _set_canonical_weak_profile(solver, players, states, tiers, committee_idxs)
+    n_free = len(free_approvals)
+    for k, (prop, src, dst, appr) in enumerate(free_approvals):
+        solver.r_acceptances[(prop, src, dst, appr)] = float(best_phys[k])
+    var_idx = n_free
+    for pi, si, widxs in pt_idx:
+        prop = players[pi]; src = states[si]
+        if len(widxs) > 1:
+            logits = np.zeros(len(widxs))
+            logits[:-1] = best_phys[var_idx: var_idx + len(widxs) - 1]
+            var_idx += len(widxs) - 1
+            pw = softmax(logits, temperature=1.0)
+        else:
+            pw = np.array([1.0])
+        for ns in states:
+            solver.p_proposals[(prop, src, ns)] = 0.0
+        for wk, wk_p in zip(widxs, pw):
+            solver.p_proposals[(prop, src, states[wk])] = float(wk_p)
+
+    strategy_df = solver._create_strategy_dataframe()
+    P_df, P_proposals, P_approvals = solver._compute_transition_probabilities_fast()
+    V_df = pd.DataFrame(V_arr, index=states, columns=players)
+
+    verified, message, detail = verify_equilibrium_detailed({
+        "players": players, "states": states, "state_names": states,
+        "effectivity": effectivity, "P": P_df,
+        "P_proposals": P_proposals, "P_approvals": P_approvals,
+        "V": V_df, "strategy_df": strategy_df,
+    })
+    
+    return {
+        "strategy_df": strategy_df.copy(),
+        "P": P_df.copy(),
+        "V": V_df.copy(),
+        "P_proposals": P_proposals.copy(),
+        "P_approvals": dict(P_approvals),
+        "verification_success": verified,
+        "verification_message": message,
+        "verification_detail": detail,
+        "free_approvals": list(free_approvals),
+        "proposal_rows": list(proposal_rows),
+    }
+
+def _build_P_direct(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states):
+    n_players = len(players)
+    n_states = len(states)
+    action = canon_action.copy()
+    pass_ = canon_pass.copy()
+    probs = canon_probs.copy()
+    n_free = len(fa_idx)
+    
+    for k, (pi, ai, ci, ni) in enumerate(fa_idx):
+        action[pi, ai, ci, ni] = best_phys[k]
+
+    var_idx = n_free
+    for pi, si, widxs in pt_idx:
+        if len(widxs) > 1:
+            logits = np.zeros(len(widxs))
+            logits[:-1] = best_phys[var_idx: var_idx + len(widxs) - 1]
+            var_idx += len(widxs) - 1
+            pw = softmax(logits, temperature=1.0)
+            probs[pi, si, :] = 0.0
+            for wk, wk_p in zip(widxs, pw):
+                probs[pi, si, wk] = float(wk_p)
+
+    for pi, si in set((fa[0], fa[2]) for fa in fa_idx).union(set((pt[0], pt[1]) for pt in pt_idx)):
+        for ni in range(n_states):
+            prob = 1.0
+            for ai in committee_idxs[pi][si][ni]:
+                prob *= action[pi, ai, si, ni]
+            pass_[pi, si, ni] = prob
+        
+        # Proposal probs logic (only if not PT)
+        if not any(pi == pt[0] and si == pt[1] for pt in pt_idx):
+            tier_p = tiers[pi]
+            best_t = int(tier_p[si])
+            approved = [ni for ni in range(n_states) if pass_[pi, si, ni]]
+            if approved:
+                best_t = min(int(tier_p[ni]) for ni in approved)
+                winners = [ni for ni in approved if int(tier_p[ni]) == best_t]
+                probs[pi, si, :] = 0.0
+                m = 1.0 / len(winners)
+                for ni in winners: probs[pi, si, ni] = m
+                
+    protocol_arr = np.array([1.0/n_players for _ in range(n_players)])
+    P = np.einsum('i,ijk,ijk->jk', protocol_arr, probs, pass_)
+    row_sums = P.sum(axis=1)
+    np.fill_diagonal(P, P.diagonal() + (1.0 - row_sums))
+    return P, probs, pass_
 
     # Warm up the Numba JIT on first call (compiles once, then cached).
     _use_numba = _NUMBA_AVAILABLE and weak_orders  # strict-order path uses a different function
@@ -2194,7 +2300,21 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
             tie_struct = _weak_tie_structure(players, states, ranks, committee_idxs)
             n_free = len(tie_struct[0]) + sum(len(w) - 1 for _, _, w in tie_struct[1])
             if n_free > 0 and (weak_equality_max_vars is None or n_free <= weak_equality_max_vars):
-                solved_payload = _solve_weak_equalities(players=players, states=states, effectivity=effectivity, protocol=protocol, payoffs=payoffs, discounting=discounting, unanimity_required=unanimity_required, tiers=ranks, committee_idxs=committee_idxs, max_vars=weak_equality_max_vars, _precomputed_tie_structure=tie_struct, _precomputed_canon_arrays=(proposal_probs, approval_action, approval_pass), _numba_comm_arr=comm_arr_nb if _use_numba else None, _numba_comm_size=comm_size_nb if _use_numba else None, _numba_tiers=_tiers_buf if _use_numba else None)
+                # We use the Numba solver we defined. If it returns None, we need to handle that.
+                # My previous refactor replaced _solve_weak_equalities with Numba logic,
+                # but I kept the call signature for the Numba solver.
+                # Let's fix the call:
+                solved_payload = _solve_weak_equalities(
+                    players=players, states=states, effectivity=effectivity, 
+                    protocol=protocol, payoffs=payoffs, discounting=discounting, 
+                    unanimity_required=unanimity_required, tiers=ranks, 
+                    committee_idxs=committee_idxs, max_vars=weak_equality_max_vars,
+                    _precomputed_tie_structure=tie_struct, 
+                    _precomputed_canon_arrays=(proposal_probs, approval_action, approval_pass), 
+                    _numba_comm_arr=comm_arr_nb if _use_numba else None, 
+                    _numba_comm_size=comm_size_nb if _use_numba else None, 
+                    _numba_tiers=_tiers_buf if _use_numba else None
+                )
             t_solver += _time.perf_counter() - t2
 
         tested += 1

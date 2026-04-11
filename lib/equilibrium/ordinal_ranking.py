@@ -40,7 +40,7 @@ def _print_progress(done: int, total: int | None, start_time: float) -> None:
         eta = "∞"
     total_str = f"{total:.3e}" if total and total > 1_000_000_000 else f"{total:,d}" if total else "?"
     print(
-        f"\r[{bar}] {done:>9,d}/{total_str}  {pct:.2e}%  "
+        f"\r\033[2K[{bar}] {done:>9,d}/{total_str}  {pct:.2e}%  "
         f"rate={rate:8.0f}/s  eta={eta}",
         end="",
         flush=True,
