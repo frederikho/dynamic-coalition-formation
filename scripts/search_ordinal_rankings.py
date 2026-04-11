@@ -183,60 +183,50 @@ if _NUMBA_AVAILABLE:
         tiers,
         protocol_arr, payoff_array, discounting,
         n_players, n_states,
+        compute_jac=False,
     ):
-        """Numba JIT residual for _solve_weak_equalities.
+        """Numba JIT residual and Jacobian for _solve_weak_equalities.
 
-        Replaces the Python closures _build_P / _residuals / _residuals_sigmoid.
-        alpha_raw[0:n_fa]  : unconstrained approval params (sigmoid → [0,1])
-        alpha_raw[n_fa:]   : unconstrained logit params for proposal ties (softmax)
-        Returns a residual vector of length == alpha_raw.shape[0].
+        If compute_jac=True, returns (res, jac).
         """
-        # Step 1: sigmoid for approval params; logit params stay unconstrained
+        n_vars = alpha_raw.shape[0]
+
+        # Step 1: sigmoid/softmax mapping
         alpha_phys = alpha_raw.copy()
+        d_phys_d_raw = np.ones(n_vars)
         for k in range(n_fa):
-            x = alpha_raw[k]
-            z = x
-            if z > 50.0:
-                z = 50.0
-            elif z < -50.0:
-                z = -50.0
+            z = alpha_raw[k]
+            if z > 50.0: z = 50.0
+            elif z < -50.0: z = -50.0
             if z >= 0.0:
-                alpha_phys[k] = 1.0 / (1.0 + math.exp(-z))
+                s = 1.0 / (1.0 + math.exp(-z))
             else:
                 ez = math.exp(z)
-                alpha_phys[k] = ez / (1.0 + ez)
+                s = ez / (1.0 + ez)
+            alpha_phys[k] = s
+            d_phys_d_raw[k] = s * (1.0 - s)
 
-        # Step 2: copy canonical arrays (one copy per residual eval)
+        # Step 2: patch arrays
         action = canon_action.copy()
         pass_ = canon_pass.copy()
         probs = canon_probs.copy()
 
-        # Step 3: patch free approval cells
         for k in range(n_fa):
-            pi = int(fa_arr[k, 0])
-            ai = int(fa_arr[k, 1])
-            ci = int(fa_arr[k, 2])
-            ni = int(fa_arr[k, 3])
-            action[pi, ai, ci, ni] = alpha_phys[k]
+            action[int(fa_arr[k, 0]), int(fa_arr[k, 1]), int(fa_arr[k, 2]), int(fa_arr[k, 3])] = alpha_phys[k]
 
-        # Step 4: patch proposal-tie rows via softmax of logit params
         var_idx = n_fa
+        pt_probs_list = [] # nested list not allowed in njit, use flat array or list of arrays
         for t in range(n_pt):
-            pi = int(pt_pi_arr[t])
-            si = int(pt_si_arr[t])
             nw = int(pt_nwidxs_arr[t])
-            nl = nw - 1  # number of free logit params; last logit = 0
-            # Numerically stable softmax (last logit fixed at 0)
+            nl = nw - 1
             max_logit = 0.0
             for j in range(nl):
-                lj = alpha_phys[var_idx + j]
-                if lj > max_logit:
-                    max_logit = lj
-            sum_exp = math.exp(-max_logit)  # contribution of the last element (logit=0)
-            for j in range(nl):
-                sum_exp += math.exp(alpha_phys[var_idx + j] - max_logit)
-            for ns in range(n_states):
-                probs[pi, si, ns] = 0.0
+                if alpha_phys[var_idx + j] > max_logit: max_logit = alpha_phys[var_idx + j]
+            sum_exp = math.exp(-max_logit)
+            for j in range(nl): sum_exp += math.exp(alpha_phys[var_idx + j] - max_logit)
+            
+            pi = int(pt_pi_arr[t]); si = int(pt_si_arr[t])
+            for ns in range(n_states): probs[pi, si, ns] = 0.0
             for j in range(nl):
                 wj = int(pt_widxs_arr[t, j])
                 probs[pi, si, wj] = math.exp(alpha_phys[var_idx + j] - max_logit) / sum_exp
@@ -244,66 +234,47 @@ if _NUMBA_AVAILABLE:
             probs[pi, si, wlast] = math.exp(-max_logit) / sum_exp
             var_idx += nl
 
-        # Step 5: rebuild pass_ for all affected (pi,ci); also rebuild probs for non-PT rows
+        # Step 3: rebuild pass_ and probs for affected
         for a in range(n_aff):
-            pi = int(aff_pi_arr[a])
-            ci = int(aff_ci_arr[a])
+            pi = int(aff_pi_arr[a]); ci = int(aff_ci_arr[a])
             for ni in range(n_states):
-                prob = 1.0
+                p = 1.0
                 for k in range(int(comm_size[pi, ci, ni])):
-                    ai_k = int(comm_arr[pi, ci, ni, k])
-                    prob *= action[pi, ai_k, ci, ni]
-                pass_[pi, ci, ni] = prob
+                    p *= action[pi, int(comm_arr[pi, ci, ni, k]), ci, ni]
+                pass_[pi, ci, ni] = p
             if not aff_is_pt_arr[a]:
-                # Recompute proposal probs from updated pass_
                 best_t = int(tiers[pi, ci])
                 for ni in range(n_states):
                     if pass_[pi, ci, ni] > 0.0:
-                        t_ni = int(tiers[pi, ni])
-                        if t_ni < best_t:
-                            best_t = t_ni
-                for ns in range(n_states):
-                    probs[pi, ci, ns] = 0.0
+                        if int(tiers[pi, ni]) < best_t: best_t = int(tiers[pi, ni])
+                for ns in range(n_states): probs[pi, ci, ns] = 0.0
                 count_w = 0
                 for ni in range(n_states):
-                    if pass_[pi, ci, ni] > 0.0 and int(tiers[pi, ni]) == best_t:
-                        count_w += 1
+                    if pass_[pi, ci, ni] > 0.0 and int(tiers[pi, ni]) == best_t: count_w += 1
                 if count_w > 0:
                     m = 1.0 / count_w
                     for ni in range(n_states):
-                        if pass_[pi, ci, ni] > 0.0 and int(tiers[pi, ni]) == best_t:
-                            probs[pi, ci, ni] = m
+                        if pass_[pi, ci, ni] > 0.0 and int(tiers[pi, ni]) == best_t: probs[pi, ci, ni] = m
 
-        # Step 6: aggregate P matrix
+        # Step 4: aggregate P and solve V
         P = np.zeros((n_states, n_states))
         for pi in range(n_players):
             for ci in range(n_states):
                 for ni in range(n_states):
                     P[ci, ni] += protocol_arr[pi] * probs[pi, ci, ni] * pass_[pi, ci, ni]
         for ci in range(n_states):
-            row_sum = 0.0
-            for ni in range(n_states):
-                row_sum += P[ci, ni]
-            P[ci, ci] += 1.0 - row_sum
+            P[ci, ci] += 1.0 - np.sum(P[ci, :])
 
-        # Step 7: solve V = (I - δP)^{-1}(1-δ)U
-        A = np.eye(n_states) - discounting * P
-        B = (1.0 - discounting) * payoff_array
-        V = np.linalg.solve(A, B)
+        A_mat = np.eye(n_states) - discounting * P
+        V = np.linalg.solve(A_mat, (1.0 - discounting) * payoff_array)
 
-        # Step 8: compute residuals
-        res = np.empty(alpha_raw.shape[0])
+        # Step 5: Residuals
+        res = np.empty(n_vars)
         for k in range(n_fa):
-            ai = int(fa_arr[k, 1])
-            ci = int(fa_arr[k, 2])
-            ni = int(fa_arr[k, 3])
-            res[k] = V[ni, ai] - V[ci, ai]
+            res[k] = V[int(fa_arr[k, 3]), int(fa_arr[k, 1])] - V[int(fa_arr[k, 2]), int(fa_arr[k, 1])]
         res_idx = n_fa
         for t in range(n_pt):
-            pi = int(pt_pi_arr[t])
-            si = int(pt_si_arr[t])
-            nw = int(pt_nwidxs_arr[t])
-            w0 = int(pt_widxs_arr[t, 0])
+            pi = int(pt_pi_arr[t]); si = int(pt_si_arr[t]); nw = int(pt_nwidxs_arr[t]); w0 = int(pt_widxs_arr[t, 0])
             ev0 = pass_[pi, si, w0] * V[w0, pi] + (1.0 - pass_[pi, si, w0]) * V[si, pi]
             for j in range(1, nw):
                 wj = int(pt_widxs_arr[t, j])
@@ -311,7 +282,89 @@ if _NUMBA_AVAILABLE:
                 res[res_idx] = evj - ev0
                 res_idx += 1
 
-        return res
+        # Step 6: Jacobian J = d_res / d_raw
+        if not compute_jac:
+            return res, np.zeros((1, 1))
+
+        # Vectorized Adjoint Jacobian:
+        # dV/dx = (I - delta*P)^-1 * (delta * dP/dx * V)
+        # We solve for all x (n_vars) at once by stacking RHS columns.
+        jac = np.zeros((n_vars, n_vars))
+        
+        # RHS_all will have n_players * n_vars columns
+        RHS_all = np.zeros((n_states, n_players * n_vars))
+        
+        for k in range(n_vars):
+            dP = np.zeros((n_states, n_states))
+            if k < n_fa:
+                p_pi = int(fa_arr[k, 0]); p_ai = int(fa_arr[k, 1]); p_ci = int(fa_arr[k, 2]); p_ni = int(fa_arr[k, 3])
+                d_pass = 0.0
+                if action[p_pi, p_ai, p_ci, p_ni] > 1e-12:
+                    d_pass = pass_[p_pi, p_ci, p_ni] / action[p_pi, p_ai, p_ci, p_ni]
+                elif int(comm_size[p_pi, p_ci, p_ni]) == 1:
+                    d_pass = 1.0
+                dP[p_ci, p_ni] = protocol_arr[p_pi] * probs[p_pi, p_ci, p_ni] * d_pass
+                dP[p_ci, p_ci] = -dP[p_ci, p_ni]
+            else:
+                curr = n_fa
+                for t in range(n_pt):
+                    nw = int(pt_nwidxs_arr[t]); nl = nw - 1
+                    if curr <= k < curr + nl:
+                        pi = int(pt_pi_arr[t]); si = int(pt_si_arr[t]); idx_in_pt = k - curr
+                        p_j = probs[pi, si, int(pt_widxs_arr[t, idx_in_pt])]
+                        for j_nw in range(nw):
+                            wj = int(pt_widxs_arr[t, j_nw]); p_i = probs[pi, si, wj]
+                            delta_ij = 1.0 if j_nw == idx_in_pt else 0.0
+                            dp_i = p_i * (delta_ij - p_j)
+                            dP[si, wj] += protocol_arr[pi] * dp_i * pass_[pi, si, wj]
+                        dP[si, si] -= np.sum(dP[si, :])
+                        break
+                    curr += nl
+            
+            # Batch RHS for this variable k
+            RHS_k = discounting * (dP @ V)
+            RHS_all[:, k*n_players : (k+1)*n_players] = RHS_k
+
+        # Solve all at once: O(N^3 + N^2 * n_vars * n_players)
+        dV_all = np.linalg.solve(A_mat, RHS_all)
+
+        for k in range(n_vars):
+            dV_d_phys = dV_all[:, k*n_players : (k+1)*n_players]
+            
+            # 1. dV contribution to fa residuals
+            for j in range(n_fa):
+                ai_j = int(fa_arr[j, 1]); ci_j = int(fa_arr[j, 2]); ni_j = int(fa_arr[j, 3])
+                jac[j, k] = (dV_d_phys[ni_j, ai_j] - dV_d_phys[ci_j, ai_j]) * d_phys_d_raw[k]
+            
+            # 2. dV and d_pass contribution to pt residuals
+            res_idx_j = n_fa
+            for t in range(n_pt):
+                pi_t = int(pt_pi_arr[t]); si_t = int(pt_si_arr[t]); nw_t = int(pt_nwidxs_arr[t]); w0_t = int(pt_widxs_arr[t, 0])
+                dk_pass_t = 0.0
+                if k < n_fa:
+                    p_pi = int(fa_arr[k, 0]); p_ci = int(fa_arr[k, 2])
+                    if p_pi == pi_t and p_ci == si_t:
+                        p_ai = int(fa_arr[k, 1]); p_ni = int(fa_arr[k, 3])
+                        if action[p_pi, p_ai, p_ci, p_ni] > 1e-12:
+                            dk_pass_t = pass_[p_pi, p_ci, p_ni] / action[p_pi, p_ai, p_ci, p_ni]
+                        elif int(comm_size[p_pi, p_ci, p_ni]) == 1:
+                            dk_pass_t = 1.0
+
+                dk_pass_w0 = dk_pass_t if (k < n_fa and int(fa_arr[k, 3]) == w0_t and int(fa_arr[k, 0]) == pi_t and int(fa_arr[k, 2]) == si_t) else 0.0
+                d_ev0 = (pass_[pi_t, si_t, w0_t] * dV_d_phys[w0_t, pi_t] + 
+                         (1.0 - pass_[pi_t, si_t, w0_t]) * dV_d_phys[si_t, pi_t] +
+                         dk_pass_w0 * (V[w0_t, pi_t] - V[si_t, pi_t]))
+                
+                for j in range(1, nw_t):
+                    wj = int(pt_widxs_arr[t, j])
+                    dk_pass_wj = dk_pass_t if (k < n_fa and int(fa_arr[k, 3]) == wj and int(fa_arr[k, 0]) == pi_t and int(fa_arr[k, 2]) == si_t) else 0.0
+                    d_evj = (pass_[pi_t, si_t, wj] * dV_d_phys[wj, pi_t] + 
+                             (1.0 - pass_[pi_t, si_t, wj]) * dV_d_phys[si_t, pi_t] +
+                             dk_pass_wj * (V[wj, pi_t] - V[si_t, pi_t]))
+                    jac[res_idx_j, k] = (d_evj - d_ev0) * d_phys_d_raw[k]
+                    res_idx_j += 1
+
+        return res, jac
 
 
 def _resolve_payoff_file(value: str) -> Path:
@@ -939,7 +992,7 @@ def _solve_weak_equalities(
             _aff_ci = np.array([_c for _, _c in _aff_list], dtype=np.int8)
             _aff_is_pt = np.array([(_p, _c) in pt_set for _p, _c in _aff_list], dtype=np.bool_)
 
-        def _nb_residuals(raw: np.ndarray) -> np.ndarray:
+        def _nb_residuals(raw: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
             return _residuals_nb_core(
                 raw, canon_probs, canon_action, canon_pass,
                 _fa_arr, _n_fa,
@@ -948,6 +1001,7 @@ def _solve_weak_equalities(
                 _numba_comm_arr, _numba_comm_size, _numba_tiers,
                 protocol_arr, payoff_array, discounting,
                 n_players, n_states,
+                compute_jac=True,
             )
 
     def _build_P(alpha_phys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -1064,7 +1118,7 @@ def _solve_weak_equalities(
     _scipy_fn = _nb_residuals if _use_nb else _residuals_sigmoid
     for guess in guesses:
         try:
-            sol = scipy_root(_scipy_fn, guess, method="hybr",
+            sol = scipy_root(_scipy_fn, guess, method="hybr", jac=_use_nb,
                              options={"maxfev": 200})
         except Exception:
             continue
@@ -1381,6 +1435,9 @@ def _search_payoff_table(
     weak_equality_max_vars: int | None,
     worker_id: int = 0,
     n_workers: int = 1,
+    progress_queue: Any = None,
+    order_arrays: np.ndarray | None = None,
+    perm_orders: tuple[np.ndarray, ...] | None = None,
 ) -> dict[str, Any]:
     setup = __import__("lib.equilibrium.find", fromlist=["setup_experiment"]).setup_experiment(config)
     players = setup["players"]
@@ -1393,10 +1450,12 @@ def _search_payoff_table(
 
     n_players = len(players)
     n_states = len(states)
-    if weak_orders:
-        order_arrays = _generate_weak_orders(n_states)
-    else:
-        order_arrays = np.array(list(itertools.permutations(range(n_states))), dtype=np.int8)
+    if order_arrays is None:
+        if weak_orders:
+            order_arrays = _generate_weak_orders(n_states)
+        else:
+            order_arrays = np.array(list(itertools.permutations(range(n_states))), dtype=np.int8)
+
     n_orders = order_arrays.shape[0]
     pos = np.empty((n_orders, n_states), dtype=np.int8)
     for order_idx in range(n_orders):
@@ -1473,11 +1532,11 @@ def _search_payoff_table(
             n_players, n_states,
         )
 
-    perm_orders = None
-    if ranking_order == "payoff":
-        perm_orders = _payoff_ordering(payoff_array, states, players, order_arrays)
-    elif ranking_order == "random":
-        perm_orders = _random_ordering(n_orders, n_players, random_seed)
+    if perm_orders is None and n_workers <= 1:
+        if ranking_order == "payoff":
+            perm_orders = _payoff_ordering(payoff_array, states, players, order_arrays)
+        elif ranking_order == "random":
+            perm_orders = _random_ordering(n_orders, n_players, random_seed)
     solver = None
     if use_reference_verifier:
         solver = EquilibriumSolver(
@@ -1656,6 +1715,14 @@ def _search_payoff_table(
                     message = solved_payload["verification_message"]
                     detail = solved_payload["verification_detail"]
             tested += 1
+            if progress_every > 0 and tested % progress_every == 0:
+                if progress_queue is not None:
+                    try:
+                        progress_queue.put(progress_every)
+                    except Exception:
+                        pass
+                else:
+                    _print_progress(tested, total, start_time)
             if verified:
                 verified_successes += 1
                 success: dict[str, Any] = {
@@ -1682,12 +1749,18 @@ def _search_payoff_table(
                     first_success = success
                 if stop_on_success:
                     break
-            if progress_every > 0 and tested % progress_every == 0:
-                _print_progress(tested, total, start_time)
     except KeyboardInterrupt:
         interrupted = True
 
-    if tested:
+    if progress_every > 0 and progress_queue is not None:
+        try:
+            rem = tested % progress_every
+            if rem > 0:
+                progress_queue.put(rem)
+        except Exception:
+            pass
+
+    if tested and progress_queue is None:
         _print_progress(tested, total, start_time)
         print()
 
@@ -1988,29 +2061,187 @@ def _format_weak_order(states: list[str], tiers: np.ndarray) -> str:
     return " > ".join(ordered)
 
 
-def _worker_search(args: tuple) -> dict[str, Any]:
-    """Top-level picklable function used by ProcessPoolExecutor workers."""
+def _worker_init() -> None:
+    import signal
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
+def _worker_search_batch(args: tuple) -> dict[str, Any]:
+    """Search a specific list of ranking perms."""
     (
-        config, max_combinations, stop_on_success, use_reference_verifier,
-        shuffle, random_seed, ranking_order, weak_orders_flag, weak_exact_reduced,
-        weak_equality_solve, weak_equality_max_vars, worker_id, n_workers,
+        config, perm_tuples, use_reference_verifier,
+        weak_orders_flag, weak_exact_reduced,
+        weak_equality_solve, weak_equality_max_vars,
+        progress_queue, progress_every, order_arrays,
     ) = args
-    return _search_payoff_table(
-        config=config,
-        max_combinations=max_combinations,
-        progress_every=0,  # workers don't print progress individually
-        stop_on_success=stop_on_success,
-        use_reference_verifier=use_reference_verifier,
-        shuffle=shuffle,
-        random_seed=random_seed,
-        ranking_order=ranking_order,
-        weak_orders=weak_orders_flag,
-        weak_exact_reduced=weak_exact_reduced,
-        weak_equality_solve=weak_equality_solve,
-        weak_equality_max_vars=weak_equality_max_vars,
-        worker_id=worker_id,
-        n_workers=n_workers,
-    )
+
+    # Internal setup (same as _search_payoff_table but without the ranking_tuples loop)
+    setup = __import__("lib.equilibrium.find", fromlist=["setup_experiment"]).setup_experiment(config)
+    players = setup["players"]
+    states = setup["state_names"]
+    protocol = setup["protocol"]
+    payoffs = setup["payoffs"]
+    effectivity = setup["effectivity"]
+    discounting = setup["discounting"]
+    unanimity_required = setup["unanimity_required"]
+
+    n_players = len(players)
+    n_states = len(states)
+    if order_arrays is None:
+        if weak_orders_flag:
+            order_arrays = _generate_weak_orders(n_states)
+        else:
+            order_arrays = np.array(list(itertools.permutations(range(n_states))), dtype=np.int8)
+
+    n_orders = order_arrays.shape[0]
+    pos = np.empty((n_orders, n_states), dtype=np.int8)
+    for order_idx in range(n_orders):
+        if weak_orders_flag:
+            pos[order_idx] = order_arrays[order_idx]
+        else:
+            for rank, state_idx in enumerate(order_arrays[order_idx]):
+                pos[order_idx, state_idx] = rank
+
+    committee_idxs: list[list[list[tuple[int, ...]]]] = []
+    player_idx = {player: idx for idx, player in enumerate(players)}
+    for proposer in players:
+        proposer_rows: list[list[tuple[int, ...]]] = []
+        for current_state in states:
+            row: list[tuple[int, ...]] = []
+            for next_state in states:
+                committee = get_approval_committee(effectivity, players, proposer, current_state, next_state)
+                row.append(tuple(player_idx[p] for p in committee))
+            proposer_rows.append(row)
+        committee_idxs.append(proposer_rows)
+
+    payoff_array = payoffs.loc[states, players].to_numpy(dtype=np.float64)
+    protocol_arr = np.array([float(protocol[player]) for player in players], dtype=np.float64)
+
+    _max_comm = max(len(committee_idxs[pi][ci][ni]) for pi in range(n_players) for ci in range(n_states) for ni in range(n_states))
+    comm_arr_nb = np.full((n_players, n_states, n_states, max(_max_comm, 1)), -1, dtype=np.int8)
+    comm_size_nb = np.zeros((n_players, n_states, n_states), dtype=np.int8)
+    for _pi in range(n_players):
+        for _ci in range(n_states):
+            for _ni in range(n_states):
+                for _k, _ai in enumerate(committee_idxs[_pi][_ci][_ni]):
+                    comm_arr_nb[_pi, _ci, _ni, _k] = _ai
+                comm_size_nb[_pi, _ci, _ni] = len(committee_idxs[_pi][_ci][_ni])
+
+    _use_numba = _NUMBA_AVAILABLE and weak_orders_flag
+    _tiers_buf = np.empty((n_players, n_states), dtype=np.int8)
+
+    tested = 0
+    verified_successes = 0
+    all_successes: list[dict[str, Any]] = []
+    weak_exact_zero_params = 0
+    weak_exact_deterministic = 0
+    weak_exact_nontrivial = 0
+
+    solver = None
+    if use_reference_verifier:
+        solver = EquilibriumSolver(players=players, states=states, effectivity=effectivity, protocol=protocol, payoffs=payoffs, discounting=discounting, unanimity_required=unanimity_required, verbose=False, random_seed=0, initialization_mode="uniform", logger=None)
+
+    import time as _time
+    t_start = _time.perf_counter()
+    t_numba = 0.0
+    t_solver = 0.0
+    
+    for perm_tuple in perm_tuples:
+        # 1. Canonical check (Numba accelerated)
+        t0 = _time.perf_counter()
+        ranks = tuple(pos[perm_idx] for perm_idx in perm_tuple)
+        if weak_orders_flag and weak_exact_reduced:
+            n_value_params = _weak_value_param_count(ranks)
+            n_strategy_free = _weak_free_var_count(players, states, ranks, committee_idxs)
+            if n_value_params == 0: weak_exact_zero_params += 1
+            if n_strategy_free == 0: weak_exact_deterministic += 1
+            else: weak_exact_nontrivial += 1
+
+        if weak_orders_flag:
+            if _use_numba:
+                for _pi, _perm_idx in enumerate(perm_tuple): _tiers_buf[_pi] = pos[_perm_idx]
+                proposal_probs, approval_action, approval_pass, P_array = _build_arrays_weak_nb(_tiers_buf, comm_arr_nb, comm_size_nb, protocol_arr)
+                V_array = _solve_V_nb(P_array, payoff_array, discounting)
+            else:
+                proposal_probs, approval_action, approval_pass, P_array = _build_induced_arrays_weak(players=players, tiers=ranks, committee_idxs=committee_idxs, protocol_arr=protocol_arr)
+                V_array = _solve_values_fast_array(P_array, payoff_array, discounting)
+            proposal_choice = None
+        else:
+            proposal_choice, approval_action, approval_pass, P_array = _build_induced_arrays(players=players, ranks=ranks, committee_idxs=committee_idxs, protocol_arr=protocol_arr)
+            proposal_probs = None
+            V_array = _solve_values_fast_array(P_array, payoff_array, discounting)
+
+        if use_reference_verifier:
+            assert solver is not None
+            if weak_orders_flag: _induce_profile_from_weak_orders(solver, players, states, ranks, committee_idxs)
+            else: _induce_profile_from_rankings(solver, players, states, ranks, committee_idxs)
+            P, P_proposals, P_approvals = solver._compute_transition_probabilities_fast()
+            V = pd.DataFrame(V_array, index=states, columns=players)
+            strategy_df = solver._create_strategy_dataframe()
+            verified, message, detail = verify_equilibrium_detailed({"players": players, "states": states, "state_names": states, "effectivity": effectivity, "P": P, "P_proposals": P_proposals, "P_approvals": P_approvals, "V": V, "strategy_df": strategy_df})
+        else:
+            if _use_numba:
+                verified = _verify_fast_nb(proposal_probs, approval_action, approval_pass, V_array, comm_arr_nb, comm_size_nb)
+            else:
+                verified, _, _ = _verify_equilibrium_fast(players=players, states=states, effectivity=effectivity, P_proposals=None, P_approvals=None, V_df=None, proposal_choice=proposal_choice, proposal_probs=proposal_probs, approval_action=approval_action, approval_pass=approval_pass, V_array=V_array, committee_idxs=committee_idxs)
+        t1 = _time.perf_counter()
+        t_numba += (t1 - t0)
+
+        # 2. Numerical refinement (if needed)
+        solved_payload = None
+        if (not verified) and weak_orders_flag and weak_equality_solve:
+            t2 = _time.perf_counter()
+            tie_struct = _weak_tie_structure(players, states, ranks, committee_idxs)
+            n_free = len(tie_struct[0]) + sum(len(w) - 1 for _, _, w in tie_struct[1])
+            if n_free > 0 and (weak_equality_max_vars is None or n_free <= weak_equality_max_vars):
+                solved_payload = _solve_weak_equalities(players=players, states=states, effectivity=effectivity, protocol=protocol, payoffs=payoffs, discounting=discounting, unanimity_required=unanimity_required, tiers=ranks, committee_idxs=committee_idxs, max_vars=weak_equality_max_vars, _precomputed_tie_structure=tie_struct, _precomputed_canon_arrays=(proposal_probs, approval_action, approval_pass), _numba_comm_arr=comm_arr_nb if _use_numba else None, _numba_comm_size=comm_size_nb if _use_numba else None, _numba_tiers=_tiers_buf if _use_numba else None)
+            t_solver += _time.perf_counter() - t2
+
+        tested += 1
+        if verified or solved_payload is not None:
+            verified_successes += 1
+            success = {"perms": perm_tuple, "rankings": tuple(order_arrays[perm_idx].copy() for perm_idx in perm_tuple)}
+            if solved_payload is not None:
+                success.update({"source": "weak_equality_solve", "P": solved_payload["P"], "V": solved_payload["V"], "strategy_df": solved_payload["strategy_df"], "P_proposals": solved_payload["P_proposals"], "P_approvals": solved_payload["P_approvals"]})
+            else:
+                success.update({"source": "canonical", "P": pd.DataFrame(P_array, index=states, columns=states), "V": pd.DataFrame(V_array, index=states, columns=players)})
+            all_successes.append(success)
+
+        if progress_every > 0 and tested % progress_every == 0:
+            if progress_queue is not None:
+                try:
+                    progress_queue.put(progress_every)
+                except Exception:
+                    pass
+
+    t_total = _time.perf_counter() - t_start
+    t_overhead = t_total - t_numba - t_solver
+
+    return {
+        "tested": tested,
+        "verified_successes": verified_successes,
+        "all_successes": all_successes,
+        "first_success": all_successes[0] if all_successes else None,
+        "weak_exact_zero_params": weak_exact_zero_params,
+        "weak_exact_deterministic": weak_exact_deterministic,
+        "weak_exact_nontrivial": weak_exact_nontrivial,
+        "players": players,
+        "states": states,
+        "effectivity": effectivity,
+        "protocol": protocol,
+        "payoffs": payoffs,
+        "discounting": discounting,
+        "unanimity_required": unanimity_required,
+        "config": config,
+        "order_arrays": order_arrays,
+        "weak_orders": weak_orders_flag,
+        "weak_exact_reduced": weak_exact_reduced,
+        "weak_equality_solve": weak_equality_solve,
+        "t_numba": t_numba,
+        "t_solver": t_solver,
+        "t_overhead": t_overhead,
+        "elapsed": t_total,
+    }
 
 
 def _merge_worker_results(worker_results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -2020,21 +2251,25 @@ def _merge_worker_results(worker_results: list[dict[str, Any]]) -> dict[str, Any
         k: base[k]
         for k in ("players", "states", "effectivity", "protocol", "payoffs",
                   "discounting", "unanimity_required", "config",
-                  "total", "order_arrays", "weak_orders", "weak_exact_reduced",
-                  "weak_equality_solve", "interrupted")
+                  "order_arrays", "weak_orders", "weak_exact_reduced",
+                  "weak_equality_solve")
     }
+    merged["total"] = sum(r.get("total", 0) for r in worker_results)
+    merged["interrupted"] = any(r.get("interrupted", False) for r in worker_results)
     merged["tested"] = sum(r["tested"] for r in worker_results)
-    merged["elapsed"] = max(r["elapsed"] for r in worker_results)  # wall time = longest worker
+    merged["elapsed"] = max((r.get("elapsed", 0.0) for r in worker_results), default=0.0)
     merged["rate"] = merged["tested"] / merged["elapsed"] if merged["elapsed"] > 0 else float("nan")
     merged["verified_successes"] = sum(r["verified_successes"] for r in worker_results)
     merged["all_successes"] = [s for r in worker_results for s in r["all_successes"]]
     merged["first_success"] = next(
-        (r["first_success"] for r in worker_results if r["first_success"] is not None), None
+        (r.get("first_success") for r in worker_results if r.get("first_success") is not None), None
     )
     merged["weak_exact_zero_params"] = sum(r.get("weak_exact_zero_params", 0) for r in worker_results)
     merged["weak_exact_deterministic"] = sum(r.get("weak_exact_deterministic", 0) for r in worker_results)
     merged["weak_exact_nontrivial"] = sum(r.get("weak_exact_nontrivial", 0) for r in worker_results)
-    merged["interrupted"] = any(r["interrupted"] for r in worker_results)
+    merged["t_numba"] = sum(r.get("t_numba", 0.0) for r in worker_results)
+    merged["t_solver"] = sum(r.get("t_solver", 0.0) for r in worker_results)
+    merged["t_overhead"] = sum(r.get("t_overhead", 0.0) for r in worker_results)
     return merged
 
 
@@ -2167,6 +2402,19 @@ def main() -> None:
         print(f"workers: {n_workers}")
     print()
 
+    # Pre-compute rankings and their sorted order
+    if args.weak_orders:
+        order_arrays = _generate_weak_orders(state_count)
+    else:
+        order_arrays = np.array(list(itertools.permutations(range(state_count))), dtype=np.int8)
+
+    payoff_array_preview = setup_preview["payoffs"].loc[setup_preview["state_names"], setup_preview["players"]].to_numpy(dtype=np.float64)
+    perm_orders = None
+    if args.ranking_order == "payoff":
+        perm_orders = _payoff_ordering(payoff_array_preview, setup_preview["state_names"], players, order_arrays)
+    elif args.ranking_order == "random":
+        perm_orders = _random_ordering(len(order_arrays), len(players), args.random_seed)
+
     if n_workers <= 1:
         result = _search_payoff_table(
             config=config,
@@ -2181,26 +2429,129 @@ def main() -> None:
             weak_exact_reduced=args.weak_exact_reduced,
             weak_equality_solve=args.weak_equality_solve,
             weak_equality_max_vars=args.weak_equality_max_vars,
+            order_arrays=order_arrays,
+            perm_orders=perm_orders,
         )
     else:
-        from concurrent.futures import ProcessPoolExecutor
-        worker_args = [
-            (
-                config, args.max_combinations, args.stop_on_success,
-                args.use_reference_verifier, args.shuffle, args.random_seed,
-                args.ranking_order, args.weak_orders, args.weak_exact_reduced,
-                args.weak_equality_solve, args.weak_equality_max_vars,
-                worker_id, n_workers,
-            )
-            for worker_id in range(n_workers)
-        ]
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        import threading
+        import queue
+
+        # Start manager with SIGINT ignored so it doesn't shut down before workers
+        import signal
+        _old_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        manager = _mp.Manager()
+        signal.signal(signal.SIGINT, _old_sigint)
+        progress_queue = manager.Queue()
+
+        total_to_test = total_orders ** len(players)
+        if args.max_combinations is not None:
+            total_to_test = min(total_to_test, args.max_combinations)
+
+        def progress_listener(q, total_val):
+            done = 0
+            start_time = time.perf_counter()
+            while True:
+                try:
+                    msg = q.get(timeout=0.1)
+                    if msg == "DONE":
+                        break
+                    done += int(msg)
+                    _print_progress(done, total_val, start_time)
+                except queue.Empty:
+                    continue
+                except Exception:
+                    break
+            print()
+
+        listener = threading.Thread(target=progress_listener, args=(progress_queue, total_to_test))
+        listener.daemon = True
+        listener.start()
+
+        all_perms_gen = _ranking_tuples(
+            order_arrays, len(players), args.max_combinations,
+            shuffle=args.shuffle, random_seed=args.random_seed, perm_orders=perm_orders
+        )
+
+        chunk_size = 2000
+        def chunked_worker_args():
+            batch = []
+            for _, _, pt in all_perms_gen:
+                batch.append(pt)
+                if len(batch) >= chunk_size:
+                    yield (config, batch, args.use_reference_verifier, args.weak_orders, args.weak_exact_reduced, args.weak_equality_solve, args.weak_equality_max_vars, progress_queue, args.progress_every, order_arrays)
+                    batch = []
+            if batch:
+                yield (config, batch, args.use_reference_verifier, args.weak_orders, args.weak_exact_reduced, args.weak_equality_solve, args.weak_equality_max_vars, progress_queue, args.progress_every, order_arrays)
+
         import time as _time
         _par_start = _time.perf_counter()
-        with ProcessPoolExecutor(max_workers=n_workers) as executor:
-            worker_results = list(executor.map(_worker_search, worker_args))
-        _par_elapsed = _time.perf_counter() - _par_start
+        worker_results = []
+        interrupted = False
+        executor = ProcessPoolExecutor(max_workers=n_workers, initializer=_worker_init)
+        active_futures = set()
+        arg_gen = chunked_worker_args()
+        max_pending = n_workers * 2
+
+        try:
+            # Initial fill
+            for _ in range(max_pending):
+                try:
+                    active_futures.add(executor.submit(_worker_search_batch, next(arg_gen)))
+                except StopIteration:
+                    break
+
+            while active_futures:
+                done_fs = [f for f in active_futures if f.done()]
+                for f in done_fs:
+                    active_futures.remove(f)
+                    try:
+                        worker_results.append(f.result())
+                    except Exception as e:
+                        print(f"\nWorker error: {e}")
+                    try:
+                        active_futures.add(executor.submit(_worker_search_batch, next(arg_gen)))
+                    except StopIteration:
+                        pass
+                if not done_fs:
+                    _time.sleep(0.1)
+        except KeyboardInterrupt:
+            interrupted = True
+            import signal
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            print("\nInterrupted by user. Gathering partial results...")
+        finally:
+            _par_elapsed = _time.perf_counter() - _par_start
+            # Signal progress listener to stop
+            try:
+                progress_queue.put("DONE")
+            except Exception:
+                pass
+            listener.join(timeout=1.0)
+            # IMPORTANT: Wait for workers to finish current batch/exit before closing manager
+            executor.shutdown(wait=True, cancel_futures=True)
+            # manager.shutdown() is moved to the very end of main to prevent FileNotFoundError
+            # in workers that might still be alive/cleaning up.
+
+        if not worker_results:
+            print("No results collected.")
+            try:
+                manager.shutdown()
+            except:
+                pass
+            return
+
         result = _merge_worker_results(worker_results)
-        result["elapsed"] = _par_elapsed  # use actual wall time
+        result["elapsed"] = _par_elapsed
+        result["total"] = total_to_test
+        if interrupted:
+            result["interrupted"] = True
+        
+        # Recalculate rate based on actual wall time and tested count
+        if result["elapsed"] > 0:
+            result["rate"] = result["tested"] / result["elapsed"]
+        else:
+            result["rate"] = float("nan")
     states = result["states"]
     order_arrays = result["order_arrays"]
     print("Summary")
@@ -2208,6 +2559,9 @@ def main() -> None:
     print(f"tested_combinations:  {result['tested']:>12,d}")
     print(f"wall_time:            {result['elapsed']:>12.2f}s")
     print(f"rate:                 {result['rate']:>12.0f}/s")
+    print(f"  - numba_time:       {result.get('t_numba', 0.0) / n_workers:>12.2f}s (avg per worker)")
+    print(f"  - solver_time:      {result.get('t_solver', 0.0) / n_workers:>12.2f}s (avg per worker)")
+    print(f"  - python_overhead:  {result.get('t_overhead', 0.0) / n_workers:>12.2f}s (avg per worker)")
     print(f"interrupted:          {str(result['interrupted']):>12s}")
     print(f"verified_successes:   {result['verified_successes']:>12,d}")
     print(f"stored_successes:     {len(result['all_successes']):>12,d}")
@@ -2289,6 +2643,17 @@ def main() -> None:
         print("-" * 80)
         print(reference["V"].loc[states, players].to_string(float_format=lambda x: f"{x:.6f}"))
 
+    # Final manager cleanup after all processing is done
+    try:
+        # Check if 'manager' exists in current scope
+        if 'manager' in locals():
+            manager.shutdown()
+    except:
+        pass
+
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(0)
