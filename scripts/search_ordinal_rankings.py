@@ -28,6 +28,7 @@ import sys
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import root as scipy_root
 
 try:
     import numba as _numba
@@ -173,7 +174,7 @@ if _NUMBA_AVAILABLE:
         return np.linalg.solve(A, B)
 
     @_numba.njit(cache=True)
-    def _residuals_nb_core(
+    def _residuals_nb_prep(
         alpha_raw,
         canon_probs, canon_action, canon_pass,
         fa_arr, n_fa,
@@ -181,19 +182,12 @@ if _NUMBA_AVAILABLE:
         aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
         comm_arr, comm_size,
         tiers,
-        protocol_arr, payoff_array, discounting,
         n_players, n_states,
-        compute_jac=False,
     ):
-        """Numba JIT residual and Jacobian for _solve_weak_equalities.
-
-        If compute_jac=True, returns (res, jac).
-        """
+        """Part 1 of _residuals_nb_core: mapping and strategy building."""
         n_vars = alpha_raw.shape[0]
-
         # Step 1: sigmoid/softmax mapping
         alpha_phys = alpha_raw.copy()
-        d_phys_d_raw = np.ones(n_vars)
         for k in range(n_fa):
             z = alpha_raw[k]
             if z > 50.0: z = 50.0
@@ -204,7 +198,6 @@ if _NUMBA_AVAILABLE:
                 ez = math.exp(z)
                 s = ez / (1.0 + ez)
             alpha_phys[k] = s
-            d_phys_d_raw[k] = s * (1.0 - s)
 
         # Step 2: patch arrays
         action = canon_action.copy()
@@ -254,8 +247,11 @@ if _NUMBA_AVAILABLE:
                     m = 1.0 / count_w
                     for ni in range(n_states):
                         if pass_[pi, ci, ni] > 0.0 and int(tiers[pi, ni]) == best_t: probs[pi, ci, ni] = m
+        return probs, pass_, action
 
-        # Step 4: aggregate P and solve V
+    @_numba.njit(cache=True)
+    def _residuals_nb_p_agg(probs, pass_, protocol_arr, n_players, n_states):
+        """Part 2 of _residuals_nb_core: Aggregate P."""
         P = np.zeros((n_states, n_states))
         for pi in range(n_players):
             for ci in range(n_states):
@@ -263,11 +259,16 @@ if _NUMBA_AVAILABLE:
                     P[ci, ni] += protocol_arr[pi] * probs[pi, ci, ni] * pass_[pi, ci, ni]
         for ci in range(n_states):
             P[ci, ci] += 1.0 - np.sum(P[ci, :])
+        return P
 
-        A_mat = np.eye(n_states) - discounting * P
-        V = np.linalg.solve(A_mat, (1.0 - discounting) * payoff_array)
-
-        # Step 5: Residuals
+    @_numba.njit(cache=True)
+    def _residuals_nb_residuals(
+        V, pass_,
+        fa_arr, n_fa,
+        pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
+        n_vars,
+    ):
+        """Part 3 of _residuals_nb_core: Compute residual values."""
         res = np.empty(n_vars)
         for k in range(n_fa):
             res[k] = V[int(fa_arr[k, 3]), int(fa_arr[k, 1])] - V[int(fa_arr[k, 2]), int(fa_arr[k, 1])]
@@ -280,15 +281,61 @@ if _NUMBA_AVAILABLE:
                 evj = pass_[pi, si, wj] * V[wj, pi] + (1.0 - pass_[pi, si, wj]) * V[si, pi]
                 res[res_idx] = evj - ev0
                 res_idx += 1
+        return res
 
-        # Step 6: Jacobian J = d_res / d_raw
+    @_numba.njit(cache=True)
+    def _residuals_nb_core(
+        alpha_raw,
+        canon_probs, canon_action, canon_pass,
+        fa_arr, n_fa,
+        pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
+        aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
+        comm_arr, comm_size,
+        tiers,
+        protocol_arr, payoff_array, discounting,
+        n_players, n_states,
+        compute_jac=False,
+    ):
+        """Numba JIT residual and Jacobian for _solve_weak_equalities.
+
+        If compute_jac=True, returns (res, jac).
+        """
+        n_vars = alpha_raw.shape[0]
+
+        # Use split components for consistency (though it's one function here)
+        probs, pass_, action = _residuals_nb_prep(
+            alpha_raw, canon_probs, canon_action, canon_pass,
+            fa_arr, n_fa, pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
+            aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
+            comm_arr, comm_size, tiers, n_players, n_states
+        )
+        
+        P = _residuals_nb_p_agg(probs, pass_, protocol_arr, n_players, n_states)
+        V = _solve_V_nb(P, payoff_array, discounting)
+        res = _residuals_nb_residuals(V, pass_, fa_arr, n_fa, pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt, n_vars)
+
+        # Step 6: Jacobian J = d_res / d_raw (only if compute_jac=True)
         if not compute_jac:
             return res, np.zeros((1, 1))
+
+        # Re-map alpha for d_phys_d_raw
+        d_phys_d_raw = np.ones(n_vars)
+        for k in range(n_fa):
+            z = alpha_raw[k]
+            if z > 50.0: z = 50.0
+            elif z < -50.0: z = -50.0
+            if z >= 0.0:
+                s = 1.0 / (1.0 + math.exp(-z))
+            else:
+                ez = math.exp(z)
+                s = ez / (1.0 + ez)
+            d_phys_d_raw[k] = s * (1.0 - s)
 
         # Vectorized Adjoint Jacobian:
         # dV/dx = (I - delta*P)^-1 * (delta * dP/dx * V)
         # We solve for all x (n_vars) at once by stacking RHS columns.
         jac = np.zeros((n_vars, n_vars))
+        A_mat = np.eye(n_states) - discounting * P
         
         # RHS_all will have n_players * n_vars columns
         RHS_all = np.zeros((n_states, n_players * n_vars))
@@ -920,27 +967,17 @@ def _solve_weak_equalities(
     _numba_comm_arr: "np.ndarray | None" = None,
     _numba_comm_size: "np.ndarray | None" = None,
     _numba_tiers: "np.ndarray | None" = None,
+    timing_data: dict[str, float] | None = None,
+    player_idx: dict[str, int] | None = None,
+    state_idx: dict[str, int] | None = None,
+    _precomputed_payoff_array: np.ndarray | None = None,
+    _precomputed_protocol_arr: np.ndarray | None = None,
 ) -> dict[str, Any] | None:
     """
     Solve for the free approval/proposal probabilities that make V self-consistent
     with the assumed weak ordinal ranking.
-
-    The old implementation ran a 50-iteration BR loop inside every scipy residual
-    evaluation and used the slow strategy-dataframe path — O(seconds) per candidate.
-
-    This replacement:
-      1. Uses the fast array-based V solver (no DataFrame overhead).
-      2. Builds a residual function with NO BR loop: proposals outside the tied set
-         are determined by strict tier preferences and stay fixed; only the free
-         approval/proposal variables are searched over.
-      3. Parameterises approvals via sigmoid (unconstrained -> [0,1]) so scipy can
-         work in R^n without box constraints.
-      4. Tries multiple starting points (including grid points) for robustness.
-      5. Exits early as soon as a solution is found (no need to try all starting points).
-
-    Pass _precomputed_tie_structure and _precomputed_canon_arrays from the call site
-    to avoid recomputing them when they are already available.
     """
+    t_start = time.perf_counter()
     if _precomputed_tie_structure is not None:
         free_approvals, proposal_rows = _precomputed_tie_structure
     else:
@@ -955,13 +992,20 @@ def _solve_weak_equalities(
 
     n_players = len(players)
     n_states = len(states)
-    player_idx = {p: i for i, p in enumerate(players)}
-    state_idx = {s: i for i, s in enumerate(states)}
-    protocol_arr = np.array([protocol[p] for p in players], dtype=np.float64)
-    payoff_array = payoffs.loc[states, players].to_numpy(dtype=np.float64)
+    if player_idx is None: player_idx = {p: i for i, p in enumerate(players)}
+    if state_idx is None: state_idx = {s: i for i, s in enumerate(states)}
+    
+    if _precomputed_protocol_arr is not None:
+        protocol_arr = _precomputed_protocol_arr
+    else:
+        protocol_arr = np.array([protocol[p] for p in players], dtype=np.float64)
+        
+    if _precomputed_payoff_array is not None:
+        payoff_array = _precomputed_payoff_array
+    else:
+        payoff_array = payoffs.loc[states, players].to_numpy(dtype=np.float64)
 
-    # Pre-build canonical arrays once; we patch only free cells per evaluation.
-    # Accept pre-computed arrays from the call site to avoid double work.
+    t_s_copy = time.perf_counter()
     if _precomputed_canon_arrays is not None:
         canon_probs, canon_action, canon_pass = (
             _precomputed_canon_arrays[0].copy(),
@@ -973,7 +1017,10 @@ def _solve_weak_equalities(
             players=players, tiers=tiers,
             committee_idxs=committee_idxs, protocol_arr=protocol_arr,
         )
+    if timing_data is not None:
+        timing_data["solver_setup_copy"] += (time.perf_counter() - t_s_copy)
 
+    t_s_indices = time.perf_counter()
     # Numeric indices for free approvals: (proposer_idx, approver_idx, src_idx, dst_idx)
     fa_idx: list[tuple[int, int, int, int]] = [
         (player_idx[prop], player_idx[appr], state_idx[src], state_idx[dst])
@@ -986,6 +1033,8 @@ def _solve_weak_equalities(
     ]
     # Which (proposer, src) pairs have a proposal tie (so we don't double-update)
     pt_set: set[tuple[int, int]] = {(pi, si) for pi, si, _ in pt_idx}
+    if timing_data is not None:
+        timing_data["solver_setup_indices"] += (time.perf_counter() - t_s_indices)
 
     _use_nb = (
         _NUMBA_AVAILABLE
@@ -994,113 +1043,217 @@ def _solve_weak_equalities(
         and _numba_tiers is not None
     )
 
-    def _build_P(alpha_phys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Return (P, probs, pass_) from physical free parameters alpha_phys in [0,1]^n."""
-        action = canon_action.copy()
-        pass_ = canon_pass.copy()
-        probs = canon_probs.copy()
+    t_s_numba = time.perf_counter()
+    _n_fa = n_free_approvals
+    _fa_arr = np.array(fa_idx, dtype=np.int8).reshape(max(_n_fa, 1), 4)
 
-        # 1. Patch free approval cells
-        for k, (pi, ai, ci, ni) in enumerate(fa_idx):
-            action[pi, ai, ci, ni] = alpha_phys[k]
+    _n_pt = len(pt_idx)
+    _max_nw = max((len(w) for _, _, w in pt_idx), default=1)
+    _pt_pi = np.zeros(max(_n_pt, 1), dtype=np.int8)
+    _pt_si = np.zeros(max(_n_pt, 1), dtype=np.int8)
+    _pt_widxs = np.zeros((max(_n_pt, 1), max(_max_nw, 1)), dtype=np.int8)
+    _pt_nwidxs = np.zeros(max(_n_pt, 1), dtype=np.int8)
+    for _t, (_tpi, _tsi, _twidxs) in enumerate(pt_idx):
+        _pt_pi[_t] = _tpi; _pt_si[_t] = _tsi; _pt_nwidxs[_t] = len(_twidxs)
+        for _j, _wj in enumerate(_twidxs): _pt_widxs[_t, _j] = _wj
 
-        # 2. Patch proposal-tie cells with logit-parameterised probs
+    _affected: set[tuple[int, int]] = set()
+    for _pi, _ai, _ci, _ni in fa_idx: _affected.add((_pi, _ci))
+    for _pi, _si, _ in pt_idx: _affected.add((_pi, _si))
+    _aff_list = sorted(_affected)
+    _n_aff = len(_aff_list)
+    if _n_aff == 0:
+        _aff_pi = np.zeros(1, dtype=np.int8); _aff_ci = np.zeros(1, dtype=np.int8)
+        _aff_is_pt = np.zeros(1, dtype=np.bool_)
+    else:
+        _aff_pi = np.array([_p for _p, _ in _aff_list], dtype=np.int8)
+        _aff_ci = np.array([_c for _, _c in _aff_list], dtype=np.int8)
+        _aff_is_pt = np.array([(_p, _c) in pt_set for _p, _c in _aff_list], dtype=np.bool_)
+    if timing_data is not None:
+        timing_data["solver_setup_numba"] += (time.perf_counter() - t_s_numba)
+
+    if _use_nb:
+        def _nb_residuals(raw: np.ndarray) -> np.ndarray:
+            t_prep0 = time.perf_counter()
+            probs, pass_, action = _residuals_nb_prep(
+                raw, canon_probs, canon_action, canon_pass,
+                _fa_arr, _n_fa, _pt_pi, _pt_si, _pt_widxs, _pt_nwidxs, _n_pt,
+                _aff_pi, _aff_ci, _aff_is_pt, _n_aff,
+                _numba_comm_arr, _numba_comm_size, _numba_tiers,
+                n_players, n_states
+            )
+            t_prep1 = time.perf_counter()
+            if timing_data is not None: timing_data["solver_root_mapping"] += (t_prep1 - t_prep0)
+
+            t_p_agg0 = time.perf_counter()
+            P_mat = _residuals_nb_p_agg(probs, pass_, protocol_arr, n_players, n_states)
+            t_p_agg1 = time.perf_counter()
+            if timing_data is not None: timing_data["solver_root_p_agg"] += (t_p_agg1 - t_p_agg0)
+            
+            t_v_solve0 = time.perf_counter()
+            V_mat = _solve_V_nb(P_mat, payoff_array, discounting)
+            t_v_solve1 = time.perf_counter()
+            if timing_data is not None: timing_data["solver_root_v_solve"] += (t_v_solve1 - t_v_solve0)
+            
+            t_res0 = time.perf_counter()
+            res = _residuals_nb_residuals(V_mat, pass_, _fa_arr, _n_fa, _pt_pi, _pt_si, _pt_widxs, _pt_nwidxs, _n_pt, n_vars)
+            t_res1 = time.perf_counter()
+            if timing_data is not None: timing_data["solver_root_residuals"] += (t_res1 - t_res0)
+            return res
+        _scipy_fn = _nb_residuals
+    else:
+        # Wrap with sigmoid for unconstrained optimisation of the approval vars;
+        # proposal logits stay unconstrained as-is.
+        def _residuals_sigmoid(raw: np.ndarray) -> np.ndarray:
+            t_prep0 = time.perf_counter()
+            phys = raw.copy()
+            for k in range(n_free_approvals):
+                phys[k] = _sigmoid_scalar(float(raw[k]))
+            
+            action = canon_action.copy()
+            pass_ = canon_pass.copy()
+            probs = canon_probs.copy()
+            for k, (pi, ai, ci, ni) in enumerate(fa_idx):
+                action[pi, ai, ci, ni] = phys[k]
+            var_idx = n_free_approvals
+            for pi, si, widxs in pt_idx:
+                if len(widxs) > 1:
+                    logits = np.zeros(len(widxs))
+                    logits[:-1] = phys[var_idx: var_idx + len(widxs) - 1]
+                    var_idx += len(widxs) - 1
+                    pw = softmax(logits, temperature=1.0)
+                else: pw = np.array([1.0])
+                probs[pi, si, :] = 0.0
+                for wk, wk_p in zip(widxs, pw): probs[pi, si, wk] = float(wk_p)
+            affected: set[tuple[int, int]] = {(pi, ci) for pi, _ai, ci, _ni in fa_idx}
+            for pi, si, _ in pt_idx: affected.add((pi, si))
+            for pi, ci in affected:
+                for ni in range(n_states):
+                    p = 1.0
+                    for ai in committee_idxs[pi][ci][ni]: p *= action[pi, ai, ci, ni]
+                    pass_[pi, ci, ni] = p
+                if (pi, ci) not in pt_set:
+                    tier_p = tiers[pi]; best_t = int(tier_p[ci]); approved = []
+                    for ni in range(n_states):
+                        if pass_[pi, ci, ni]:
+                            approved.append(ni); best_t = min(best_t, int(tier_p[ni]))
+                    winners_l = [ni for ni in approved if int(tier_p[ni]) == best_t]
+                    probs[pi, ci, :] = 0.0
+                    if winners_l:
+                        m = 1.0 / len(winners_l)
+                        for ni in winners_l: probs[pi, ci, ni] = m
+            t_prep1 = time.perf_counter()
+            if timing_data is not None: timing_data["solver_root_mapping"] += (t_prep1 - t_prep0)
+
+            t_p_agg0 = time.perf_counter()
+            P_mat = np.einsum('i,ijk,ijk->jk', protocol_arr, probs, pass_)
+            np.fill_diagonal(P_mat, P_mat.diagonal() + (1.0 - P_mat.sum(axis=1)))
+            t_p_agg1 = time.perf_counter()
+            if timing_data is not None: timing_data["solver_root_p_agg"] += (t_p_agg1 - t_p_agg0)
+            
+            t_v_solve0 = time.perf_counter()
+            V_mat = _solve_values_fast_array(P_mat, payoff_array, discounting)
+            t_v_solve1 = time.perf_counter()
+            if timing_data is not None: timing_data["solver_root_v_solve"] += (t_v_solve1 - t_v_solve0)
+            
+            t_res0 = time.perf_counter()
+            res = []
+            for _k, (_pi, ai, ci, ni) in enumerate(fa_idx): res.append(float(V_mat[ni, ai]) - float(V_mat[ci, ai]))
+            for pi, si, widxs in pt_idx:
+                ev0 = float(pass_[pi, si, widxs[0]]) * float(V_mat[widxs[0], pi]) + (1.0 - float(pass_[pi, si, widxs[0]])) * float(V_mat[si, pi])
+                for wk in widxs[1:]:
+                    evk = float(pass_[pi, si, wk]) * float(V_mat[wk, pi]) + (1.0 - float(pass_[pi, si, wk])) * float(V_mat[si, pi])
+                    res.append(evk - ev0)
+            t_res1 = time.perf_counter()
+            if timing_data is not None: timing_data["solver_root_residuals"] += (t_res1 - t_res0)
+            return np.array(res, dtype=np.float64)
+        _scipy_fn = _residuals_sigmoid
+
+    t_guesses0 = time.perf_counter()
+    rng = np.random.RandomState(42)
+    guesses: list[np.ndarray] = [
+        np.zeros(n_vars), np.full(n_vars, -2.2), np.full(n_vars, 2.2),
+        np.full(n_vars, -4.0), np.full(n_vars, 4.0),
+    ] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(2)]
+    if timing_data is not None:
+        timing_data["solver_setup_guesses"] += (time.perf_counter() - t_guesses0)
+
+    best_phys: np.ndarray | None = None
+    best_resid = np.inf
+
+    if timing_data is not None:
+        timing_data["solver_setup"] += (time.perf_counter() - t_start)
+
+    for guess in guesses:
+        try:
+            t_r0 = time.perf_counter()
+            sol = scipy_root(_scipy_fn, guess, method="hybr", options={"maxfev": 200})
+            if timing_data is not None:
+                timing_data["solver_root"] += (time.perf_counter() - t_r0)
+        except Exception:
+            continue
+        if not sol.success:
+            continue
+        raw = np.asarray(sol.x, dtype=np.float64)
+        phys = raw.copy()
+        for k in range(n_free_approvals):
+            phys[k] = _sigmoid_scalar(float(raw[k]))
+        
+        # 3. Final residuals check to ensure it's a true root
+        t_c0 = time.perf_counter()
+        action = canon_action.copy(); pass_ = canon_pass.copy(); probs = canon_probs.copy()
+        for k, (pi, ai, ci, ni) in enumerate(fa_idx): action[pi, ai, ci, ni] = phys[k]
         var_idx = n_free_approvals
         for pi, si, widxs in pt_idx:
             if len(widxs) > 1:
-                logits = np.zeros(len(widxs))
-                logits[:-1] = alpha_phys[var_idx: var_idx + len(widxs) - 1]
-                var_idx += len(widxs) - 1
-                pw = softmax(logits, temperature=1.0)
-            else:
-                pw = np.array([1.0])
+                logits = np.zeros(len(widxs)); logits[:-1] = phys[var_idx: var_idx + len(widxs) - 1]
+                var_idx += len(widxs) - 1; pw = softmax(logits, temperature=1.0)
+            else: pw = np.array([1.0])
             probs[pi, si, :] = 0.0
-            for wk, wk_p in zip(widxs, pw):
-                probs[pi, si, wk] = float(wk_p)
-
-        # 3. Rebuild pass_ and probs for rows whose approvals changed
-        affected: set[tuple[int, int]] = {(pi, ci) for pi, _ai, ci, _ni in fa_idx}
-        for pi, si, _ in pt_idx:
-            affected.add((pi, si))
-
+            for wk, wk_p in zip(widxs, pw): probs[pi, si, wk] = float(wk_p)
+        affected = {(pi, ci) for pi, _ai, ci, _ni in fa_idx}
+        for pi, si, _ in pt_idx: affected.add((pi, si))
         for pi, ci in affected:
-            # Recompute pass_ as product of all committee member approvals.
-            # This correctly handles fractional approvals (e.g. 0.06) — do NOT
-            # reduce to binary; that would treat any non-zero value as full approval.
             for ni in range(n_states):
-                prob = 1.0
-                for ai in committee_idxs[pi][ci][ni]:
-                    prob *= action[pi, ai, ci, ni]
-                pass_[pi, ci, ni] = prob
-            # Recompute proposal probs (only for rows without explicit proposal tie)
+                p = 1.0
+                for ai in committee_idxs[pi][ci][ni]: p *= action[pi, ai, ci, ni]
+                pass_[pi, ci, ni] = p
             if (pi, ci) not in pt_set:
-                tier_p = tiers[pi]
-                best_t = int(tier_p[ci])
-                approved: list[int] = []
+                tier_p = tiers[pi]; best_t = int(tier_p[ci]); approved = []
                 for ni in range(n_states):
-                    if pass_[pi, ci, ni]:
-                        approved.append(ni)
-                        best_t = min(best_t, int(tier_p[ni]))
+                    if pass_[pi, ci, ni]: approved.append(ni); best_t = min(best_t, int(tier_p[ni]))
                 winners_l = [ni for ni in approved if int(tier_p[ni]) == best_t]
                 probs[pi, ci, :] = 0.0
                 if winners_l:
                     m = 1.0 / len(winners_l)
-                    for ni in winners_l:
-                        probs[pi, ci, ni] = m
-
-        # 4. Aggregate P
-        # The einsum gives the probability mass of ACCEPTED transitions.
-        # Rejected proposals (pass_ < 1) return the proposer to the current state,
-        # so we add the missing probability to the diagonal to keep rows stochastic.
-        P = np.einsum('i,ijk,ijk->jk', protocol_arr, probs, pass_)
-        row_sums = P.sum(axis=1)
-        np.fill_diagonal(P, P.diagonal() + (1.0 - row_sums))
-        return P, probs, pass_
-
-    def _residuals(alpha_phys: np.ndarray) -> np.ndarray:
-        P, probs, pass_ = _build_P(alpha_phys)
-        V = _solve_values_fast_array(P, payoff_array, discounting)
-        res: list[float] = []
-        # Approval residuals: V[dst, appr] - V[src, appr] == 0
-        for _k, (_pi, ai, ci, ni) in enumerate(fa_idx):
-            res.append(float(V[ni, ai]) - float(V[ci, ai]))
-        # Proposal residuals: equal expected value across tied winners
+                    for ni in winners_l: probs[pi, ci, ni] = m
+        P_mat = np.einsum('i,ijk,ijk->jk', protocol_arr, probs, pass_)
+        np.fill_diagonal(P_mat, P_mat.diagonal() + (1.0 - P_mat.sum(axis=1)))
+        V_mat = _solve_values_fast_array(P_mat, payoff_array, discounting)
+        res_check = []
+        for _k, (_pi, ai, ci, ni) in enumerate(fa_idx): res_check.append(float(V_mat[ni, ai]) - float(V_mat[ci, ai]))
         for pi, si, widxs in pt_idx:
-            ev0 = float(pass_[pi, si, widxs[0]]) * float(V[widxs[0], pi]) \
-                  + (1.0 - float(pass_[pi, si, widxs[0]])) * float(V[si, pi])
+            ev0 = float(pass_[pi, si, widxs[0]]) * float(V_mat[widxs[0], pi]) + (1.0 - float(pass_[pi, si, widxs[0]])) * float(V_mat[si, pi])
             for wk in widxs[1:]:
-                evk = float(pass_[pi, si, wk]) * float(V[wk, pi]) \
-                      + (1.0 - float(pass_[pi, si, wk])) * float(V[si, pi])
-                res.append(evk - ev0)
-        return np.array(res, dtype=np.float64)
+                evk = float(pass_[pi, si, wk]) * float(V_mat[wk, pi]) + (1.0 - float(pass_[pi, si, wk])) * float(V_mat[si, pi])
+                res_check.append(evk - ev0)
+        r = float(np.max(np.abs(np.array(res_check))))
+        if timing_data is not None: timing_data["solver_check"] += (time.perf_counter() - t_c0)
 
-    # Wrap with sigmoid for unconstrained optimisation of the approval vars;
-    # proposal logits stay unconstrained as-is.
-    def _residuals_sigmoid(raw: np.ndarray) -> np.ndarray:
-        phys = raw.copy()
-        for k in range(n_free_approvals):
-            phys[k] = _sigmoid_scalar(float(raw[k]))
-        return _residuals(phys)
+        if r < best_resid:
+            best_resid = r
+            best_phys = phys
+        if best_resid < 1e-7:
+            break
 
-    try:
-        from scipy.optimize import root as scipy_root
-    except ModuleNotFoundError as exc:
-        raise RuntimeError(
-            "Weak equality refinement requires SciPy. Install it in the active environment "
-            "or run without --weak-equality-solve."
-        ) from exc
+    if best_phys is None or best_resid > 1e-7:
+        return None
 
-    rng = np.random.RandomState(42)
-    # Grid points covering low/mid/high approval values (sigmoid(-4)≈0.02, sigmoid(-2.2)≈0.1,
-    # sigmoid(0)=0.5, sigmoid(2.2)≈0.9, sigmoid(4)≈0.98) plus two random starts.
-    # Fewer starting points than before, but early-exit as soon as a solution is found.
-    guesses: list[np.ndarray] = [
-        np.zeros(n_vars),
-        np.full(n_vars, -2.2),
-        np.full(n_vars, 2.2),
-        np.full(n_vars, -4.0),
-        np.full(n_vars, 4.0),
-    ] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(2)]
+    t_f0 = time.perf_counter()
+    res_final = _finalize_weak_solution(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states, effectivity, protocol, payoffs, discounting, unanimity_required, free_approvals, proposal_rows, timing_data=timing_data)
+    if timing_data is not None:
+        timing_data["solver_finalize"] += (time.perf_counter() - t_f0)
+    return res_final
 
     # ------------------------------------------------------------------
     # Build Numba arrays for fast residual evaluation (scipy calls these)
@@ -1448,6 +1601,7 @@ def _search_payoff_table(
 
     committee_idxs: list[list[list[tuple[int, ...]]]] = []
     player_idx = {player: idx for idx, player in enumerate(players)}
+    state_idx = {state: idx for idx, state in enumerate(states)}
     for proposer in players:
         proposer_rows: list[list[tuple[int, ...]]] = []
         for current_state in states:
@@ -1479,14 +1633,17 @@ def _search_payoff_table(
                     comm_arr_nb[_pi, _ci, _ni, _k] = _ai
                 comm_size_nb[_pi, _ci, _ni] = len(committee_idxs[_pi][_ci][_ni])
 
-def _finalize_weak_solution(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states, effectivity, protocol, payoffs, discounting, unanimity_required, free_approvals, proposal_rows):
+def _finalize_weak_solution(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states, effectivity, protocol, payoffs, discounting, unanimity_required, free_approvals, proposal_rows, timing_data=None):
     # This rebuilds the solver result after Numba Newton finds a root.
+    t_rebuild0 = time.perf_counter()
     P_arr, probs_arr, pass_arr, action_arr = _build_P_direct(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states)
     payoff_array = payoffs.loc[states, players].to_numpy(dtype=np.float64)
     V_arr = _solve_values_fast_array(P_arr, payoff_array, discounting)
+    if timing_data is not None: timing_data["finalize_rebuild"] += (time.perf_counter() - t_rebuild0)
 
     # Verify directly using the computed arrays — bypasses TransitionProbabilitiesOptimized
     # which uses a different code path and can produce V-inconsistent P_approvals.
+    t_verify0 = time.perf_counter()
     verified, message, detail = _verify_equilibrium_fast(
         players=players, states=states, effectivity=effectivity,
         P_proposals=None, P_approvals=None, V_df=None,
@@ -1494,8 +1651,10 @@ def _finalize_weak_solution(best_phys, canon_action, canon_pass, canon_probs, fa
         approval_pass=pass_arr, V_array=V_arr,
         committee_idxs=committee_idxs,
     )
+    if timing_data is not None: timing_data["finalize_verify"] += (time.perf_counter() - t_verify0)
 
     # Build strategy_df and DataFrames for the returned payload (used when writing Excel).
+    t_obj0 = time.perf_counter()
     solver = EquilibriumSolver(
         players=players, states=states, effectivity=effectivity,
         protocol=protocol, payoffs=payoffs, discounting=discounting,
@@ -1524,6 +1683,7 @@ def _finalize_weak_solution(best_phys, canon_action, canon_pass, canon_probs, fa
     strategy_df = solver._create_strategy_dataframe()
     P_df, P_proposals, P_approvals = solver._compute_transition_probabilities_fast()
     V_df = pd.DataFrame(V_arr, index=states, columns=players)
+    if timing_data is not None: timing_data["finalize_solver_obj"] += (time.perf_counter() - t_obj0)
 
     return {
         "strategy_df": strategy_df.copy(),
@@ -2276,6 +2436,7 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
 
     committee_idxs: list[list[list[tuple[int, ...]]]] = []
     player_idx = {player: idx for idx, player in enumerate(players)}
+    state_idx = {state: idx for idx, state in enumerate(states)}
     for proposer in players:
         proposer_rows: list[list[tuple[int, ...]]] = []
         for current_state in states:
@@ -2316,14 +2477,36 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
     import time as _time
     t_start = _time.perf_counter()
     t_numba = 0.0
-    t_tie_struct = 0.0  # total time in _weak_tie_structure
-    t_solver = 0.0      # total time in _solve_weak_equalities
+    t_tie_struct = 0.0
+    t_solver = 0.0
+    t_solver_root = 0.0
+    t_solver_finalize = 0.0
+    t_solver_setup = 0.0
+    t_solver_check = 0.0
+    t_solver_setup_copy = 0.0
+    t_solver_setup_indices = 0.0
+    t_solver_setup_numba = 0.0
+    t_solver_root_v_solve = 0.0
+    t_solver_root_p_agg = 0.0
+    t_solver_root_other = 0.0
+    t_solver_root_mapping = 0.0
+    t_solver_root_residuals = 0.0
+    t_solver_setup_guesses = 0.0
+    
+    t_solver_finalize_rebuild = 0.0
+    t_solver_finalize_verify = 0.0
+    t_solver_finalize_solver_obj = 0.0
+
+    total_solver_calls = 0
+    total_skipped_max_vars = 0
+    n_free_histogram: dict[int, int] = {}
+
     # Per-progress-interval counters (reset after each send)
     iv_numba_t = 0.0
     iv_tie_struct_t = 0.0
     iv_solver_t = 0.0
     iv_solver_calls = 0
-    iv_lb_skipped = 0      # skipped by _lb pre-filter (no _weak_tie_structure call)
+    iv_lb_skipped = 0
     iv_hits = 0
 
     for perm_tuple in perm_tuples:
@@ -2398,11 +2581,22 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
                 t_ts0 = _time.perf_counter()
                 tie_struct = _weak_tie_structure(players, states, ranks, committee_idxs)
                 n_free = len(tie_struct[0]) + sum(len(w) - 1 for _, _, w in tie_struct[1])
-                _d_ts = _time.perf_counter() - t_ts0
-                iv_tie_struct_t += _d_ts
-                t_tie_struct += _d_ts
+                iv_tie_struct_t += (_time.perf_counter() - t_ts0)
+                t_tie_struct += (_time.perf_counter() - t_ts0)
+                
+                n_free_histogram[n_free] = n_free_histogram.get(n_free, 0) + 1
+
                 if n_free > 0 and (weak_equality_max_vars is None or n_free <= weak_equality_max_vars):
                     iv_solver_calls += 1
+                    total_solver_calls += 1
+                    
+                    solver_timing = {
+                        "solver_root": 0.0, "solver_finalize": 0.0, "solver_setup": 0.0, "solver_check": 0.0,
+                        "solver_setup_copy": 0.0, "solver_setup_indices": 0.0, "solver_setup_numba": 0.0,
+                        "solver_root_v_solve": 0.0, "solver_root_p_agg": 0.0, "solver_root_other": 0.0,
+                        "solver_root_mapping": 0.0, "solver_root_residuals": 0.0, "solver_setup_guesses": 0.0,
+                        "finalize_rebuild": 0.0, "finalize_verify": 0.0, "finalize_solver_obj": 0.0
+                    }
                     t_sv0 = _time.perf_counter()
                     solved_payload = _solve_weak_equalities(
                         players=players, states=states, effectivity=effectivity,
@@ -2413,13 +2607,38 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
                         _precomputed_canon_arrays=(proposal_probs, approval_action, approval_pass),
                         _numba_comm_arr=comm_arr_nb if _use_numba else None,
                         _numba_comm_size=comm_size_nb if _use_numba else None,
-                        _numba_tiers=_tiers_buf if _use_numba else None
+                        _numba_tiers=_tiers_buf if _use_numba else None,
+                        timing_data=solver_timing,
+                        player_idx=player_idx,
+                        state_idx=state_idx,
+                        _precomputed_payoff_array=payoff_array,
+                        _precomputed_protocol_arr=protocol_arr
                     )
                     _d_sv = _time.perf_counter() - t_sv0
                     iv_solver_t += _d_sv
                     t_solver += _d_sv
-                else:
-                    iv_lb_skipped += 1  # tie_struct computed but n_free out of range
+                    t_solver_root += solver_timing["solver_root"]
+                    t_solver_finalize += solver_timing["solver_finalize"]
+                    t_solver_setup += solver_timing["solver_setup"]
+                    t_solver_check += solver_timing["solver_check"]
+                    
+                    t_solver_setup_copy += solver_timing["solver_setup_copy"]
+                    t_solver_setup_indices += solver_timing["solver_setup_indices"]
+                    t_solver_setup_numba += solver_timing["solver_setup_numba"]
+                    t_solver_root_v_solve += solver_timing["solver_root_v_solve"]
+                    t_solver_root_p_agg += solver_timing["solver_root_p_agg"]
+                    t_solver_root_other += solver_timing["solver_root_other"]
+                    
+                    t_solver_root_mapping += solver_timing["solver_root_mapping"]
+                    t_solver_root_residuals += solver_timing["solver_root_residuals"]
+                    t_solver_setup_guesses += solver_timing["solver_setup_guesses"]
+                    
+                    t_solver_finalize_rebuild += solver_timing["finalize_rebuild"]
+                    t_solver_finalize_verify += solver_timing["finalize_verify"]
+                    t_solver_finalize_solver_obj += solver_timing["finalize_solver_obj"]
+                elif n_free > 0:
+                    iv_lb_skipped += 1
+                    total_skipped_max_vars += 1
 
         tested += 1
         if verified or (solved_payload is not None and solved_payload["verification_success"]):
@@ -2485,8 +2704,28 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
         "weak_exact_reduced": weak_exact_reduced,
         "weak_equality_solve": weak_equality_solve,
         "t_numba": t_numba,
+        "t_tie_struct": t_tie_struct,
         "t_solver": t_solver,
+        "t_solver_root": t_solver_root,
+        "t_solver_finalize": t_solver_finalize,
+        "t_solver_setup": t_solver_setup,
+        "t_solver_check": t_solver_check,
+        "t_solver_setup_copy": t_solver_setup_copy,
+        "t_solver_setup_indices": t_solver_setup_indices,
+        "t_solver_setup_numba": t_solver_setup_numba,
+        "t_solver_root_v_solve": t_solver_root_v_solve,
+        "t_solver_root_p_agg": t_solver_root_p_agg,
+        "t_solver_root_other": t_solver_root_other,
+        "t_solver_root_mapping": t_solver_root_mapping,
+        "t_solver_root_residuals": t_solver_root_residuals,
+        "t_solver_setup_guesses": t_solver_setup_guesses,
+        "t_solver_finalize_rebuild": t_solver_finalize_rebuild,
+        "t_solver_finalize_verify": t_solver_finalize_verify,
+        "t_solver_finalize_solver_obj": t_solver_finalize_solver_obj,
         "t_overhead": t_overhead,
+        "total_solver_calls": total_solver_calls,
+        "total_skipped_max_vars": total_skipped_max_vars,
+        "n_free_histogram": n_free_histogram,
         "elapsed": t_total,
     }
 
@@ -2515,8 +2754,34 @@ def _merge_worker_results(worker_results: list[dict[str, Any]]) -> dict[str, Any
     merged["weak_exact_deterministic"] = sum(r.get("weak_exact_deterministic", 0) for r in worker_results)
     merged["weak_exact_nontrivial"] = sum(r.get("weak_exact_nontrivial", 0) for r in worker_results)
     merged["t_numba"] = sum(r.get("t_numba", 0.0) for r in worker_results)
+    merged["t_tie_struct"] = sum(r.get("t_tie_struct", 0.0) for r in worker_results)
     merged["t_solver"] = sum(r.get("t_solver", 0.0) for r in worker_results)
+    merged["t_solver_root"] = sum(r.get("t_solver_root", 0.0) for r in worker_results)
+    merged["t_solver_finalize"] = sum(r.get("t_solver_finalize", 0.0) for r in worker_results)
+    merged["t_solver_setup"] = sum(r.get("t_solver_setup", 0.0) for r in worker_results)
+    merged["t_solver_check"] = sum(r.get("t_solver_check", 0.0) for r in worker_results)
+    merged["t_solver_setup_copy"] = sum(r.get("t_solver_setup_copy", 0.0) for r in worker_results)
+    merged["t_solver_setup_indices"] = sum(r.get("t_solver_setup_indices", 0.0) for r in worker_results)
+    merged["t_solver_setup_numba"] = sum(r.get("t_solver_setup_numba", 0.0) for r in worker_results)
+    merged["t_solver_root_v_solve"] = sum(r.get("t_solver_root_v_solve", 0.0) for r in worker_results)
+    merged["t_solver_root_p_agg"] = sum(r.get("t_solver_root_p_agg", 0.0) for r in worker_results)
+    merged["t_solver_root_other"] = sum(r.get("t_solver_root_other", 0.0) for r in worker_results)
+    merged["t_solver_root_mapping"] = sum(r.get("t_solver_root_mapping", 0.0) for r in worker_results)
+    merged["t_solver_root_residuals"] = sum(r.get("t_solver_root_residuals", 0.0) for r in worker_results)
+    merged["t_solver_setup_guesses"] = sum(r.get("t_solver_setup_guesses", 0.0) for r in worker_results)
+    merged["t_solver_finalize_rebuild"] = sum(r.get("t_solver_finalize_rebuild", 0.0) for r in worker_results)
+    merged["t_solver_finalize_verify"] = sum(r.get("t_solver_finalize_verify", 0.0) for r in worker_results)
+    merged["t_solver_finalize_solver_obj"] = sum(r.get("t_solver_finalize_solver_obj", 0.0) for r in worker_results)
     merged["t_overhead"] = sum(r.get("t_overhead", 0.0) for r in worker_results)
+    merged["total_solver_calls"] = sum(r.get("total_solver_calls", 0) for r in worker_results)
+    merged["total_skipped_max_vars"] = sum(r.get("total_skipped_max_vars", 0) for r in worker_results)
+    
+    merged_hist: dict[int, int] = {}
+    for r in worker_results:
+        hist = r.get("n_free_histogram", {})
+        for k, v in hist.items():
+            merged_hist[k] = merged_hist.get(k, 0) + v
+    merged["n_free_histogram"] = merged_hist
     return merged
 
 
@@ -2923,11 +3188,47 @@ def main() -> None:
     print(f"wall_time:            {result['elapsed']:>12.2f}s")
     print(f"rate:                 {result['rate']:>12.0f}/s")
     print(f"  - numba_time:       {result.get('t_numba', 0.0) / n_workers:>12.2f}s (avg per worker)")
+    print(f"  - tie_struct_time:  {result.get('t_tie_struct', 0.0) / n_workers:>12.2f}s (avg per worker)")
     print(f"  - solver_time:      {result.get('t_solver', 0.0) / n_workers:>12.2f}s (avg per worker)")
+    if result.get("t_solver", 0.0) > 0:
+        print(f"    - root_search:    {result.get('t_solver_root', 0.0) / n_workers:>12.2f}s")
+        if result.get("t_solver_root_v_solve", 0.0) > 0:
+            print(f"      - V_solve:      {result.get('t_solver_root_v_solve', 0.0) / n_workers:>12.2f}s")
+            print(f"      - P_aggregate:  {result.get('t_solver_root_p_agg', 0.0) / n_workers:>12.2f}s")
+            print(f"      - mapping:      {result.get('t_solver_root_mapping', 0.0) / n_workers:>12.2f}s")
+            print(f"      - residuals:    {result.get('t_solver_root_residuals', 0.0) / n_workers:>12.2f}s")
+        print(f"    - finalize:       {result.get('t_solver_finalize', 0.0) / n_workers:>12.2f}s")
+        if result.get("t_solver_finalize_rebuild", 0.0) > 0:
+            print(f"      - rebuild:      {result.get('t_solver_finalize_rebuild', 0.0) / n_workers:>12.2f}s")
+            print(f"      - verify:       {result.get('t_solver_finalize_verify', 0.0) / n_workers:>12.2f}s")
+            print(f"      - solver_obj:   {result.get('t_solver_finalize_solver_obj', 0.0) / n_workers:>12.2f}s")
+        print(f"    - check:          {result.get('t_solver_check', 0.0) / n_workers:>12.2f}s")
+        print(f"    - setup/other:    {result.get('t_solver_setup', 0.0) / n_workers:>12.2f}s")
+        if result.get("t_solver_setup_copy", 0.0) > 0:
+            print(f"      - copy_arrays:  {result.get('t_solver_setup_copy', 0.0) / n_workers:>12.2f}s")
+            print(f"      - find_indices: {result.get('t_solver_setup_indices', 0.0) / n_workers:>12.2f}s")
+            print(f"      - build_numba:  {result.get('t_solver_setup_numba', 0.0) / n_workers:>12.2f}s")
+            print(f"      - guesses:      {result.get('t_solver_setup_guesses', 0.0) / n_workers:>12.2f}s")
     print(f"  - python_overhead:  {result.get('t_overhead', 0.0) / n_workers:>12.2f}s (avg per worker)")
     print(f"interrupted:          {str(result['interrupted']):>12s}")
     print(f"verified_successes:   {result['verified_successes']:>12,d}")
     print(f"stored_successes:     {len(result['all_successes']):>12,d}")
+    
+    if args.weak_orders and args.weak_equality_solve:
+        print(f"total_solver_calls:   {result.get('total_solver_calls', 0):>12,d}")
+        print(f"skipped_max_vars:     {result.get('total_skipped_max_vars', 0):>12,d}")
+        
+        hist = result.get("n_free_histogram", {})
+        if hist:
+            print("\nFree Variables Distribution (n_free: count)")
+            # Sort by n_free
+            for n_free in sorted(hist.keys()):
+                count = hist[n_free]
+                skip_str = ""
+                if args.weak_equality_max_vars is not None and n_free > args.weak_equality_max_vars:
+                    skip_str = " (SKIPPED)"
+                print(f"  {n_free:>2d} vars: {count:>12,d}{skip_str}")
+
     if args.weak_orders and args.weak_exact_reduced:
         print(f"weak_exact_zero_params:{result['weak_exact_zero_params']:>12,d}")
         print(f"weak_exact_deterministic:{result['weak_exact_deterministic']:>8,d}")
