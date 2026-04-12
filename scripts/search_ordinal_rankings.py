@@ -495,18 +495,22 @@ def _format_eta(seconds: float) -> str:
     return f"{minutes:02d}:{secs:02d}"
 
 
-def _print_progress(done: int, total: int, start_time: float, width: int = 30) -> None:
+def _print_progress(done: int, total: int, start_time: float, width: int = 30, recent_rate: float | None = None, breakdown: str = "") -> None:
+    import shutil
     elapsed = max(1e-9, time.perf_counter() - start_time)
     frac = done / total if total else 1.0
     filled = int(width * frac)
     bar = "#" * filled + "-" * (width - filled)
     rate = done / elapsed
     remaining = (total - done) / rate if rate > 0 else float("inf")
+    recent_str = f"  recent={recent_rate:8.0f}/s" if recent_rate is not None else ""
     msg = (
         f"[{bar}] {done:>9,d}/{total:>9,d}  "
-        f"{100.0 * frac:5.1f}%  rate={rate:8.0f}/s  "
-        f"eta={_format_eta(remaining)}"
+        f"{100.0 * frac:5.1f}%  rate={rate:8.0f}/s{recent_str}  "
+        f"eta={_format_eta(remaining)}{breakdown}"
     )
+    cols = shutil.get_terminal_size(fallback=(200, 24)).columns
+    msg = msg[:cols]
     print(f"\r\033[2K{msg}", end="", flush=True)
 
 
@@ -1845,11 +1849,7 @@ def _build_P_direct(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt
                         "P_approvals": solved_payload["P_approvals"],
                     })
                 else:
-                    success.update({
-                        "source": "canonical",
-                        "P": pd.DataFrame(P_array, index=states, columns=states),
-                        "V": pd.DataFrame(V_array, index=states, columns=players),
-                    })
+                    success["source"] = "canonical"
                 all_successes.append(success)
                 if first_success is None:
                     first_success = success
@@ -2071,6 +2071,28 @@ def _resolve_all_output_dir(payoff_path: Path, output_dir: str | None) -> Path:
     return REPO_ROOT / "strategy_tables" / f"ordinal_all_{payoff_path.stem}"
 
 
+def _terminate_process_pool_workers(executor: Any) -> None:
+    """Force worker processes to exit (private CPython API; used only after Ctrl+C)."""
+    procs = getattr(executor, "_processes", None)
+    if not procs:
+        return
+    for proc in list(procs.values()):
+        if proc is None:
+            continue
+        try:
+            if proc.is_alive():
+                proc.terminate()
+        except Exception:
+            pass
+    for proc in list(procs.values()):
+        if proc is None:
+            continue
+        try:
+            proc.join(timeout=2.0)
+        except Exception:
+            pass
+
+
 def _display_path(path: Path) -> str:
     try:
         return str(path.relative_to(REPO_ROOT))
@@ -2086,11 +2108,35 @@ def _write_all_successes(
     dedup_by: str,
 ) -> list[dict[str, Any]]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    total_n = len(result["all_successes"])
+    progress_iv = 25 if total_n > 400 else 10 if total_n > 80 else 1
+    print(f"  output_dir: {output_dir.resolve()}", flush=True)
     metadata_base = _build_excel_metadata(result["config"], result["config"]["payoff_table"])
     manifest_rows: list[dict[str, Any]] = []
     seen_keys: set[tuple[Any, ...]] = set()
+    written = 0
+    skipped_dedup = 0
 
-    for idx, success in enumerate(result["all_successes"], start=1):
+    def _write_progress(msg: str) -> None:
+        print(f"\r\033[2K{msg}", end="", flush=True)
+
+    def _flush_manifest() -> None:
+        if not manifest_rows:
+            return
+        manifest_path = output_dir / "manifest.csv"
+        with manifest_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(manifest_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(manifest_rows)
+
+    successes_list = result["all_successes"]
+
+    def _process_one(idx: int, success: dict[str, Any]) -> None:
+        nonlocal written, skipped_dedup
+        if idx == 1 or idx % progress_iv == 0:
+            _write_progress(
+                f"  write_all: row {idx}/{total_n} (written={written}, skipped_dedup={skipped_dedup}) - materializing..."
+            )
         reference = _materialize_success_result(result, success)
         if dedup_by == "transition":
             dedup_key = _serialize_transition_matrix(reference["P"], result["states"])
@@ -2099,7 +2145,12 @@ def _write_all_successes(
         else:
             dedup_key = ("ordinal", idx)
         if dedup_key in seen_keys:
-            continue
+            skipped_dedup += 1
+            if idx % progress_iv == 0 or idx == total_n:
+                _write_progress(
+                    f"  write_all: row {idx}/{total_n} (written={written}, skipped_dedup={skipped_dedup})"
+                )
+            return
         seen_keys.add(dedup_key)
 
         perm_tuple = tuple(int(perm) for perm in success["perms"])
@@ -2123,6 +2174,11 @@ def _write_all_successes(
             static_payoffs=result["payoffs"],
             transition_matrix=reference["P"],
         )
+        written += 1
+        if written % progress_iv == 0 or written <= 3:
+            _write_progress(
+                f"  write_all: row {idx}/{total_n} wrote #{written} -> {_display_path(output_path)}"
+            )
         row = {
             "index": idx,
             "output_file": _display_path(output_path),
@@ -2143,13 +2199,35 @@ def _write_all_successes(
             )
         )
         manifest_rows.append(row)
+        if idx <= 5:
+            _write_progress(
+                f"  write_all: finished row {idx}/{total_n} (written={written}, skipped_dedup={skipped_dedup})"
+            )
 
-    manifest_path = output_dir / "manifest.csv"
-    if manifest_rows:
-        with manifest_path.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=list(manifest_rows[0].keys()))
-            writer.writeheader()
-            writer.writerows(manifest_rows)
+    try:
+        for idx, success in enumerate(successes_list, start=1):
+            _process_one(idx, success)
+
+        _flush_manifest()
+        if total_n:
+            print(
+                f"\n  write_all done: {written} files, {skipped_dedup} skipped (dedup_by={dedup_by}), "
+                f"manifest rows={len(manifest_rows)}",
+                flush=True,
+            )
+    except KeyboardInterrupt:
+        print("\n\n  write_all interrupted by user (Ctrl+C).", flush=True)
+        try:
+            _flush_manifest()
+            if manifest_rows:
+                print(
+                    f"  Partial manifest saved ({len(manifest_rows)} rows): "
+                    f"{_display_path(output_dir / 'manifest.csv')}",
+                    flush=True,
+                )
+        except Exception as exc:
+            print(f"  Could not save partial manifest: {exc}", flush=True)
+        raise
     return manifest_rows
 
 
@@ -2167,9 +2245,19 @@ def _format_weak_order(states: list[str], tiers: np.ndarray) -> str:
     return " > ".join(ordered)
 
 
-def _worker_init() -> None:
+# Set by ProcessPoolExecutor initializer (parallel search). Queues/Events must not be
+# passed inside submit() args on the "spawn" start method — only via initargs/inheritance.
+_WORKER_STOP_EVENT: Any = None
+_WORKER_PROGRESS_QUEUE: Any = None
+
+
+def _worker_init(stop_event: Any = None, progress_queue: Any = None) -> None:
     import signal
+
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    global _WORKER_STOP_EVENT, _WORKER_PROGRESS_QUEUE
+    _WORKER_STOP_EVENT = stop_event
+    _WORKER_PROGRESS_QUEUE = progress_queue
 
 
 def _worker_search_batch(args: tuple) -> dict[str, Any]:
@@ -2178,8 +2266,9 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
         config, perm_tuples, use_reference_verifier,
         weak_orders_flag, weak_exact_reduced,
         weak_equality_solve, weak_equality_max_vars,
-        progress_queue, progress_every, order_arrays,
+        progress_every, order_arrays,
     ) = args
+    progress_queue = _WORKER_PROGRESS_QUEUE
 
     # Internal setup (same as _search_payoff_table but without the ranking_tuples loop)
     setup = __import__("lib.equilibrium.find", fromlist=["setup_experiment"]).setup_experiment(config)
@@ -2250,9 +2339,19 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
     import time as _time
     t_start = _time.perf_counter()
     t_numba = 0.0
-    t_solver = 0.0
-    
+    t_tie_struct = 0.0  # total time in _weak_tie_structure
+    t_solver = 0.0      # total time in _solve_weak_equalities
+    # Per-progress-interval counters (reset after each send)
+    iv_numba_t = 0.0
+    iv_tie_struct_t = 0.0
+    iv_solver_t = 0.0
+    iv_solver_calls = 0
+    iv_lb_skipped = 0      # skipped by _lb pre-filter (no _weak_tie_structure call)
+    iv_hits = 0
+
     for perm_tuple in perm_tuples:
+        if _WORKER_STOP_EVENT is not None and _WORKER_STOP_EVENT.is_set():
+            break
         # 1. Canonical check (Numba accelerated)
         t0 = _time.perf_counter()
         ranks = tuple(pos[perm_idx] for perm_idx in perm_tuple)
@@ -2292,50 +2391,89 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
                 verified, _, _ = _verify_equilibrium_fast(players=players, states=states, effectivity=effectivity, P_proposals=None, P_approvals=None, V_df=None, proposal_choice=proposal_choice, proposal_probs=proposal_probs, approval_action=approval_action, approval_pass=approval_pass, V_array=V_array, committee_idxs=committee_idxs)
         t1 = _time.perf_counter()
         t_numba += (t1 - t0)
+        iv_numba_t += (t1 - t0)
 
         # 2. Numerical refinement (if needed)
         solved_payload = None
         if (not verified) and weak_orders_flag and weak_equality_solve:
-            t2 = _time.perf_counter()
-            tie_struct = _weak_tie_structure(players, states, ranks, committee_idxs)
-            n_free = len(tie_struct[0]) + sum(len(w) - 1 for _, _, w in tie_struct[1])
-            if n_free > 0 and (weak_equality_max_vars is None or n_free <= weak_equality_max_vars):
-                # We use the Numba solver we defined. If it returns None, we need to handle that.
-                # My previous refactor replaced _solve_weak_equalities with Numba logic,
-                # but I kept the call signature for the Numba solver.
-                # Let's fix the call:
-                solved_payload = _solve_weak_equalities(
-                    players=players, states=states, effectivity=effectivity, 
-                    protocol=protocol, payoffs=payoffs, discounting=discounting, 
-                    unanimity_required=unanimity_required, tiers=ranks, 
-                    committee_idxs=committee_idxs, max_vars=weak_equality_max_vars,
-                    _precomputed_tie_structure=tie_struct, 
-                    _precomputed_canon_arrays=(proposal_probs, approval_action, approval_pass), 
-                    _numba_comm_arr=comm_arr_nb if _use_numba else None, 
-                    _numba_comm_size=comm_size_nb if _use_numba else None, 
-                    _numba_tiers=_tiers_buf if _use_numba else None
-                )
-            t_solver += _time.perf_counter() - t2
+            if _WORKER_STOP_EVENT is not None and _WORKER_STOP_EVENT.is_set():
+                break
+            # Cheap _lb pre-filter: count same-tier pairs; if already > max_vars, skip
+            _skip = False
+            if weak_equality_max_vars is not None:
+                _lb = 0
+                for _r in ranks:
+                    for _ci in range(n_states):
+                        _tc = int(_r[_ci])
+                        for _ni in range(n_states):
+                            if _ni != _ci and int(_r[_ni]) == _tc:
+                                _lb += 1
+                                if _lb > weak_equality_max_vars:
+                                    _skip = True
+                                    break
+                        if _skip:
+                            break
+                    if _skip:
+                        break
+            if _skip:
+                iv_lb_skipped += 1
+            else:
+                t_ts0 = _time.perf_counter()
+                tie_struct = _weak_tie_structure(players, states, ranks, committee_idxs)
+                n_free = len(tie_struct[0]) + sum(len(w) - 1 for _, _, w in tie_struct[1])
+                _d_ts = _time.perf_counter() - t_ts0
+                iv_tie_struct_t += _d_ts
+                t_tie_struct += _d_ts
+                if n_free > 0 and (weak_equality_max_vars is None or n_free <= weak_equality_max_vars):
+                    iv_solver_calls += 1
+                    t_sv0 = _time.perf_counter()
+                    solved_payload = _solve_weak_equalities(
+                        players=players, states=states, effectivity=effectivity,
+                        protocol=protocol, payoffs=payoffs, discounting=discounting,
+                        unanimity_required=unanimity_required, tiers=ranks,
+                        committee_idxs=committee_idxs, max_vars=weak_equality_max_vars,
+                        _precomputed_tie_structure=tie_struct,
+                        _precomputed_canon_arrays=(proposal_probs, approval_action, approval_pass),
+                        _numba_comm_arr=comm_arr_nb if _use_numba else None,
+                        _numba_comm_size=comm_size_nb if _use_numba else None,
+                        _numba_tiers=_tiers_buf if _use_numba else None
+                    )
+                    _d_sv = _time.perf_counter() - t_sv0
+                    iv_solver_t += _d_sv
+                    t_solver += _d_sv
+                else:
+                    iv_lb_skipped += 1  # tie_struct computed but n_free out of range
 
         tested += 1
         if verified or solved_payload is not None:
             verified_successes += 1
+            iv_hits += 1
             success = {"perms": perm_tuple, "rankings": tuple(order_arrays[perm_idx].copy() for perm_idx in perm_tuple)}
             if solved_payload is not None:
                 success.update({"source": "weak_equality_solve", "P": solved_payload["P"], "V": solved_payload["V"], "strategy_df": solved_payload["strategy_df"], "P_proposals": solved_payload["P_proposals"], "P_approvals": solved_payload["P_approvals"]})
             else:
-                success.update({"source": "canonical", "P": pd.DataFrame(P_array, index=states, columns=states), "V": pd.DataFrame(V_array, index=states, columns=players)})
+                success["source"] = "canonical"
             all_successes.append(success)
 
         if progress_every > 0 and tested % progress_every == 0:
             if progress_queue is not None:
                 try:
-                    progress_queue.put(progress_every)
+                    progress_queue.put((
+                        progress_every,
+                        iv_numba_t, iv_tie_struct_t, iv_solver_t,
+                        iv_solver_calls, iv_lb_skipped, iv_hits,
+                    ))
                 except Exception:
                     pass
+            iv_numba_t = 0.0
+            iv_tie_struct_t = 0.0
+            iv_solver_t = 0.0
+            iv_solver_calls = 0
+            iv_lb_skipped = 0
+            iv_hits = 0
 
     t_total = _time.perf_counter() - t_start
-    t_overhead = t_total - t_numba - t_solver
+    t_overhead = t_total - t_numba - t_tie_struct - t_solver
 
     return {
         "tested": tested,
@@ -2535,6 +2673,13 @@ def main() -> None:
     elif args.ranking_order == "random":
         perm_orders = _random_ordering(len(order_arrays), len(players), args.random_seed)
 
+    # When ranking_order="random", force flat-index shuffle to break the block
+    # structure of itertools.product (otherwise player 0's ranking is fixed for
+    # n_perms^(n_players-1) consecutive combinations, causing large speed swings).
+    # Set False to opt out.
+    _RANDOM_ORDER_IMPLIES_SHUFFLE = True
+    _effective_shuffle = args.shuffle or (args.ranking_order == "random" and _RANDOM_ORDER_IMPLIES_SHUFFLE)
+
     if n_workers <= 1:
         result = _search_payoff_table(
             config=config,
@@ -2542,7 +2687,7 @@ def main() -> None:
             progress_every=args.progress_every,
             stop_on_success=args.stop_on_success,
             use_reference_verifier=args.use_reference_verifier,
-            shuffle=args.shuffle,
+            shuffle=_effective_shuffle,
             random_seed=args.random_seed,
             ranking_order=args.ranking_order,
             weak_orders=args.weak_orders,
@@ -2557,12 +2702,9 @@ def main() -> None:
         import threading
         import queue
 
-        # Start manager with SIGINT ignored so it doesn't shut down before workers
-        import signal
-        _old_sigint = signal.signal(signal.SIGINT, signal.SIG_IGN)
-        manager = _mp.Manager()
-        signal.signal(signal.SIGINT, _old_sigint)
-        progress_queue = manager.Queue()
+        # Plain Queue avoids multiprocessing.Manager (its shutdown often hangs waiting on the server).
+        progress_queue = _mp.Queue()
+        stop_event = _mp.Event()
 
         total_to_test = total_orders ** len(players)
         if args.max_combinations is not None:
@@ -2571,13 +2713,61 @@ def main() -> None:
         def progress_listener(q, total_val):
             done = 0
             start_time = time.perf_counter()
+            # Aggregated interval stats (reset every _window_size combinations)
+            _window_size = 200_000
+            _window_done = 0
+            _window_start = time.perf_counter()
+            _recent_rate: float | None = None
+            # Per-window accumulation of worker timing stats
+            _w_numba_t = 0.0
+            _w_ts_t = 0.0
+            _w_solver_t = 0.0
+            _w_solver_calls = 0
+            _w_lb_skipped = 0
+            _w_hits = 0
+            # Last printed breakdown (shown until next window closes)
+            _breakdown: str = ""
             while True:
                 try:
                     msg = q.get(timeout=0.1)
                     if msg == "DONE":
                         break
-                    done += int(msg)
-                    _print_progress(done, total_val, start_time)
+                    if isinstance(msg, tuple) and len(msg) == 7:
+                        inc, iv_numba, iv_ts, iv_sv, iv_calls, iv_skip, iv_hits = msg
+                    elif isinstance(msg, tuple) and len(msg) == 5:
+                        inc, iv_numba, iv_sv, iv_calls, iv_skip = msg
+                        iv_ts = 0.0; iv_hits = 0
+                    else:
+                        inc = msg
+                        iv_numba = iv_ts = iv_sv = iv_calls = iv_skip = iv_hits = 0
+                    inc = int(inc)
+                    done += inc
+                    _window_done += inc
+                    _w_numba_t += iv_numba
+                    _w_ts_t += iv_ts
+                    _w_solver_t += iv_sv
+                    _w_solver_calls += iv_calls
+                    _w_lb_skipped += iv_skip
+                    _w_hits += iv_hits
+                    if _window_done >= _window_size:
+                        _window_elapsed = max(1e-9, time.perf_counter() - _window_start)
+                        _recent_rate = _window_done / _window_elapsed
+                        _k = _window_done / 1000
+                        _n_calls = _w_solver_calls
+                        _ms_ts = (_w_ts_t / _n_calls * 1000) if _n_calls > 0 else 0.0
+                        _ms_sv = (_w_solver_t / _n_calls * 1000) if _n_calls > 0 else 0.0
+                        _breakdown = (
+                            f"  [ts:{_ms_ts:.2f}ms sv:{_ms_sv:.2f}ms"
+                            f" c/k:{_n_calls/_k:.0f}"
+                            f" sk/k:{_w_lb_skipped/_k:.0f}"
+                            f" h/k:{_w_hits/_k:.1f}]"
+                        )
+                        _window_done = 0
+                        _window_start = time.perf_counter()
+                        _w_numba_t = _w_ts_t = _w_solver_t = 0.0
+                        _w_solver_calls = _w_lb_skipped = _w_hits = 0
+                        _k = 0.0  # prevent stale division if window not yet full
+                    _print_progress(done, total_val, start_time, recent_rate=_recent_rate, breakdown=_breakdown)
                 except queue.Empty:
                     continue
                 except Exception:
@@ -2590,7 +2780,7 @@ def main() -> None:
 
         all_perms_gen = _ranking_tuples(
             order_arrays, len(players), args.max_combinations,
-            shuffle=args.shuffle, random_seed=args.random_seed, perm_orders=perm_orders
+            shuffle=_effective_shuffle, random_seed=args.random_seed, perm_orders=perm_orders
         )
 
         chunk_size = 2000
@@ -2599,16 +2789,20 @@ def main() -> None:
             for _, _, pt in all_perms_gen:
                 batch.append(pt)
                 if len(batch) >= chunk_size:
-                    yield (config, batch, args.use_reference_verifier, args.weak_orders, args.weak_exact_reduced, args.weak_equality_solve, args.weak_equality_max_vars, progress_queue, args.progress_every, order_arrays)
+                    yield (config, batch, args.use_reference_verifier, args.weak_orders, args.weak_exact_reduced, args.weak_equality_solve, args.weak_equality_max_vars, args.progress_every, order_arrays)
                     batch = []
             if batch:
-                yield (config, batch, args.use_reference_verifier, args.weak_orders, args.weak_exact_reduced, args.weak_equality_solve, args.weak_equality_max_vars, progress_queue, args.progress_every, order_arrays)
+                yield (config, batch, args.use_reference_verifier, args.weak_orders, args.weak_exact_reduced, args.weak_equality_solve, args.weak_equality_max_vars, args.progress_every, order_arrays)
 
         import time as _time
         _par_start = _time.perf_counter()
         worker_results = []
         interrupted = False
-        executor = ProcessPoolExecutor(max_workers=n_workers, initializer=_worker_init)
+        executor = ProcessPoolExecutor(
+            max_workers=n_workers,
+            initializer=_worker_init,
+            initargs=(stop_event, progress_queue),
+        )
         active_futures = set()
         arg_gen = chunked_worker_args()
         max_pending = n_workers * 2
@@ -2637,28 +2831,38 @@ def main() -> None:
                     _time.sleep(0.1)
         except KeyboardInterrupt:
             interrupted = True
+            stop_event.set()
             import signal
+
             signal.signal(signal.SIGINT, signal.SIG_IGN)
             print("\nInterrupted by user. Gathering partial results...")
         finally:
             _par_elapsed = _time.perf_counter() - _par_start
+            stop_event.set()
+            for f in list(active_futures):
+                if f.done():
+                    try:
+                        worker_results.append(f.result())
+                    except Exception as e:
+                        print(f"\nWorker error: {e}")
             # Signal progress listener to stop
             try:
                 progress_queue.put("DONE")
             except Exception:
                 pass
-            listener.join(timeout=1.0)
-            # IMPORTANT: Wait for workers to finish current batch/exit before closing manager
-            executor.shutdown(wait=True, cancel_futures=True)
-            # manager.shutdown() is moved to the very end of main to prevent FileNotFoundError
-            # in workers that might still be alive/cleaning up.
+            listener.join(timeout=3.0)
+            if interrupted:
+                executor.shutdown(wait=False, cancel_futures=True)
+                _terminate_process_pool_workers(executor)
+            else:
+                executor.shutdown(wait=True, cancel_futures=False)
+            # Allow Ctrl+C again during write_all / CLI output (except handler used SIG_IGN).
+            import signal
+
+            signal.signal(signal.SIGINT, signal.default_int_handler)
 
         if not worker_results:
             print("No results collected.")
-            try:
-                manager.shutdown()
-            except:
-                pass
             return
 
         result = _merge_worker_results(worker_results)
@@ -2691,6 +2895,9 @@ def main() -> None:
         print(f"weak_exact_nontrivial:{result['weak_exact_nontrivial']:>12,d}")
 
     if args.write_all or args.write_all_output_dir:
+        n_write = len(result["all_successes"])
+        if n_write >= 200:
+            print(f"\nWriting up to {n_write} strategy tables (dedup_by={args.dedup_by})...", flush=True)
         output_dir = _resolve_all_output_dir(payoff_path, args.write_all_output_dir)
         manifest_rows = _write_all_successes(
             result=result,
@@ -2762,15 +2969,6 @@ def main() -> None:
         print("Value Functions")
         print("-" * 80)
         print(reference["V"].loc[states, players].to_string(float_format=lambda x: f"{x:.6f}"))
-
-    # Final manager cleanup after all processing is done
-    try:
-        # Check if 'manager' exists in current scope
-        if 'manager' in locals():
-            manager.shutdown()
-    except:
-        pass
-
 
 if __name__ == "__main__":
     try:
