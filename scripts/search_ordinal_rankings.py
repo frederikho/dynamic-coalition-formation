@@ -311,7 +311,9 @@ if _NUMBA_AVAILABLE:
         )
         
         P = _residuals_nb_p_agg(probs, pass_, protocol_arr, n_players, n_states)
-        V = _solve_V_nb(P, payoff_array, discounting)
+        # Fused: compute A_mat once, reuse for both V solve and Jacobian RHS solve.
+        A_mat = np.eye(n_states) - discounting * P
+        V = np.linalg.solve(A_mat, (1.0 - discounting) * payoff_array)
         res = _residuals_nb_residuals(V, pass_, fa_arr, n_fa, pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt, n_vars)
 
         # Step 6: Jacobian J = d_res / d_raw (only if compute_jac=True)
@@ -335,23 +337,27 @@ if _NUMBA_AVAILABLE:
         # dV/dx = (I - delta*P)^-1 * (delta * dP/dx * V)
         # We solve for all x (n_vars) at once by stacking RHS columns.
         jac = np.zeros((n_vars, n_vars))
-        A_mat = np.eye(n_states) - discounting * P
-        
+        # A_mat already computed above — reuse it here.
+
         # RHS_all will have n_players * n_vars columns
         RHS_all = np.zeros((n_states, n_players * n_vars))
-        
+
         for k in range(n_vars):
-            dP = np.zeros((n_states, n_states))
             if k < n_fa:
+                # Sparse dP: only row p_ci has nonzero entries (p_ci→p_ni and p_ci→p_ci).
+                # (dP @ V)[p_ci, pl] = coeff*(V[p_ni,pl] - V[p_ci,pl]); all other rows = 0.
+                # Write directly into RHS_all without allocating a full dP matrix.
                 p_pi = int(fa_arr[k, 0]); p_ai = int(fa_arr[k, 1]); p_ci = int(fa_arr[k, 2]); p_ni = int(fa_arr[k, 3])
                 d_pass = 0.0
                 if action[p_pi, p_ai, p_ci, p_ni] > 1e-12:
                     d_pass = pass_[p_pi, p_ci, p_ni] / action[p_pi, p_ai, p_ci, p_ni]
                 elif int(comm_size[p_pi, p_ci, p_ni]) == 1:
                     d_pass = 1.0
-                dP[p_ci, p_ni] = protocol_arr[p_pi] * probs[p_pi, p_ci, p_ni] * d_pass
-                dP[p_ci, p_ci] = -dP[p_ci, p_ni]
+                coeff = discounting * protocol_arr[p_pi] * probs[p_pi, p_ci, p_ni] * d_pass
+                for pl in range(n_players):
+                    RHS_all[p_ci, k*n_players + pl] = coeff * (V[p_ni, pl] - V[p_ci, pl])
             else:
+                dP = np.zeros((n_states, n_states))
                 curr = n_fa
                 for t in range(n_pt):
                     nw = int(pt_nwidxs_arr[t]); nl = nw - 1
@@ -366,10 +372,9 @@ if _NUMBA_AVAILABLE:
                         dP[si, si] -= np.sum(dP[si, :])
                         break
                     curr += nl
-            
-            # Batch RHS for this variable k
-            RHS_k = discounting * (dP @ V)
-            RHS_all[:, k*n_players : (k+1)*n_players] = RHS_k
+                # Dense dP for proposal-tie variables
+                RHS_k = discounting * (dP @ V)
+                RHS_all[:, k*n_players : (k+1)*n_players] = RHS_k
 
         # Solve all at once: O(N^3 + N^2 * n_vars * n_players)
         dV_all = np.linalg.solve(A_mat, RHS_all)
@@ -946,6 +951,12 @@ def _update_proposals_from_values(
     return changed
 
 
+# Cache of pre-allocated guess arrays indexed by n_vars.
+# The 7 guess vectors are always the same for a given n_vars (fixed seed=42),
+# so we build them once and reuse across candidates.
+_WEAK_GUESS_CACHE: dict[int, list[np.ndarray]] = {}
+
+
 def _solve_weak_equalities(
     *,
     players: list[str],
@@ -972,6 +983,7 @@ def _solve_weak_equalities(
     state_idx: dict[str, int] | None = None,
     _precomputed_payoff_array: np.ndarray | None = None,
     _precomputed_protocol_arr: np.ndarray | None = None,
+    _exit_stats_counts: "np.ndarray | None" = None,
 ) -> dict[str, Any] | None:
     """
     Solve for the free approval/proposal probabilities that make V self-consistent
@@ -1170,11 +1182,13 @@ def _solve_weak_equalities(
         _scipy_fn = _residuals_sigmoid
 
     t_guesses0 = time.perf_counter()
-    rng = np.random.RandomState(42)
-    guesses: list[np.ndarray] = [
-        np.zeros(n_vars), np.full(n_vars, -2.2), np.full(n_vars, 2.2),
-        np.full(n_vars, -4.0), np.full(n_vars, 4.0),
-    ] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(2)]
+    if n_vars not in _WEAK_GUESS_CACHE:
+        rng = np.random.RandomState(42)
+        _WEAK_GUESS_CACHE[n_vars] = [
+            np.zeros(n_vars), np.full(n_vars, -2.2), np.full(n_vars, 2.2),
+            np.full(n_vars, -4.0), np.full(n_vars, 4.0),
+        ] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(2)]
+    guesses = _WEAK_GUESS_CACHE[n_vars]
     if timing_data is not None:
         timing_data["solver_setup_guesses"] += (time.perf_counter() - t_guesses0)
 
@@ -1184,17 +1198,59 @@ def _solve_weak_equalities(
     if timing_data is not None:
         timing_data["solver_setup"] += (time.perf_counter() - t_start)
 
-    for guess in guesses:
-        try:
-            t_r0 = time.perf_counter()
-            sol = scipy_root(_scipy_fn, guess, method="hybr", options={"maxfev": 200})
+    # _exit_stats_counts shape: (n_guesses, 7)
+    # outcome indices: 0=nb_newton_hit, 1=success(scipy), 2=converged+bad_resid,
+    #                  3=maxfev, 4=xtol, 5=bad_progress(status 4 or 5), 6=exception
+    _OUTCOME_NB_HIT = 0; _OUTCOME_SUCCESS = 1; _OUTCOME_CONV_BADRESID = 2
+    _OUTCOME_MAXFEV = 3; _OUTCOME_XTOL = 4; _OUTCOME_BADPROG = 5; _OUTCOME_EXCEPTION = 6
+
+    for guess_idx, guess in enumerate(guesses):
+        raw: np.ndarray | None = None
+        _nb_hit = False
+
+        # Primary path: Numba Newton with analytical Jacobian (fully JIT, zero Python overhead)
+        if _use_nb:
+            t_nb0 = time.perf_counter()
+            nb_alpha, nb_converged = _solve_weak_equalities_nb(
+                guess,
+                canon_probs, canon_action, canon_pass,
+                _fa_arr, _n_fa,
+                _pt_pi, _pt_si, _pt_widxs, _pt_nwidxs, _n_pt,
+                _aff_pi, _aff_ci, _aff_is_pt, _n_aff,
+                _numba_comm_arr, _numba_comm_size, _numba_tiers,
+                protocol_arr, payoff_array, discounting,
+                n_players, n_states,
+            )
             if timing_data is not None:
-                timing_data["solver_root"] += (time.perf_counter() - t_r0)
-        except Exception:
-            continue
-        if not sol.success:
-            continue
-        raw = np.asarray(sol.x, dtype=np.float64)
+                timing_data["solver_nb_newton"] += (time.perf_counter() - t_nb0)
+            if nb_converged:
+                raw = nb_alpha
+                _nb_hit = True
+
+        # Fallback: scipy hybr (also sole path when Numba unavailable)
+        if raw is None:
+            try:
+                t_r0 = time.perf_counter()
+                sol = scipy_root(_scipy_fn, guess, method="hybr", options={"maxfev": 200})
+                if timing_data is not None:
+                    timing_data["solver_root"] += (time.perf_counter() - t_r0)
+            except Exception:
+                if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
+                    _exit_stats_counts[guess_idx, _OUTCOME_EXCEPTION] += 1
+                continue
+            if not sol.success:
+                if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
+                    st = int(getattr(sol, "status", 0))
+                    if st == 2:
+                        _exit_stats_counts[guess_idx, _OUTCOME_MAXFEV] += 1
+                    elif st == 3:
+                        _exit_stats_counts[guess_idx, _OUTCOME_XTOL] += 1
+                    elif st in (4, 5):
+                        _exit_stats_counts[guess_idx, _OUTCOME_BADPROG] += 1
+                    else:
+                        _exit_stats_counts[guess_idx, _OUTCOME_EXCEPTION] += 1
+                continue
+            raw = np.asarray(sol.x, dtype=np.float64)
         phys = raw.copy()
         for k in range(n_free_approvals):
             phys[k] = _sigmoid_scalar(float(raw[k]))
@@ -1244,7 +1300,15 @@ def _solve_weak_equalities(
             best_resid = r
             best_phys = phys
         if best_resid < 1e-7:
+            if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
+                if _nb_hit:
+                    _exit_stats_counts[guess_idx, _OUTCOME_NB_HIT] += 1
+                else:
+                    _exit_stats_counts[guess_idx, _OUTCOME_SUCCESS] += 1
             break
+        else:
+            if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
+                _exit_stats_counts[guess_idx, _OUTCOME_CONV_BADRESID] += 1
 
     if best_phys is None or best_resid > 1e-7:
         return None
@@ -2492,7 +2556,8 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
     t_solver_root_mapping = 0.0
     t_solver_root_residuals = 0.0
     t_solver_setup_guesses = 0.0
-    
+    t_solver_nb_newton = 0.0
+
     t_solver_finalize_rebuild = 0.0
     t_solver_finalize_verify = 0.0
     t_solver_finalize_solver_obj = 0.0
@@ -2500,6 +2565,10 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
     total_solver_calls = 0
     total_skipped_max_vars = 0
     n_free_histogram: dict[int, int] = {}
+    # Exit stats: shape (7, 7) — 7 guesses × 7 outcome codes
+    # outcomes: 0=nb_newton_hit, 1=success(scipy), 2=converged+bad_resid,
+    #           3=maxfev, 4=xtol, 5=bad_progress, 6=exception
+    exit_stats_counts = np.zeros((7, 7), dtype=np.int64)
 
     # Per-progress-interval counters (reset after each send)
     iv_numba_t = 0.0
@@ -2590,12 +2659,14 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
                     iv_solver_calls += 1
                     total_solver_calls += 1
                     
+                    _call_exit_stats = np.zeros((7, 7), dtype=np.int64)
                     solver_timing = {
                         "solver_root": 0.0, "solver_finalize": 0.0, "solver_setup": 0.0, "solver_check": 0.0,
                         "solver_setup_copy": 0.0, "solver_setup_indices": 0.0, "solver_setup_numba": 0.0,
                         "solver_root_v_solve": 0.0, "solver_root_p_agg": 0.0, "solver_root_other": 0.0,
                         "solver_root_mapping": 0.0, "solver_root_residuals": 0.0, "solver_setup_guesses": 0.0,
-                        "finalize_rebuild": 0.0, "finalize_verify": 0.0, "finalize_solver_obj": 0.0
+                        "finalize_rebuild": 0.0, "finalize_verify": 0.0, "finalize_solver_obj": 0.0,
+                        "solver_nb_newton": 0.0,
                     }
                     t_sv0 = _time.perf_counter()
                     solved_payload = _solve_weak_equalities(
@@ -2612,8 +2683,10 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
                         player_idx=player_idx,
                         state_idx=state_idx,
                         _precomputed_payoff_array=payoff_array,
-                        _precomputed_protocol_arr=protocol_arr
+                        _precomputed_protocol_arr=protocol_arr,
+                        _exit_stats_counts=_call_exit_stats,
                     )
+                    exit_stats_counts += _call_exit_stats
                     _d_sv = _time.perf_counter() - t_sv0
                     iv_solver_t += _d_sv
                     t_solver += _d_sv
@@ -2636,6 +2709,7 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
                     t_solver_finalize_rebuild += solver_timing["finalize_rebuild"]
                     t_solver_finalize_verify += solver_timing["finalize_verify"]
                     t_solver_finalize_solver_obj += solver_timing["finalize_solver_obj"]
+                    t_solver_nb_newton += solver_timing["solver_nb_newton"]
                 elif n_free > 0:
                     iv_lb_skipped += 1
                     total_skipped_max_vars += 1
@@ -2722,10 +2796,12 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
         "t_solver_finalize_rebuild": t_solver_finalize_rebuild,
         "t_solver_finalize_verify": t_solver_finalize_verify,
         "t_solver_finalize_solver_obj": t_solver_finalize_solver_obj,
+        "t_solver_nb_newton": t_solver_nb_newton,
         "t_overhead": t_overhead,
         "total_solver_calls": total_solver_calls,
         "total_skipped_max_vars": total_skipped_max_vars,
         "n_free_histogram": n_free_histogram,
+        "exit_stats_counts": exit_stats_counts,
         "elapsed": t_total,
     }
 
@@ -2772,6 +2848,7 @@ def _merge_worker_results(worker_results: list[dict[str, Any]]) -> dict[str, Any
     merged["t_solver_finalize_rebuild"] = sum(r.get("t_solver_finalize_rebuild", 0.0) for r in worker_results)
     merged["t_solver_finalize_verify"] = sum(r.get("t_solver_finalize_verify", 0.0) for r in worker_results)
     merged["t_solver_finalize_solver_obj"] = sum(r.get("t_solver_finalize_solver_obj", 0.0) for r in worker_results)
+    merged["t_solver_nb_newton"] = sum(r.get("t_solver_nb_newton", 0.0) for r in worker_results)
     merged["t_overhead"] = sum(r.get("t_overhead", 0.0) for r in worker_results)
     merged["total_solver_calls"] = sum(r.get("total_solver_calls", 0) for r in worker_results)
     merged["total_skipped_max_vars"] = sum(r.get("total_skipped_max_vars", 0) for r in worker_results)
@@ -2782,6 +2859,14 @@ def _merge_worker_results(worker_results: list[dict[str, Any]]) -> dict[str, Any
         for k, v in hist.items():
             merged_hist[k] = merged_hist.get(k, 0) + v
     merged["n_free_histogram"] = merged_hist
+
+    merged_exit = np.zeros((7, 7), dtype=np.int64)
+    for r in worker_results:
+        ec = r.get("exit_stats_counts")
+        if ec is not None:
+            merged_exit += np.asarray(ec, dtype=np.int64)
+    merged["exit_stats_counts"] = merged_exit
+
     return merged
 
 
@@ -3189,26 +3274,31 @@ def main() -> None:
     print(f"rate:                 {result['rate']:>12.0f}/s")
     print(f"  - numba_time:       {result.get('t_numba', 0.0) / n_workers:>12.2f}s (avg per worker)")
     print(f"  - tie_struct_time:  {result.get('t_tie_struct', 0.0) / n_workers:>12.2f}s (avg per worker)")
-    print(f"  - solver_time:      {result.get('t_solver', 0.0) / n_workers:>12.2f}s (avg per worker)")
-    if result.get("t_solver", 0.0) > 0:
-        print(f"    - root_search:    {result.get('t_solver_root', 0.0) / n_workers:>12.2f}s")
+    t_solver = result.get('t_solver', 0.0) / n_workers
+    print(f"  - solver_time:      {t_solver:>12.2f}s (avg per worker)")
+    if t_solver > 0:
+        def _fmt_pct(val):
+            return f" ({100.0 * val / t_solver:5.1f}%)" if t_solver > 0 else ""
+
+        print(f"    - nb_newton:      {result.get('t_solver_nb_newton', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_nb_newton', 0.0) / n_workers)}")
+        print(f"    - root_search:    {result.get('t_solver_root', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_root', 0.0) / n_workers)}")
         if result.get("t_solver_root_v_solve", 0.0) > 0:
-            print(f"      - V_solve:      {result.get('t_solver_root_v_solve', 0.0) / n_workers:>12.2f}s")
-            print(f"      - P_aggregate:  {result.get('t_solver_root_p_agg', 0.0) / n_workers:>12.2f}s")
-            print(f"      - mapping:      {result.get('t_solver_root_mapping', 0.0) / n_workers:>12.2f}s")
-            print(f"      - residuals:    {result.get('t_solver_root_residuals', 0.0) / n_workers:>12.2f}s")
-        print(f"    - finalize:       {result.get('t_solver_finalize', 0.0) / n_workers:>12.2f}s")
+            print(f"      - V_solve:      {result.get('t_solver_root_v_solve', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_root_v_solve', 0.0) / n_workers)}")
+            print(f"      - P_aggregate:  {result.get('t_solver_root_p_agg', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_root_p_agg', 0.0) / n_workers)}")
+            print(f"      - mapping:      {result.get('t_solver_root_mapping', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_root_mapping', 0.0) / n_workers)}")
+            print(f"      - residuals:    {result.get('t_solver_root_residuals', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_root_residuals', 0.0) / n_workers)}")
+        print(f"    - finalize:       {result.get('t_solver_finalize', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_finalize', 0.0) / n_workers)}")
         if result.get("t_solver_finalize_rebuild", 0.0) > 0:
-            print(f"      - rebuild:      {result.get('t_solver_finalize_rebuild', 0.0) / n_workers:>12.2f}s")
-            print(f"      - verify:       {result.get('t_solver_finalize_verify', 0.0) / n_workers:>12.2f}s")
-            print(f"      - solver_obj:   {result.get('t_solver_finalize_solver_obj', 0.0) / n_workers:>12.2f}s")
-        print(f"    - check:          {result.get('t_solver_check', 0.0) / n_workers:>12.2f}s")
-        print(f"    - setup/other:    {result.get('t_solver_setup', 0.0) / n_workers:>12.2f}s")
+            print(f"      - rebuild:      {result.get('t_solver_finalize_rebuild', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_finalize_rebuild', 0.0) / n_workers)}")
+            print(f"      - verify:       {result.get('t_solver_finalize_verify', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_finalize_verify', 0.0) / n_workers)}")
+            print(f"      - solver_obj:   {result.get('t_solver_finalize_solver_obj', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_finalize_solver_obj', 0.0) / n_workers)}")
+        print(f"    - check:          {result.get('t_solver_check', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_check', 0.0) / n_workers)}")
+        print(f"    - setup/other:    {result.get('t_solver_setup', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_setup', 0.0) / n_workers)}")
         if result.get("t_solver_setup_copy", 0.0) > 0:
-            print(f"      - copy_arrays:  {result.get('t_solver_setup_copy', 0.0) / n_workers:>12.2f}s")
-            print(f"      - find_indices: {result.get('t_solver_setup_indices', 0.0) / n_workers:>12.2f}s")
-            print(f"      - build_numba:  {result.get('t_solver_setup_numba', 0.0) / n_workers:>12.2f}s")
-            print(f"      - guesses:      {result.get('t_solver_setup_guesses', 0.0) / n_workers:>12.2f}s")
+            print(f"      - copy_arrays:  {result.get('t_solver_setup_copy', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_setup_copy', 0.0) / n_workers)}")
+            print(f"      - find_indices: {result.get('t_solver_setup_indices', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_setup_indices', 0.0) / n_workers)}")
+            print(f"      - build_numba:  {result.get('t_solver_setup_numba', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_setup_numba', 0.0) / n_workers)}")
+            print(f"      - guesses:      {result.get('t_solver_setup_guesses', 0.0) / n_workers:>12.2f}s{_fmt_pct(result.get('t_solver_setup_guesses', 0.0) / n_workers)}")
     print(f"  - python_overhead:  {result.get('t_overhead', 0.0) / n_workers:>12.2f}s (avg per worker)")
     print(f"interrupted:          {str(result['interrupted']):>12s}")
     print(f"verified_successes:   {result['verified_successes']:>12,d}")
@@ -3217,7 +3307,7 @@ def main() -> None:
     if args.weak_orders and args.weak_equality_solve:
         print(f"total_solver_calls:   {result.get('total_solver_calls', 0):>12,d}")
         print(f"skipped_max_vars:     {result.get('total_skipped_max_vars', 0):>12,d}")
-        
+
         hist = result.get("n_free_histogram", {})
         if hist:
             print("\nFree Variables Distribution (n_free: count)")
@@ -3228,6 +3318,19 @@ def main() -> None:
                 if args.weak_equality_max_vars is not None and n_free > args.weak_equality_max_vars:
                     skip_str = " (SKIPPED)"
                 print(f"  {n_free:>2d} vars: {count:>12,d}{skip_str}")
+
+        ec = result.get("exit_stats_counts")
+        if ec is not None and np.any(ec):
+            # outcomes: 0=nb_newton_hit, 1=success(scipy), 2=converged+bad_resid,
+            #           3=maxfev, 4=xtol, 5=bad_progress, 6=exception
+            _outcome_labels = ["nb_newton_hit", "success(scipy)", "conv_badresid", "maxfev", "xtol", "bad_progress", "exception"]
+            print("\nSolver Exit Reasons (rows=guess_idx, cols=outcome, counts across all workers)")
+            header = f"  {'guess':>5s}" + "".join(f"  {lbl:>13s}" for lbl in _outcome_labels)
+            print(header)
+            for gi in range(ec.shape[0]):
+                if np.any(ec[gi]):
+                    row_str = f"  {gi:>5d}" + "".join(f"  {int(ec[gi, oi]):>13,d}" for oi in range(ec.shape[1]))
+                    print(row_str)
 
     if args.weak_orders and args.weak_exact_reduced:
         print(f"weak_exact_zero_params:{result['weak_exact_zero_params']:>12,d}")
