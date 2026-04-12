@@ -60,6 +60,58 @@ python find_equilibrium.py power_threshold_RICE_n3 --payoff-table burke_2060.xls
 Or use auto-ingest:
 python find_equilibrium.py power_threshold_RICE_n3 --payoff-table burke_2060.xlsx --auto-ingest
 
+Using a different sovler:
+python find_equilibrium.py power_threshold_RICE_n3 --payoff-table burke_usachnnde_2035-2060.xlsx --solver-approach active_set
+
+Using ordinal ranking:
+python find_equilibrium.py power_threshold_RICE_n3 --payoff-table kalkuhl_usachnnde_2035-2060.xlsx --solver-approach ordinal_ranking
+
+Saving all tables:
+PYTHONPATH=. python3 scripts/search_ordinal_rankings.py     simple_cycle_usachnnde-65-reduced.xlsx     --scenario power_threshold_RICE_n3     --ranking-order payoff     --weak-orders     --dedup-by strategy --write-all
+
+Allow non-canonical states, used on the further reduced table:
+python find_equilibrium.py power_threshold_RICE_n3 --payoff-table simple_cycle_usachn-60-reduced-further.xlsx --allow-non-canonical-states --effectivity-rule free_exit
+
+
+Finding an equilibrium with weak equalities:
+ PYTHONPATH=. python3 scripts/search_ordinal_rankings.py     simple_cycle_usachnnde-60-reduced.xlsx     --scenario power_threshold_RICE_n3  --workers 8         --effectivity-rule free_exit     --ranking-order payoff         --write-all     --dedup-by strategy --weak-orders --weak-equality-solve --max-combinations 50000  --weak-equality-max-vars 30 --progress-every 1000
+
+
+
+PYTHONPATH=. python3 scripts/search_ordinal_rankings.py     simple_cycle_usachnnde-100.xlsx     --scenario power_threshold_RICE_n3        --effectivity-rule free_exit     --ranking-order payoff         --write-all     --dedup-by strategy --weak-orders --weak-equality-solve   --workers 8  --weak-equality-max-vars 4  --progress-every 100
+
+
+
+
+LCS:
+PYTHONPATH=. python3 scripts/compute_lcs.py simple_cycle_usachn-1.01-reduced-further.xlsx --scenario power_threshold_RICE_n3 --allow-non-canonical-states --effectivity-rule free_exit
+
+
+# Verify an equilibrium
+
+python lib/verify_cli.py simple_cycle_strategy-100.xlsx
+
+Verify under alternative rules:
+python3 lib/verify_cli.py \
+    strategy_tables/ordinal_all_simple_cycle_usachn-0-reduced-further/simple_cycle_usachn-0-reduced-further_0001_p010_p111.xlsx \
+    --effectivity-rule free_exit
+
+
+# Repeat find equilibrium
+
+To check stochastic outcome.
+
+python3 scripts/repeat_find_equilibrium.py \
+  power_threshold_RICE_n3 \
+  --payoff-table simple_cycle_usachnnde-100.xlsx \
+  --solver-approach active_set \
+  --runs 100 \
+  --jobs 12 \
+  --timeout-seconds 30
+
+With skipping basins:
+python3 scripts/repeat_find_equilibrium.py     power_threshold_RICE_n3     --payoff-table simple_cycle_usachnnde-100.xlsx     --solver-approach active_set     --runs 400     --jobs 12     --timeout 1     --base-seed 1000  --skip-known-basins --stop-on-success
+
 # Orchestrate a full joint run of RICE and coalition model
 
 python multimodel_orchestrator.py --periods 2035-2060 2060-2080 2080-2100 --impact burke --countries usa chn nde --policy bau_impact
@@ -78,6 +130,20 @@ python3 multimodel_orchestrator.py \
   --sai_damage_coef=0.1 \
   --fresh
 
+Averaging payoffs, one period:
+python3 multimodel_orchestrator.py \
+    --max-workers 8 \
+    --periods 2035-2100 \
+    --impact kalkuhl \
+    --countries usa chn nde \
+    --policy bau_impact \
+    --gamma_ineq=0.5 \
+    --max_gain=10 \
+    --max_damage=0.9 \
+    --t_ada_temp=5 \
+    --sai_damage_coef=0.1 \
+    --average-payoffs \
+    --fresh
 
 ## Questions: 
 

@@ -987,59 +987,12 @@ def _solve_weak_equalities(
     # Which (proposer, src) pairs have a proposal tie (so we don't double-update)
     pt_set: set[tuple[int, int]] = {(pi, si) for pi, si, _ in pt_idx}
 
-    # ------------------------------------------------------------------
-    # Numba-accelerated Newton path
-    # ------------------------------------------------------------------
     _use_nb = (
         _NUMBA_AVAILABLE
         and _numba_comm_arr is not None
         and _numba_comm_size is not None
         and _numba_tiers is not None
     )
-
-    if _use_nb:
-        _n_fa = n_free_approvals
-        _fa_arr = np.array(fa_idx, dtype=np.int8).reshape(max(_n_fa, 1), 4)
-        _n_pt = len(pt_idx)
-        _max_nw = max((len(w) for _, _, w in pt_idx), default=1)
-        _pt_pi = np.zeros(max(_n_pt, 1), dtype=np.int8)
-        _pt_si = np.zeros(max(_n_pt, 1), dtype=np.int8)
-        _pt_widxs = np.zeros((max(_n_pt, 1), max(_max_nw, 1)), dtype=np.int8)
-        _pt_nwidxs = np.zeros(max(_n_pt, 1), dtype=np.int8)
-        for _t, (_tpi, _tsi, _twidxs) in enumerate(pt_idx):
-            _pt_pi[_t] = _tpi
-            _pt_si[_t] = _tsi
-            _pt_nwidxs[_t] = len(_twidxs)
-            for _j, _wj in enumerate(_twidxs):
-                _pt_widxs[_t, _j] = _wj
-
-        _affected: set[tuple[int, int]] = set()
-        for _pi, _ai, _ci, _ni in fa_idx: _affected.add((_pi, _ci))
-        for _pi, _si, _ in pt_idx: _affected.add((_pi, _si))
-        _aff_list = sorted(_affected)
-        _n_aff = len(_aff_list)
-        _aff_pi = np.array([_p for _p, _ in _aff_list], dtype=np.int8)
-        _aff_ci = np.array([_c for _, _c in _aff_list], dtype=np.int8)
-        _aff_is_pt = np.array([(_p, _c) in pt_set for _p, _c in _aff_list], dtype=np.bool_)
-
-        rng = np.random.RandomState(42)
-        guesses = [np.zeros(n_vars), np.full(n_vars, -2.2), np.full(n_vars, 2.2)] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(2)]
-
-        for guess in guesses:
-            phys, success = _solve_weak_equalities_nb(
-                guess, canon_probs, canon_action, canon_pass,
-                _fa_arr, _n_fa,
-                _pt_pi, _pt_si, _pt_widxs, _pt_nwidxs, _n_pt,
-                _aff_pi, _aff_ci, _aff_is_pt, _n_aff,
-                _numba_comm_arr, _numba_comm_size, _numba_tiers,
-                protocol_arr, payoff_array, discounting,
-                n_players, n_states
-            )
-            if success:
-                # Build result
-                # ...
-                return _finalize_weak_solution(phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states, effectivity, protocol, payoffs, discounting, unanimity_required, free_approvals, proposal_rows)
-        return None
 
     def _build_P(alpha_phys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Return (P, probs, pass_) from physical free parameters alpha_phys in [0,1]^n."""
@@ -1150,55 +1103,75 @@ def _solve_weak_equalities(
     ] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(2)]
 
     # ------------------------------------------------------------------
-    # Numba-accelerated Newton path (the NEW fast path)
+    # Build Numba arrays for fast residual evaluation (scipy calls these)
     # ------------------------------------------------------------------
-    # Pre-compute arrays for the Numba fast path.
     _n_fa = n_free_approvals
-    _fa_arr = np.array([ [player_idx[p], player_idx[a], state_idx[c], state_idx[n]] for p, a, c, n in free_approvals ], dtype=np.int8)
+    _fa_arr = np.array(fa_idx, dtype=np.int8).reshape(max(_n_fa, 1), 4)
+
     _n_pt = len(pt_idx)
     _max_nw = max((len(w) for _, _, w in pt_idx), default=1)
-    _pt_pi = np.array([p for p, s, w in pt_idx], dtype=np.int8)
-    _pt_si = np.array([s for p, s, w in pt_idx], dtype=np.int8)
+    _pt_pi = np.zeros(max(_n_pt, 1), dtype=np.int8)
+    _pt_si = np.zeros(max(_n_pt, 1), dtype=np.int8)
     _pt_widxs = np.zeros((max(_n_pt, 1), max(_max_nw, 1)), dtype=np.int8)
-    _pt_nwidxs = np.array([len(w) for p, s, w in pt_idx], dtype=np.int8)
+    _pt_nwidxs = np.zeros(max(_n_pt, 1), dtype=np.int8)
     for _t, (_tpi, _tsi, _twidxs) in enumerate(pt_idx):
-        for _j, _wj in enumerate(_twidxs):
-            _pt_widxs[_t, _j] = _wj
+        _pt_pi[_t] = _tpi; _pt_si[_t] = _tsi; _pt_nwidxs[_t] = len(_twidxs)
+        for _j, _wj in enumerate(_twidxs): _pt_widxs[_t, _j] = _wj
 
     _affected: set[tuple[int, int]] = set()
-    for _pi, _ai, _ci, _ni in _fa_arr: _affected.add((int(_pi), int(_ci)))
-    for _pi, _si, _ in pt_idx: _affected.add((int(player_idx[_pi]), int(state_idx[_si])))
+    for _pi, _ai, _ci, _ni in fa_idx: _affected.add((_pi, _ci))
+    for _pi, _si, _ in pt_idx: _affected.add((_pi, _si))
     _aff_list = sorted(_affected)
     _n_aff = len(_aff_list)
-    _aff_pi = np.array([_p for _p, _ in _aff_list], dtype=np.int8)
-    _aff_ci = np.array([_c for _, _c in _aff_list], dtype=np.int8)
-    _aff_is_pt = np.array([(_p, _c) in set((player_idx[p], state_idx[s]) for p, s, _ in pt_idx) for _p, _c in _aff_list], dtype=np.bool_)
+    if _n_aff == 0:
+        _aff_pi = np.zeros(1, dtype=np.int8); _aff_ci = np.zeros(1, dtype=np.int8)
+        _aff_is_pt = np.zeros(1, dtype=np.bool_)
+    else:
+        _aff_pi = np.array([_p for _p, _ in _aff_list], dtype=np.int8)
+        _aff_ci = np.array([_c for _, _c in _aff_list], dtype=np.int8)
+        _aff_is_pt = np.array([(_p, _c) in pt_set for _p, _c in _aff_list], dtype=np.bool_)
 
-    rng = np.random.RandomState(42)
-    guesses = [np.zeros(n_vars), np.full(n_vars, -2.2), np.full(n_vars, 2.2), np.full(n_vars, -4.0), np.full(n_vars, 4.0)]
-    for _ in range(5): guesses.append(rng.uniform(-3.0, 3.0, size=n_vars))
-    
+    if _use_nb:
+        def _nb_residuals(raw: np.ndarray) -> np.ndarray:
+            res, _ = _residuals_nb_core(
+                raw, canon_probs, canon_action, canon_pass,
+                _fa_arr, _n_fa,
+                _pt_pi, _pt_si, _pt_widxs, _pt_nwidxs, _n_pt,
+                _aff_pi, _aff_ci, _aff_is_pt, _n_aff,
+                _numba_comm_arr, _numba_comm_size, _numba_tiers,
+                protocol_arr, payoff_array, discounting,
+                n_players, n_states, compute_jac=False,
+            )
+            return res
+        _scipy_fn = _nb_residuals
+    else:
+        _scipy_fn = _residuals_sigmoid
+
+    best_phys: np.ndarray | None = None
+    best_resid = np.inf
+
     for guess in guesses:
-        phys, success = _solve_weak_equalities_nb(
-            guess, canon_probs, canon_action, canon_pass,
-            _fa_arr, _n_fa,
-            _pt_pi, _pt_si, _pt_widxs, _pt_nwidxs, _n_pt,
-            _aff_pi, _aff_ci, _aff_is_pt, _n_aff,
-            _numba_comm_arr, _numba_comm_size, _numba_tiers,
-            protocol_arr, payoff_array, discounting,
-            n_players, n_states
-        )
-        if success:
-            # Apply sigmoid to approval vars
-            phys_vals = phys.copy()
-            for k in range(n_free_approvals):
-                z = phys[k]
-                if z > 50.0: z = 50.0
-                elif z < -50.0: z = -50.0
-                phys_vals[k] = 1.0 / (1.0 + math.exp(-z)) if z >= 0.0 else math.exp(z) / (1.0 + math.exp(z))
-            
-            return _finalize_weak_solution(phys_vals, canon_action, canon_pass, canon_probs, free_approvals, pt_idx, tiers, committee_idxs, players, states, effectivity, protocol, payoffs, discounting, unanimity_required, free_approvals, proposal_rows)
-    return None
+        try:
+            sol = scipy_root(_scipy_fn, guess, method="hybr", options={"maxfev": 200})
+        except Exception:
+            continue
+        if not sol.success:
+            continue
+        raw = np.asarray(sol.x, dtype=np.float64)
+        phys = raw.copy()
+        for k in range(n_free_approvals):
+            phys[k] = _sigmoid_scalar(float(raw[k]))
+        r = float(np.max(np.abs(_residuals(phys))))
+        if r < best_resid:
+            best_resid = r
+            best_phys = phys
+        if best_resid < 1e-7:
+            break
+
+    if best_phys is None or best_resid > 1e-7:
+        return None
+
+    return _finalize_weak_solution(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states, effectivity, protocol, payoffs, discounting, unanimity_required, free_approvals, proposal_rows)
 
 
 def _solve_values_fast_array(P: np.ndarray, payoff_array: np.ndarray, discounting: float) -> np.ndarray:
@@ -1508,10 +1481,21 @@ def _search_payoff_table(
 
 def _finalize_weak_solution(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states, effectivity, protocol, payoffs, discounting, unanimity_required, free_approvals, proposal_rows):
     # This rebuilds the solver result after Numba Newton finds a root.
-    P_arr, probs_arr, pass_arr = _build_P_direct(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states)
+    P_arr, probs_arr, pass_arr, action_arr = _build_P_direct(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt_idx, tiers, committee_idxs, players, states)
     payoff_array = payoffs.loc[states, players].to_numpy(dtype=np.float64)
     V_arr = _solve_values_fast_array(P_arr, payoff_array, discounting)
 
+    # Verify directly using the computed arrays — bypasses TransitionProbabilitiesOptimized
+    # which uses a different code path and can produce V-inconsistent P_approvals.
+    verified, message, detail = _verify_equilibrium_fast(
+        players=players, states=states, effectivity=effectivity,
+        P_proposals=None, P_approvals=None, V_df=None,
+        proposal_probs=probs_arr, approval_action=action_arr,
+        approval_pass=pass_arr, V_array=V_arr,
+        committee_idxs=committee_idxs,
+    )
+
+    # Build strategy_df and DataFrames for the returned payload (used when writing Excel).
     solver = EquilibriumSolver(
         players=players, states=states, effectivity=effectivity,
         protocol=protocol, payoffs=payoffs, discounting=discounting,
@@ -1541,13 +1525,6 @@ def _finalize_weak_solution(best_phys, canon_action, canon_pass, canon_probs, fa
     P_df, P_proposals, P_approvals = solver._compute_transition_probabilities_fast()
     V_df = pd.DataFrame(V_arr, index=states, columns=players)
 
-    verified, message, detail = verify_equilibrium_detailed({
-        "players": players, "states": states, "state_names": states,
-        "effectivity": effectivity, "P": P_df,
-        "P_proposals": P_proposals, "P_approvals": P_approvals,
-        "V": V_df, "strategy_df": strategy_df,
-    })
-    
     return {
         "strategy_df": strategy_df.copy(),
         "P": P_df.copy(),
@@ -1606,7 +1583,7 @@ def _build_P_direct(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt
     P = np.einsum('i,ijk,ijk->jk', protocol_arr, probs, pass_)
     row_sums = P.sum(axis=1)
     np.fill_diagonal(P, P.diagonal() + (1.0 - row_sums))
-    return P, probs, pass_
+    return P, probs, pass_, action
 
     # Warm up the Numba JIT on first call (compiles once, then cached).
     _use_numba = _NUMBA_AVAILABLE and weak_orders  # strict-order path uses a different function
@@ -1820,7 +1797,7 @@ def _build_P_direct(best_phys, canon_action, canon_pass, canon_probs, fa_idx, pt
                             _numba_comm_size=comm_size_nb if _use_numba else None,
                             _numba_tiers=_tiers_buf if _use_numba else None,
                         )
-                if solved_payload is not None:
+                if solved_payload is not None and solved_payload["verification_success"]:
                     verified = True
                     message = solved_payload["verification_message"]
                     detail = solved_payload["verification_detail"]
@@ -2445,11 +2422,11 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
                     iv_lb_skipped += 1  # tie_struct computed but n_free out of range
 
         tested += 1
-        if verified or solved_payload is not None:
+        if verified or (solved_payload is not None and solved_payload["verification_success"]):
             verified_successes += 1
             iv_hits += 1
             success = {"perms": perm_tuple, "rankings": tuple(order_arrays[perm_idx].copy() for perm_idx in perm_tuple)}
-            if solved_payload is not None:
+            if solved_payload is not None and solved_payload["verification_success"]:
                 success.update({"source": "weak_equality_solve", "P": solved_payload["P"], "V": solved_payload["V"], "strategy_df": solved_payload["strategy_df"], "P_proposals": solved_payload["P_proposals"], "P_approvals": solved_payload["P_approvals"]})
             else:
                 success["source"] = "canonical"
@@ -2471,6 +2448,18 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
             iv_solver_calls = 0
             iv_lb_skipped = 0
             iv_hits = 0
+
+    if progress_every > 0 and progress_queue is not None:
+        rem = tested % progress_every
+        if rem > 0:
+            try:
+                progress_queue.put((
+                    rem,
+                    iv_numba_t, iv_tie_struct_t, iv_solver_t,
+                    iv_solver_calls, iv_lb_skipped, iv_hits,
+                ))
+            except Exception:
+                pass
 
     t_total = _time.perf_counter() - t_start
     t_overhead = t_total - t_numba - t_tie_struct - t_solver
@@ -2602,6 +2591,11 @@ def main() -> None:
         help="Number of parallel worker processes (default: 1). Use --workers 0 to auto-detect CPU count.",
     )
     args = parser.parse_args()
+
+    if getattr(args, "weak_equality_solve", False) and not _NUMBA_AVAILABLE:
+        print("ERROR: --weak-equality-solve requires Numba. Install it with: pip install numba", file=sys.stderr)
+        sys.exit(1)
+
     payoff_path = _resolve_payoff_file(args.file)
     if args.scenario:
         config = _build_payoff_config(
@@ -2637,7 +2631,6 @@ def main() -> None:
     if args.max_combinations is not None:
         print(f"max_combinations: {args.max_combinations:,d}")
     print(f"stop_on_success: {args.stop_on_success}")
-    print(f"shuffle: {args.shuffle}")
     print(f"ranking_order: {args.ranking_order}")
     print(f"weak_orders: {args.weak_orders}")
     if args.weak_orders:
@@ -2658,7 +2651,6 @@ def main() -> None:
     n_workers = args.workers if args.workers > 0 else _mp.cpu_count()
     if n_workers > 1:
         print(f"workers: {n_workers}")
-    print()
 
     # Pre-compute rankings and their sorted order
     if args.weak_orders:
@@ -2679,6 +2671,8 @@ def main() -> None:
     # Set False to opt out.
     _RANDOM_ORDER_IMPLIES_SHUFFLE = True
     _effective_shuffle = args.shuffle or (args.ranking_order == "random" and _RANDOM_ORDER_IMPLIES_SHUFFLE)
+    print(f"shuffle: {_effective_shuffle}")
+    print()
 
     if n_workers <= 1:
         result = _search_payoff_table(
@@ -2713,65 +2707,110 @@ def main() -> None:
         def progress_listener(q, total_val):
             done = 0
             start_time = time.perf_counter()
-            # Aggregated interval stats (reset every _window_size combinations)
-            _window_size = 200_000
             _window_done = 0
             _window_start = time.perf_counter()
             _recent_rate: float | None = None
-            # Per-window accumulation of worker timing stats
             _w_numba_t = 0.0
             _w_ts_t = 0.0
             _w_solver_t = 0.0
             _w_solver_calls = 0
             _w_lb_skipped = 0
             _w_hits = 0
-            # Last printed breakdown (shown until next window closes)
+            _total_hits = 0
             _breakdown: str = ""
+            _PRINT_INTERVAL = 0.1
+            _last_print = 0.0
+
+            def _accumulate_msg(msg: object) -> bool:
+                """Update counters from one queue item. Returns True if listener should stop (DONE)."""
+                nonlocal done, _window_done, _total_hits
+                nonlocal _w_numba_t, _w_ts_t, _w_solver_t, _w_solver_calls, _w_lb_skipped, _w_hits
+                if msg == "DONE":
+                    return True
+                if isinstance(msg, tuple) and len(msg) == 7:
+                    inc, iv_numba, iv_ts, iv_sv, iv_calls, iv_skip, iv_hits = msg
+                elif isinstance(msg, tuple) and len(msg) == 5:
+                    inc, iv_numba, iv_sv, iv_calls, iv_skip = msg
+                    iv_ts = 0.0
+                    iv_hits = 0
+                else:
+                    try:
+                        inc = int(msg)  # noqa: TRY004 — int from workers or legacy single-value puts
+                    except (TypeError, ValueError):
+                        print(f"\nprogress_listener: skip bad message: {type(msg).__name__}", file=sys.stderr, flush=True)
+                        return False
+                    iv_numba = iv_ts = iv_sv = 0.0
+                    iv_calls = iv_skip = iv_hits = 0
+                inc_i = int(inc)
+                done += inc_i
+                _window_done += inc_i
+                _w_numba_t += float(iv_numba)
+                _w_ts_t += float(iv_ts)
+                _w_solver_t += float(iv_sv)
+                _w_solver_calls += int(iv_calls)
+                _w_lb_skipped += int(iv_skip)
+                _w_hits += int(iv_hits)
+                _total_hits += int(iv_hits)
+                return False
+
+            def _maybe_print(*, force: bool) -> None:
+                nonlocal _last_print, _recent_rate, _window_done, _window_start, _breakdown
+                nonlocal _w_numba_t, _w_ts_t, _w_solver_t, _w_solver_calls, _w_lb_skipped, _w_hits
+                now = time.perf_counter()
+                if not force and (now - _last_print) < _PRINT_INTERVAL:
+                    return
+
+                # Update recent stats every ~1.0 second or if forced (DONE)
+                elapsed = now - _window_start
+                if _window_done > 0 and (elapsed >= 1.0 or force):
+                    _recent_rate = _window_done / max(1e-9, elapsed)
+                    _k = max(1e-3, _window_done / 1000)
+                    _n_calls = _w_solver_calls
+                    _ms_ts = (_w_ts_t / _n_calls * 1000) if _n_calls > 0 else 0.0
+                    _ms_sv = (_w_solver_t / _n_calls * 1000) if _n_calls > 0 else 0.0
+                    _breakdown = (
+                        f"  [ts:{_ms_ts:.2f}ms sv:{_ms_sv:.2f}ms"
+                        f" c/k:{_n_calls/_k:.0f}"
+                        f" sk/k:{_w_lb_skipped/_k:.0f}"
+                        f" h/k:{_w_hits/_k:.1f}"
+                        f" hits:{_total_hits}]"
+                    )
+                    _window_done = 0
+                    _window_start = now
+                    _w_numba_t = _w_ts_t = _w_solver_t = 0.0
+                    _w_solver_calls = _w_lb_skipped = _w_hits = 0
+
+                _print_progress(done, total_val, start_time, recent_rate=_recent_rate, breakdown=_breakdown)
+                _last_print = now
+
             while True:
+                now = time.perf_counter()
+                time_until_print = _PRINT_INTERVAL - (now - _last_print)
+                # Short wait when due for a draw so we can batch several queue items into one update
+                timeout = min(0.1, time_until_print) if time_until_print > 0 else 0.05
                 try:
-                    msg = q.get(timeout=0.1)
-                    if msg == "DONE":
-                        break
-                    if isinstance(msg, tuple) and len(msg) == 7:
-                        inc, iv_numba, iv_ts, iv_sv, iv_calls, iv_skip, iv_hits = msg
-                    elif isinstance(msg, tuple) and len(msg) == 5:
-                        inc, iv_numba, iv_sv, iv_calls, iv_skip = msg
-                        iv_ts = 0.0; iv_hits = 0
-                    else:
-                        inc = msg
-                        iv_numba = iv_ts = iv_sv = iv_calls = iv_skip = iv_hits = 0
-                    inc = int(inc)
-                    done += inc
-                    _window_done += inc
-                    _w_numba_t += iv_numba
-                    _w_ts_t += iv_ts
-                    _w_solver_t += iv_sv
-                    _w_solver_calls += iv_calls
-                    _w_lb_skipped += iv_skip
-                    _w_hits += iv_hits
-                    if _window_done >= _window_size:
-                        _window_elapsed = max(1e-9, time.perf_counter() - _window_start)
-                        _recent_rate = _window_done / _window_elapsed
-                        _k = _window_done / 1000
-                        _n_calls = _w_solver_calls
-                        _ms_ts = (_w_ts_t / _n_calls * 1000) if _n_calls > 0 else 0.0
-                        _ms_sv = (_w_solver_t / _n_calls * 1000) if _n_calls > 0 else 0.0
-                        _breakdown = (
-                            f"  [ts:{_ms_ts:.2f}ms sv:{_ms_sv:.2f}ms"
-                            f" c/k:{_n_calls/_k:.0f}"
-                            f" sk/k:{_w_lb_skipped/_k:.0f}"
-                            f" h/k:{_w_hits/_k:.1f}]"
-                        )
-                        _window_done = 0
-                        _window_start = time.perf_counter()
-                        _w_numba_t = _w_ts_t = _w_solver_t = 0.0
-                        _w_solver_calls = _w_lb_skipped = _w_hits = 0
-                        _k = 0.0  # prevent stale division if window not yet full
-                    _print_progress(done, total_val, start_time, recent_rate=_recent_rate, breakdown=_breakdown)
+                    msg = q.get(timeout=timeout)
                 except queue.Empty:
+                    # No worker progress yet (e.g. Numba JIT): avoid redrawing 0% every 100ms
+                    if done > 0 or _last_print == 0.0:
+                        _maybe_print(force=False)
                     continue
-                except Exception:
+                if _accumulate_msg(msg):
                     break
+                while True:
+                    try:
+                        msg2 = q.get_nowait()
+                    except queue.Empty:
+                        break
+                    if _accumulate_msg(msg2):
+                        _maybe_print(force=True)
+                        print()
+                        return
+                _maybe_print(force=False)
+                # Avoid busy-spinning when the queue refills faster than the print throttle
+                if time.perf_counter() - _last_print < _PRINT_INTERVAL:
+                    time.sleep(max(0.0, _last_print + _PRINT_INTERVAL - time.perf_counter()))
+            _maybe_print(force=True)
             print()
 
         listener = threading.Thread(target=progress_listener, args=(progress_queue, total_to_test))
