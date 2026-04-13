@@ -113,6 +113,7 @@ def solve_with_ordinal_ranking_n3(
     write_all_dir: str | Path | None = None,
     dedup_by: str = "none",
     payoff_path: Path | None = None,
+    use_newton: bool = True,
     logger=None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     players = solver.players
@@ -212,6 +213,10 @@ def solve_with_ordinal_ranking_n3(
     total_hits = 0
     n_free_histogram: dict[int, int] = {}
     exit_stats_counts = np.zeros((7, 8), dtype=np.int64)
+    weak_solver_flow_stats: dict[str, int] = {}
+    weak_payload_returned = 0
+    weak_payload_verified_true = 0
+    weak_payload_verified_false = 0
 
     # Set up streaming writer so hits are written to disk immediately.
     streaming_writer: StreamingWriter | None = None
@@ -250,6 +255,7 @@ def solve_with_ordinal_ranking_n3(
                 weak_equality_solve, weak_equality_max_vars,
                 getattr(solver, "unanimity_required", True),
                 getattr(solver, "effectivity", None),
+                use_newton,
             ),
         )
         pending = {}
@@ -295,6 +301,11 @@ def solve_with_ordinal_ranking_n3(
                 ec = res.get("exit_stats_counts")
                 if ec is not None:
                     exit_stats_counts += ec
+                for fk, fv in res.get("weak_solver_flow_stats", {}).items():
+                    weak_solver_flow_stats[fk] = weak_solver_flow_stats.get(fk, 0) + int(fv)
+                weak_payload_returned += int(res.get("weak_payload_returned", 0))
+                weak_payload_verified_true += int(res.get("weak_payload_verified_true", 0))
+                weak_payload_verified_false += int(res.get("weak_payload_verified_false", 0))
 
                 if res["all_successes"]:
                     new_successes = res["all_successes"]
@@ -430,6 +441,10 @@ def solve_with_ordinal_ranking_n3(
         "n_workers": workers,
         "n_free_histogram": n_free_histogram,
         "exit_stats_counts": exit_stats_counts,
+        "weak_solver_flow_stats": weak_solver_flow_stats,
+        "weak_payload_returned": weak_payload_returned,
+        "weak_payload_verified_true": weak_payload_verified_true,
+        "weak_payload_verified_false": weak_payload_verified_false,
     }
 
     if all_successes:

@@ -374,6 +374,12 @@ def main():
                 cnt = bins[b]
                 bin_str = f"{b}-{b+9}"
                 print(f"  {bin_str:>7s} vars: {cnt:>12,d}")
+            
+            if args.weak_equality_max_vars is not None:
+                max_v = args.weak_equality_max_vars
+                skipped_nfs = [nf for nf in hist.keys() if nf > max_v]
+                if skipped_nfs:
+                    print(f"Note: Combinations with > {max_v} free variables were skipped (range {min(skipped_nfs)}-{max(skipped_nfs)}).")
         ec = result.get("exit_stats_counts")
         if ec is not None and np.any(ec):
             _outcome_labels = ["nb_newton_hit", "success(scipy)", "conv_badresid",

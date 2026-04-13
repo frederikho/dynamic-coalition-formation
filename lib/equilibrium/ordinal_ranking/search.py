@@ -42,6 +42,7 @@ def _init_worker_ctx(
     weak_equality_max_vars: int | None = None,
     unanimity_required: bool = True,
     effectivity: dict | None = None,
+    use_newton: bool = True,
 ) -> None:
     global _WORKER_CTX
     n_players = len(players)
@@ -82,6 +83,7 @@ def _init_worker_ctx(
         "state_idx": {s: i for i, s in enumerate(states)},
         "protocol": {p: float(protocol_arr[i]) for i, p in enumerate(players)},
         "effectivity": effectivity,
+        "use_newton": use_newton,
     }
 
     # Workers ignore SIGINT so only the main process handles Ctrl+C.
@@ -172,6 +174,10 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
     n_hits = 0
     n_free_histogram: dict[int, int] = {}
     exit_stats_counts = np.zeros((7, 8), dtype=np.int64)
+    weak_solver_flow_stats: dict[str, int] = {}
+    weak_payload_returned = 0
+    weak_payload_verified_true = 0
+    weak_payload_verified_false = 0
 
     _tiers_buf = np.empty((len(players), n_states), dtype=np.int8) if weak_orders else None
 
@@ -216,40 +222,23 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                 )
             t_numba += time.perf_counter() - _t0
 
-            if not verified and weak_equality_solve:
-                weak_equality_max_vars = ctx["weak_equality_max_vars"]
+            if weak_equality_solve:
+                # Calculate exact n_free for every combination to ensure an exhaustive histogram
+                t_ts0 = time.perf_counter()
+                tie_struct = _weak_tie_structure(
+                    players, states, tiers_tuple, ctx["committee_idxs"]
+                )
+                n_free = len(tie_struct[0]) + sum(len(w) - 1 for _, _, w in tie_struct[1])
+                t_tie_struct += time.perf_counter() - t_ts0
+                n_free_histogram[n_free] = n_free_histogram.get(n_free, 0) + 1
 
-                # Cheap lower-bound pre-filter
-                _skip = False
-                if weak_equality_max_vars is not None:
-                    _lb = 0
-                    for _r in tiers_tuple:
-                        for _ci in range(n_states):
-                            _tc = int(_r[_ci])
-                            for _ni in range(n_states):
-                                if _ni != _ci and int(_r[_ni]) == _tc:
-                                    _lb += 1
-                                    if _lb > weak_equality_max_vars:
-                                        _skip = True
-                                        break
-                            if _skip:
-                                break
-                        if _skip:
-                            break
-
-                if not _skip:
-                    t_ts0 = time.perf_counter()
-                    tie_struct = _weak_tie_structure(
-                        players, states, tiers_tuple, ctx["committee_idxs"]
-                    )
-                    n_free = len(tie_struct[0]) + sum(len(w) - 1 for _, _, w in tie_struct[1])
-                    t_tie_struct += time.perf_counter() - t_ts0
-
-                    n_free_histogram[n_free] = n_free_histogram.get(n_free, 0) + 1
-
+                if not verified:
+                    weak_equality_max_vars = ctx["weak_equality_max_vars"]
+                    # Skip the heavy solver if we exceed the max variable threshold
                     if n_free > 0 and (weak_equality_max_vars is None or n_free <= weak_equality_max_vars):
                         n_solver_calls += 1
                         _call_exit_stats = np.zeros((7, 8), dtype=np.int64)
+                        _call_flow_stats: dict[str, int] = {}
                         solver_timing = _make_solver_timing()
 
                         _nb_tiers = _tiers_buf if _NUMBA_AVAILABLE else None
@@ -264,6 +253,7 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                             tiers=tiers_tuple,
                             committee_idxs=ctx["committee_idxs"],
                             max_vars=weak_equality_max_vars,
+                            use_newton=ctx.get("use_newton", True),
                             _precomputed_tie_structure=tie_struct,
                             _precomputed_canon_arrays=(proposal_probs, approval_action, approval_pass),
                             _numba_comm_arr=comm_arr if _NUMBA_AVAILABLE else None,
@@ -275,8 +265,17 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                             _precomputed_payoff_array=payoff_array,
                             _precomputed_protocol_arr=protocol_arr,
                             _exit_stats_counts=_call_exit_stats,
+                            _flow_stats=_call_flow_stats,
                         )
                         exit_stats_counts += _call_exit_stats
+                        for _k, _v in _call_flow_stats.items():
+                            weak_solver_flow_stats[_k] = weak_solver_flow_stats.get(_k, 0) + int(_v)
+                        if solved_payload is not None:
+                            weak_payload_returned += 1
+                            if bool(solved_payload.get("verification_success")):
+                                weak_payload_verified_true += 1
+                            else:
+                                weak_payload_verified_false += 1
                         _d_sv = time.perf_counter() - t_sv0
                         t_solver += _d_sv
                         t_solver_root += solver_timing["solver_root"]
@@ -300,8 +299,6 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                             verified = True
                     elif n_free > 0:
                         n_skipped += 1
-                else:
-                    n_skipped += 1
 
         else:
             ranks = tuple(ctx["pos"][idx] for idx in order_ids)
@@ -320,6 +317,7 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
             success = {
                 "perms": order_ids,
                 "rankings": tuple(ctx["state_perms"][idx].copy() for idx in order_ids),
+                "n_free": n_free if weak_equality_solve else 0,
             }
             if solved_payload is not None and solved_payload.get("verification_success"):
                 success.update({
@@ -351,6 +349,10 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                     "n_solver_calls": n_solver_calls, "n_skipped": n_skipped, "n_hits": n_hits,
                     "n_free_histogram": n_free_histogram,
                     "exit_stats_counts": exit_stats_counts,
+                    "weak_solver_flow_stats": weak_solver_flow_stats,
+                    "weak_payload_returned": weak_payload_returned,
+                    "weak_payload_verified_true": weak_payload_verified_true,
+                    "weak_payload_verified_false": weak_payload_verified_false,
                 }
             all_successes.append(success)
 
@@ -374,6 +376,10 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
         "n_solver_calls": n_solver_calls, "n_skipped": n_skipped, "n_hits": n_hits,
         "n_free_histogram": n_free_histogram,
         "exit_stats_counts": exit_stats_counts,
+        "weak_solver_flow_stats": weak_solver_flow_stats,
+        "weak_payload_returned": weak_payload_returned,
+        "weak_payload_verified_true": weak_payload_verified_true,
+        "weak_payload_verified_false": weak_payload_verified_false,
     }
 
 

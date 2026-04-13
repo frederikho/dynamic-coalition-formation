@@ -126,8 +126,10 @@ if _NUMBA_AVAILABLE:
         n_aff = int(n_aff)
         
         # Step 1: sigmoid/softmax mapping
+        # Sigmoid is applied only to the first n_fa (free approval) variables.
+        # Proposal tie logits (indices n_fa and beyond) stay as raw logits for softmax.
         alpha_phys = alpha_raw.copy()
-        for k in range(int(alpha_raw.shape[0])):
+        for k in range(n_fa):
             z = alpha_raw[k]
             if z > 50.0: z = 50.0
             elif z < -50.0: z = -50.0
@@ -358,7 +360,7 @@ if _NUMBA_AVAILABLE:
         alpha = alpha_init.copy()
         best_alpha = alpha.copy()
         tol = 1e-8
-        max_iters = 50
+        max_iters = 20
         max_step = 5.0
         n_fa = int(n_fa)
         n_pt = int(n_pt)
@@ -406,7 +408,7 @@ if _NUMBA_AVAILABLE:
                 scale = max_step / math.sqrt(step_sq)
                 for j in range(n_v): delta[j] *= scale
             
-            alpha += delta
+            alpha += 0.5 * delta
             res, jac = _residuals_nb_core(
                 alpha, canon_probs, canon_action, canon_pass,
                 fa_arr, n_fa, pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,

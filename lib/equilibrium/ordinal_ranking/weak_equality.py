@@ -26,6 +26,7 @@ from lib.equilibrium.ordinal_ranking.numba_loops import (
 
 # Cache of pre-allocated guess arrays indexed by n_vars.
 _WEAK_GUESS_CACHE: dict[int, list[np.ndarray]] = {}
+_NEWTON_GUESS_LIMIT = 4
 
 
 def softmax(x: np.ndarray, temperature: float = 1.0) -> np.ndarray:
@@ -263,6 +264,7 @@ def _solve_weak_equalities(
     committee_idxs: list[list[list[tuple[int, ...]]]],
     effectivity: dict | None = None,
     max_vars: int | None = None,
+    use_newton: bool = True,
     _precomputed_tie_structure: tuple[
         list[tuple[str, str, str, str]],
         list[tuple[str, str, tuple[str, ...]]],
@@ -277,6 +279,8 @@ def _solve_weak_equalities(
     _precomputed_payoff_array: np.ndarray | None = None,
     _precomputed_protocol_arr: np.ndarray | None = None,
     _exit_stats_counts: np.ndarray | None = None,
+    _flow_stats: dict[str, int] | None = None,
+    _source_path: str | None = None,
 ) -> dict[str, Any] | None:
     """Solve for free approval/proposal probabilities that make V self-consistent."""
     t_start = time.perf_counter()
@@ -342,7 +346,8 @@ def _solve_weak_equalities(
         timing_data["solver_setup_indices"] += (time.perf_counter() - t_s_indices)
 
     _use_nb = (
-        _NUMBA_AVAILABLE
+        use_newton
+        and _NUMBA_AVAILABLE
         and _numba_comm_arr is not None
         and _numba_comm_size is not None
         and _numba_tiers is not None
@@ -501,11 +506,14 @@ def _solve_weak_equalities(
             np.full(n_vars, -4.0), np.full(n_vars, 4.0),
         ] + [rng.uniform(-3.0, 3.0, size=n_vars) for _ in range(2)]
     guesses = _WEAK_GUESS_CACHE[n_vars]
+    if _use_nb:
+        guesses = guesses[:_NEWTON_GUESS_LIMIT]
     if timing_data is not None:
         timing_data["solver_setup_guesses"] += (time.perf_counter() - t_guesses0)
 
     best_phys: np.ndarray | None = None
     best_resid = np.inf
+    best_source_path: str | None = None  # Track whether best came from Newton or Scipy
 
     if timing_data is not None:
         timing_data["solver_setup"] += (time.perf_counter() - t_start)
@@ -514,12 +522,19 @@ def _solve_weak_equalities(
     _OUTCOME_MAXFEV = 3; _OUTCOME_XTOL = 4; _OUTCOME_BADPROG = 5
     _OUTCOME_EXCEPTION = 6; _OUTCOME_NB_SKIP = 7
 
+    def _bump_flow(key: str, value: int = 1) -> None:
+        if _flow_stats is None:
+            return
+        _flow_stats[key] = _flow_stats.get(key, 0) + value
+
     for guess_idx, guess in enumerate(guesses):
         raw: np.ndarray | None = None
         _nb_hit = False
+        _seeded_from_newton = False
         scipy_start = guess
 
         if _use_nb:
+            _bump_flow("newton_attempted")
             t_nb0 = time.perf_counter()
             nb_alpha, nb_converged, nb_progress = _solve_weak_equalities_nb(
                 guess,
@@ -536,23 +551,30 @@ def _solve_weak_equalities(
             if nb_converged:
                 raw = nb_alpha
                 _nb_hit = True
+                _bump_flow("newton_converged")
             elif nb_progress > 1.0 + 1e-6:
                 scipy_start = nb_alpha
+                _seeded_from_newton = True
+                _bump_flow("newton_progress_seeded")
             else:
+                _bump_flow("newton_no_progress")
                 if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
                     _exit_stats_counts[guess_idx, _OUTCOME_NB_SKIP] += 1
 
         if raw is None:
+            _bump_flow("scipy_attempted")
             try:
                 t_r0 = time.perf_counter()
                 sol = scipy_root(_scipy_fn, scipy_start, method="hybr", options={"maxfev": 200})
                 if timing_data is not None:
                     timing_data["solver_root"] += (time.perf_counter() - t_r0)
             except Exception:
+                _bump_flow("scipy_exception")
                 if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
                     _exit_stats_counts[guess_idx, _OUTCOME_EXCEPTION] += 1
                 continue
             if not sol.success:
+                _bump_flow("scipy_unsuccessful")
                 if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
                     st = int(getattr(sol, "status", 0))
                     if st == 2:
@@ -564,6 +586,7 @@ def _solve_weak_equalities(
                     else:
                         _exit_stats_counts[guess_idx, _OUTCOME_EXCEPTION] += 1
                 continue
+            _bump_flow("scipy_success_flag")
             raw = np.asarray(sol.x, dtype=np.float64)
 
         phys = raw.copy()
@@ -629,16 +652,38 @@ def _solve_weak_equalities(
         if r < best_resid:
             best_resid = r
             best_phys = phys
+            if _nb_hit:
+                best_source_path = "newton"
+            elif _seeded_from_newton:
+                best_source_path = "scipy_seeded"
+            else:
+                best_source_path = "scipy_unseeded"
         if best_resid < 1e-7:
+            _bump_flow("final_residual_success")
             if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
                 if _nb_hit:
                     _exit_stats_counts[guess_idx, _OUTCOME_NB_HIT] += 1
+                    _bump_flow("final_valid_from_newton")
                 else:
                     _exit_stats_counts[guess_idx, _OUTCOME_SUCCESS] += 1
+                    _bump_flow("final_valid_from_scipy")
+                    if _seeded_from_newton:
+                        _bump_flow("final_valid_from_scipy_seeded")
+                    else:
+                        _bump_flow("final_valid_from_scipy_unseeded")
             break
         else:
+            _bump_flow("final_residual_fail")
             if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
                 _exit_stats_counts[guess_idx, _OUTCOME_CONV_BADRESID] += 1
+                if _nb_hit:
+                    _bump_flow("final_invalid_from_newton")
+                else:
+                    _bump_flow("final_invalid_from_scipy")
+                    if _seeded_from_newton:
+                        _bump_flow("final_invalid_from_scipy_seeded")
+                    else:
+                        _bump_flow("final_invalid_from_scipy_unseeded")
 
     if best_phys is None or best_resid > 1e-7:
         return None
@@ -654,4 +699,17 @@ def _solve_weak_equalities(
     )
     if timing_data is not None:
         timing_data["solver_finalize"] += (time.perf_counter() - t_f0)
+    
+    # Track finalize verification outcome split by solver path origin.
+    # Keep aggregate SciPy counters for backward-compatible reporting.
+    if res_final is not None and best_source_path is not None:
+        if bool(res_final.get("verification_success")):
+            _bump_flow(f"finalize_verify_true_from_{best_source_path}")
+            if best_source_path.startswith("scipy"):
+                _bump_flow("finalize_verify_true_from_scipy")
+        else:
+            _bump_flow(f"finalize_verify_false_from_{best_source_path}")
+            if best_source_path.startswith("scipy"):
+                _bump_flow("finalize_verify_false_from_scipy")
+    
     return res_final
