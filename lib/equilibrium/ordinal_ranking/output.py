@@ -55,12 +55,14 @@ class StreamingWriter:
         dedup_by: str = "none",
         weak_orders: bool = False,
         committee_idxs: list | None = None,
+        extra_metadata: dict[str, Any] | None = None,
     ) -> None:
         self.solver = solver
         self.output_dir = Path(output_dir)
         self.payoff_path = Path(payoff_path)
         self.dedup_by = dedup_by
         self.weak_orders = weak_orders
+        self.extra_metadata: dict[str, Any] = extra_metadata or {}
         self.seen_keys: set[str] = set()
         self.manifest_rows: list[dict[str, Any]] = []
         self.manifest_path = self.output_dir / "manifest.csv"
@@ -75,12 +77,17 @@ class StreamingWriter:
         players = solver.players
         states = solver.states
 
-        if self.weak_orders:
-            _induce_profile_from_weak_orders(solver, players, states, success["rankings"], self.committee_idxs)
+        payload = success.get("payload")
+        if self.weak_orders and payload is not None:
+            strategy_df = payload["strategy_df"]
+            P = payload["P"]
+            V = payload["V"]
         else:
-            _induce_profile_from_rankings(solver, players, states, success["rankings"], self.committee_idxs)
-
-        strategy_df, P, V = _solve_induced(solver)
+            if self.weak_orders:
+                _induce_profile_from_weak_orders(solver, players, states, success["rankings"], self.committee_idxs)
+            else:
+                _induce_profile_from_rankings(solver, players, states, success["rankings"], self.committee_idxs)
+            strategy_df, P, V = _solve_induced(solver)
 
         if self.dedup_by == "transition":
             key = hashlib.md5(P.to_numpy().tobytes()).hexdigest()
@@ -100,10 +107,15 @@ class StreamingWriter:
         file_path = self.output_dir / filename
 
         metadata: dict[str, Any] = {
+            "payoff_source": "precomputed_table",
             "payoff_table": str(self.payoff_path),
+            "power_rule": solver.power_rule,
+            "unanimity_required": solver.unanimity_required,
+            "discounting": solver.discounting,
             "dedup_key": key,
             "weak_orders": self.weak_orders,
         }
+        metadata.update(self.extra_metadata)
         for p_idx, p_name in enumerate(players):
             metadata[f"ranking_{p_name}"] = str(list(success["rankings"][p_idx]))
 
@@ -146,6 +158,7 @@ def _write_all_successes(
     dedup_by: str = "none",
     weak_orders: bool = False,
     committee_idxs: list | None = None,
+    extra_metadata: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Write all verified equilibria to a directory with a manifest (batch mode)."""
     writer = StreamingWriter(
@@ -155,6 +168,7 @@ def _write_all_successes(
         dedup_by=dedup_by,
         weak_orders=weak_orders,
         committee_idxs=committee_idxs,
+        extra_metadata=extra_metadata or {},
     )
     for success in all_successes:
         writer.write(success)

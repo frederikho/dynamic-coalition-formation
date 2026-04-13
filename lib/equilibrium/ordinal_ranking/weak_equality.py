@@ -26,7 +26,7 @@ from lib.equilibrium.ordinal_ranking.numba_loops import (
 
 # Cache of pre-allocated guess arrays indexed by n_vars.
 _WEAK_GUESS_CACHE: dict[int, list[np.ndarray]] = {}
-_NEWTON_GUESS_LIMIT = 4
+_NEWTON_GUESS_LIMIT = 1
 
 
 def softmax(x: np.ndarray, temperature: float = 1.0) -> np.ndarray:
@@ -175,6 +175,7 @@ def _finalize_weak_solution(
     payoff_array: np.ndarray,
     timing_data: dict[str, float] | None = None,
     effectivity: dict | None = None,
+    power_rule: str = "power_threshold",
 ) -> dict[str, Any]:
     from lib.equilibrium.solver import EquilibriumSolver
 
@@ -208,28 +209,21 @@ def _finalize_weak_solution(
             players=players, states=states,
             effectivity=effectivity,
             protocol=protocol, payoffs=payoffs, discounting=discounting,
-            unanimity_required=unanimity_required, verbose=False,
+            unanimity_required=unanimity_required,
+            power_rule=power_rule,
+            verbose=False,
             random_seed=0, initialization_mode="uniform", logger=None,
         )
-        _induce_profile_from_weak_orders(solver, players, states, tiers, committee_idxs)
-        n_free = len(free_approvals)
-        for k, (prop, src, dst, appr) in enumerate(free_approvals):
-            solver.r_acceptances[(prop, src, dst, appr)] = float(best_phys[k])
-        var_idx = n_free
-        for pi, si, widxs in pt_idx:
-            prop = players[pi]
-            src = states[si]
-            if len(widxs) > 1:
-                logits = np.zeros(len(widxs))
-                logits[:-1] = best_phys[var_idx: var_idx + len(widxs) - 1]
-                var_idx += len(widxs) - 1
-                pw = softmax(logits, temperature=1.0)
-            else:
-                pw = np.array([1.0])
-            for ns in states:
-                solver.p_proposals[(prop, src, ns)] = 0.0
-            for wk, wk_p in zip(widxs, pw):
-                solver.p_proposals[(prop, src, states[wk])] = float(wk_p)
+        # Synchronize solver's strategy dicts with the numerical probabilities from the Newton solver.
+        # We use action_arr and probs_arr which already have sigmoid/softmax applied.
+        for proposer_idx, proposer in enumerate(players):
+            for current_idx, current_state in enumerate(states):
+                for next_idx, next_state in enumerate(states):
+                    solver.p_proposals[(proposer, current_state, next_state)] = float(probs_arr[proposer_idx, current_idx, next_idx])
+                    committee = committee_idxs[proposer_idx][current_idx][next_idx]
+                    for approver_idx in committee:
+                        approver = players[approver_idx]
+                        solver.r_acceptances[(proposer, current_state, next_state, approver)] = float(action_arr[proposer_idx, approver_idx, current_idx, next_idx])
 
         strategy_df = solver._create_strategy_dataframe()
         P_df, P_proposals, P_approvals = solver._compute_transition_probabilities_fast()
@@ -263,6 +257,7 @@ def _solve_weak_equalities(
     tiers: tuple[np.ndarray, ...],
     committee_idxs: list[list[list[tuple[int, ...]]]],
     effectivity: dict | None = None,
+    power_rule: str = "power_threshold",
     max_vars: int | None = None,
     use_newton: bool = True,
     _precomputed_tie_structure: tuple[
@@ -696,6 +691,7 @@ def _solve_weak_equalities(
         free_approvals, proposal_rows, protocol_arr, payoff_array,
         timing_data=timing_data,
         effectivity=effectivity,
+        power_rule=power_rule,
     )
     if timing_data is not None:
         timing_data["solver_finalize"] += (time.perf_counter() - t_f0)

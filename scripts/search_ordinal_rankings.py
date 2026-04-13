@@ -20,6 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 from lib.equilibrium.solver import EquilibriumSolver
 from lib.equilibrium.ordinal_ranking import solve_with_ordinal_ranking_n3
 from lib.equilibrium.ordinal_ranking.ranking_orders import _generate_weak_orders
+from lib.equilibrium.ordinal_ranking.weak_equality import _NEWTON_GUESS_LIMIT
 from lib.equilibrium.find import (
     setup_experiment,
     _infer_or_parse_players_from_payoff_table,
@@ -109,7 +110,8 @@ def _verify_via_cli(
         temp_path = Path(tmp.name)
     try:
         meta: dict = {
-            "payoff_table": config.get("payoff_table", ""),
+            "payoff_source": "precomputed_table",
+            "payoff_table": str(config.get("payoff_table", "")),
             "power_rule": config.get("power_rule", "power_threshold"),
             "unanimity_required": config.get("unanimity_required", True),
             "discounting": config.get("discounting", 0.99),
@@ -143,6 +145,159 @@ def _resolve_output_path(payoff_path: Path, write_output: str | None) -> Path:
     if write_output:
         return Path(write_output)
     return REPO_ROOT / "strategy_tables" / f"ordinal_{payoff_path.stem}.xlsx"
+
+
+def _print_solver_execution_summary(
+    *,
+    result: dict,
+    all_successes: list[dict],
+    n_hits: int,
+    tested: int,
+    n_solver_calls: int,
+    output_dir: str | None,
+    dedup_by: str,
+):
+    flow = result.get("weak_solver_flow_stats", {}) or {}
+    ec = result.get("exit_stats_counts")
+
+    # Terminal exit outcomes (exclude nb_skip, which is a Newton side-event).
+    terminal_outcomes = {
+        "nb_newton_hit": 0,
+        "success_scipy": 0,
+        "conv_badresid": 0,
+        "maxfev": 0,
+        "xtol": 0,
+        "bad_progress": 0,
+        "exception": 0,
+        "nb_skip": 0,
+    }
+    if ec is not None and np.any(ec):
+        totals = ec.sum(axis=0)
+        terminal_outcomes = {
+            "nb_newton_hit": int(totals[0]),
+            "success_scipy": int(totals[1]),
+            "conv_badresid": int(totals[2]),
+            "maxfev": int(totals[3]),
+            "xtol": int(totals[4]),
+            "bad_progress": int(totals[5]),
+            "exception": int(totals[6]),
+            "nb_skip": int(totals[7]),
+        }
+
+    newton_attempted = int(flow.get("newton_attempted", 0))
+    newton_converged = int(flow.get("newton_converged", 0))
+    newton_progress_seeded = int(flow.get("newton_progress_seeded", 0))
+    newton_no_progress = int(flow.get("newton_no_progress", 0))
+
+    scipy_attempted = int(flow.get("scipy_attempted", 0))
+    scipy_success_flag = int(flow.get("scipy_success_flag", 0))
+    scipy_unsuccessful = int(flow.get("scipy_unsuccessful", 0))
+    scipy_exception = int(flow.get("scipy_exception", 0))
+
+    final_residual_success = int(flow.get("final_residual_success", 0))
+    final_residual_fail = int(flow.get("final_residual_fail", 0))
+    final_valid_from_newton = int(flow.get("final_valid_from_newton", 0))
+    final_valid_from_scipy = int(flow.get("final_valid_from_scipy", 0))
+    final_valid_from_scipy_seeded = int(flow.get("final_valid_from_scipy_seeded", 0))
+    final_valid_from_scipy_unseeded = int(flow.get("final_valid_from_scipy_unseeded", 0))
+    final_invalid_from_newton = int(flow.get("final_invalid_from_newton", 0))
+    final_invalid_from_scipy = int(flow.get("final_invalid_from_scipy", 0))
+    final_invalid_from_scipy_seeded = int(flow.get("final_invalid_from_scipy_seeded", 0))
+    final_invalid_from_scipy_unseeded = int(flow.get("final_invalid_from_scipy_unseeded", 0))
+    weak_payload_returned = int(result.get("weak_payload_returned", 0))
+    weak_payload_verified_true = int(result.get("weak_payload_verified_true", 0))
+    weak_payload_verified_false = int(result.get("weak_payload_verified_false", 0))
+    
+    # Split finalize verify results by solver path
+    finalize_verify_true_from_newton = int(flow.get("finalize_verify_true_from_newton", 0))
+    finalize_verify_true_from_scipy = int(flow.get("finalize_verify_true_from_scipy", 0))
+    finalize_verify_true_from_scipy_seeded = int(flow.get("finalize_verify_true_from_scipy_seeded", 0))
+    finalize_verify_true_from_scipy_unseeded = int(flow.get("finalize_verify_true_from_scipy_unseeded", 0))
+    finalize_verify_false_from_newton = int(flow.get("finalize_verify_false_from_newton", 0))
+    finalize_verify_false_from_scipy = int(flow.get("finalize_verify_false_from_scipy", 0))
+    finalize_verify_false_from_scipy_seeded = int(flow.get("finalize_verify_false_from_scipy_seeded", 0))
+    finalize_verify_false_from_scipy_unseeded = int(flow.get("finalize_verify_false_from_scipy_unseeded", 0))
+
+    source_counts = {"canonical": 0, "weak_equality_solve": 0, "unknown": 0}
+    for success in all_successes:
+        src = str(success.get("source", "unknown"))
+        if src in source_counts:
+            source_counts[src] += 1
+        else:
+            source_counts["unknown"] += 1
+
+    manifest_rows = result.get("manifest", []) if output_dir else []
+    written_unique = len(manifest_rows)
+    dedup_dropped = max(0, n_hits - written_unique) if output_dir else 0
+
+    solver_call_pct = (100.0 * n_solver_calls / tested) if tested > 0 else 0.0
+    t_solver = result.get("t_solver", 0.0)
+    t_nb = result.get("t_solver_nb_newton", 0.0)
+    t_root = result.get("t_solver_root", 0.0)
+    nb_pct = (100.0 * t_nb / t_solver) if t_solver > 0 else 0.0
+    root_pct = (100.0 * t_root / t_solver) if t_solver > 0 else 0.0
+
+    print()
+    print("SOLVER EXECUTION SUMMARY")
+    print("=" * 80)
+    print("Input:")
+    print(f"  - Combinations tested:        {tested:>12,d}")
+    print(f"  - Solver calls triggered:     {n_solver_calls:>12,d} ({solver_call_pct:4.1f}%)")
+    print()
+    print("Process Flow:")
+    print(f"  - Newton's Method ({nb_pct:4.1f}% of solver time)")
+    print(f"    - Attempted guesses:        {newton_attempted:>12,d}")
+    print(f"    - Converged (Newton):       {newton_converged:>12,d}")
+    print(f"    - No progress (nb_skip):    {newton_no_progress:>12,d}")
+    print(f"    - Made progress (seed):     {newton_progress_seeded:>12,d}")
+    print()
+    print(f"  - Scipy Root Search ({root_pct:4.1f}% of solver time)")
+    print(f"    - Attempted:                {scipy_attempted:>12,d}")
+    print(f"    - success flag=True:        {scipy_success_flag:>12,d}")
+    print(f"    - success flag=False:       {scipy_unsuccessful:>12,d}")
+    print("      - Failed outcomes (subset of success flag=False):")
+    print(f"        - bad_progress:         {terminal_outcomes['bad_progress']:>12,d}")
+    print(f"        - maxfev:               {terminal_outcomes['maxfev']:>12,d}")
+    print(f"        - xtol:                 {terminal_outcomes['xtol']:>12,d}")
+    print(f"    - Exceptions (try/except):  {scipy_exception:>12,d}")
+    print(f"      - exception (exit table): {terminal_outcomes['exception']:>12,d}")
+    print()
+    print("Residual Gate (r < 1e-7):")
+    print(f"  - Passed residual gate:       {final_residual_success:>12,d}")
+    print(f"    - via Newton path:          {final_valid_from_newton:>12,d}")
+    print(f"    - via Scipy path:           {final_valid_from_scipy:>12,d}")
+    print(f"      - Scipy seeded by Newton: {final_valid_from_scipy_seeded:>12,d}")
+    print(f"      - Scipy unseeded:         {final_valid_from_scipy_unseeded:>12,d}")
+    print(f"  - Failed residual gate:       {final_residual_fail:>12,d}")
+    print(f"    - Newton-converged invalid: {final_invalid_from_newton:>12,d}")
+    print(f"    - Scipy-converged invalid:  {final_invalid_from_scipy:>12,d}")
+    print(f"      - Scipy seeded invalid:   {final_invalid_from_scipy_seeded:>12,d}")
+    print(f"      - Scipy unseeded invalid: {final_invalid_from_scipy_unseeded:>12,d}")
+    print(f"    - conv_badresid (table):    {terminal_outcomes['conv_badresid']:>12,d}")
+    print()
+    print("Verification and Dedup Pipeline:")
+    print(f"  - Residual-pass candidates:   {final_residual_success:>12,d}")
+    print(f"  - Entered finalize step:      {weak_payload_returned:>12,d}")
+    print(f"    - finalize verify=True:     {weak_payload_verified_true:>12,d}")
+    print(f"      - from Newton path:       {finalize_verify_true_from_newton:>12,d}")
+    print(f"      - from Scipy path:        {finalize_verify_true_from_scipy:>12,d}")
+    print(f"        - Scipy seeded:         {finalize_verify_true_from_scipy_seeded:>12,d}")
+    print(f"        - Scipy unseeded:       {finalize_verify_true_from_scipy_unseeded:>12,d}")
+    print(f"    - finalize verify=False:    {weak_payload_verified_false:>12,d}")
+    print(f"      - from Newton path:       {finalize_verify_false_from_newton:>12,d}")
+    print(f"      - from Scipy path:        {finalize_verify_false_from_scipy:>12,d}")
+    print(f"        - Scipy seeded:         {finalize_verify_false_from_scipy_seeded:>12,d}")
+    print(f"        - Scipy unseeded:       {finalize_verify_false_from_scipy_unseeded:>12,d}")
+    print(f"  - Verified successes:         {n_hits:>12,d}")
+    print(f"    - Canonical verify path:    {source_counts['canonical']:>12,d}")
+    print(f"    - Weak-equality path:       {source_counts['weak_equality_solve']:>12,d}")
+    print(f"    - Unknown source label:     {source_counts['unknown']:>12,d}")
+    if output_dir:
+        print(f"  - Pre-dedup successes:        {n_hits:>12,d}")
+        print(f"  - Written unique files:       {written_unique:>12,d}")
+        print(f"  - Dedup dropped:              {dedup_dropped:>12,d} (dedup_by={dedup_by})")
+    else:
+        print("  - Dedup/write step:           not enabled (use --write-all)")
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +335,8 @@ def main():
     parser.add_argument("--dedup-by", choices=("none", "transition", "strategy"), default="none")
     parser.add_argument("--shuffle", action="store_true")
     parser.add_argument("--random-seed", type=int, default=0)
+    parser.add_argument("--disable-newton", action="store_true",
+                        help="Disable Newton's method in weak-equality solver (use only Scipy)")
 
     args = parser.parse_args()
 
@@ -247,6 +404,8 @@ def main():
         print(f"dedup_by: {args.dedup_by}")
     print(f"workers: {args.workers}")
     print(f"shuffle: {args.shuffle}")
+    if args.weak_equality_solve:
+        print(f"newton_guess_limit: {_NEWTON_GUESS_LIMIT}")
     print()
 
     # ── Search ───────────────────────────────────────────────────────────────
@@ -258,8 +417,17 @@ def main():
         payoffs=setup["payoffs"],
         discounting=setup["discounting"],
         unanimity_required=setup["unanimity_required"],
+        power_rule=setup["power_rule"],
         forbidden_proposals=setup["forbidden_proposals"],
     )
+
+    extra_metadata: dict = {}
+    if config.get("power_rule") == "power_threshold":
+        extra_metadata["min_power"] = config.get("min_power", 0.501)
+    for player in players:
+        for field in ("base_temp", "ideal_temp", "delta_temp", "m_damage", "power", "protocol"):
+            val = config.get(field, {})
+            extra_metadata[f"{field}_{player}"] = val.get(player, 0.0) if isinstance(val, dict) else 0.0
 
     df, result = solve_with_ordinal_ranking_n3(
         solver,
@@ -276,6 +444,8 @@ def main():
         write_all_dir=output_dir,
         dedup_by=args.dedup_by,
         payoff_path=payoff_path,
+        use_newton=(not args.disable_newton),
+        extra_metadata=extra_metadata,
     )
 
     # ── Summary ──────────────────────────────────────────────────────────────
@@ -298,12 +468,7 @@ def main():
         tested = result.get("tested", 0)
         if tested > 0:
             us = (val * 1_000_000) / tested
-            if us >= 100:
-                return f" [{us:>8.0f} μs/combo]"
-            elif us >= 1:
-                return f" [{us:>8.1f} μs/combo]"
-            else:
-                return f" [{us:>8.2f} μs/combo]"
+            return f" [{us:>9.1f} μs/combo]"
         return ""
 
     print("Summary")
@@ -313,12 +478,15 @@ def main():
     print(f"rate:                 {rate:>12.0f}/s")
     if n_workers > 0:
         if t_numba > 0:
-            print(f"  - numba_time:       {t_numba / n_workers:>12.2f}s (avg per worker){_fmt_us(t_numba)}")
+            msg = f"{t_numba / n_workers:>12.2f}s (avg per worker)"
+            print(f"  - numba_time:       {msg:<35}{_fmt_us(t_numba)}")
         if t_tie_struct > 0:
-            print(f"  - tie_struct_time:  {t_tie_struct / n_workers:>12.2f}s (avg per worker){_fmt_us(t_tie_struct)}")
+            msg = f"{t_tie_struct / n_workers:>12.2f}s (avg per worker)"
+            print(f"  - tie_struct_time:  {msg:<35}{_fmt_us(t_tie_struct)}")
         t_sv = t_solver / n_workers
         if t_sv > 0:
-            print(f"  - solver_time:      {t_sv:>12.2f}s (avg per worker){_fmt_us(t_solver)}")
+            msg = f"{t_sv:>12.2f}s (avg per worker)"
+            print(f"  - solver_time:      {msg:<35}{_fmt_us(t_solver)}")
             t_nb_newton = result.get("t_solver_nb_newton", 0.0) / n_workers
             t_root = result.get("t_solver_root", 0.0) / n_workers
             t_root_v = result.get("t_solver_root_v_solve", 0.0) / n_workers
@@ -336,50 +504,86 @@ def main():
             t_setup_nb = result.get("t_solver_setup_numba", 0.0) / n_workers
             t_setup_g = result.get("t_solver_setup_guesses", 0.0) / n_workers
             if t_nb_newton > 0:
-                print(f"    - nb_newton:      {t_nb_newton:>12.2f}s{_fmt_pct(t_nb_newton, t_sv)}{_fmt_us(result.get('t_solver_nb_newton', 0.0))}")
+                msg = f"{t_nb_newton:>12.2f}s{_fmt_pct(t_nb_newton, t_sv)}"
+                print(f"    - nb_newton:      {msg:<35}{_fmt_us(result.get('t_solver_nb_newton', 0.0))}")
             if t_root > 0:
-                print(f"    - root_search:    {t_root:>12.2f}s{_fmt_pct(t_root, t_sv)}{_fmt_us(result.get('t_solver_root', 0.0))}")
+                msg = f"{t_root:>12.2f}s{_fmt_pct(t_root, t_sv)}"
+                print(f"    - root_search:    {msg:<35}{_fmt_us(result.get('t_solver_root', 0.0))}")
                 if t_root_v > 0:
-                    print(f"      - V_solve:      {t_root_v:>12.2f}s{_fmt_pct(t_root_v, t_sv)}{_fmt_us(result.get('t_solver_root_v_solve', 0.0))}")
-                    print(f"      - P_aggregate:  {t_root_p:>12.2f}s{_fmt_pct(t_root_p, t_sv)}{_fmt_us(result.get('t_solver_root_p_agg', 0.0))}")
-                    print(f"      - mapping:      {t_root_m:>12.2f}s{_fmt_pct(t_root_m, t_sv)}{_fmt_us(result.get('t_solver_root_mapping', 0.0))}")
-                    print(f"      - residuals:    {t_root_r:>12.2f}s{_fmt_pct(t_root_r, t_sv)}{_fmt_us(result.get('t_solver_root_residuals', 0.0))}")
+                    msg = f"{t_root_v:>12.2f}s{_fmt_pct(t_root_v, t_sv)}"
+                    print(f"      - V_solve:      {msg:<35}{_fmt_us(result.get('t_solver_root_v_solve', 0.0))}")
+                    msg = f"{t_root_p:>12.2f}s{_fmt_pct(t_root_p, t_sv)}"
+                    print(f"      - P_aggregate:  {msg:<35}{_fmt_us(result.get('t_solver_root_p_agg', 0.0))}")
+                    msg = f"{t_root_m:>12.2f}s{_fmt_pct(t_root_m, t_sv)}"
+                    print(f"      - mapping:      {msg:<35}{_fmt_us(result.get('t_solver_root_mapping', 0.0))}")
+                    msg = f"{t_root_r:>12.2f}s{_fmt_pct(t_root_r, t_sv)}"
+                    print(f"      - residuals:    {msg:<35}{_fmt_us(result.get('t_solver_root_residuals', 0.0))}")
             if t_fin > 0:
-                print(f"    - finalize:       {t_fin:>12.2f}s{_fmt_pct(t_fin, t_sv)}{_fmt_us(result.get('t_solver_finalize', 0.0))}")
+                msg = f"{t_fin:>12.2f}s{_fmt_pct(t_fin, t_sv)}"
+                print(f"    - finalize:       {msg:<35}{_fmt_us(result.get('t_solver_finalize', 0.0))}")
                 if t_fin_rb > 0:
-                    print(f"      - rebuild:      {t_fin_rb:>12.2f}s{_fmt_pct(t_fin_rb, t_sv)}{_fmt_us(result.get('t_solver_finalize_rebuild', 0.0))}")
-                    print(f"      - verify:       {t_fin_vf:>12.2f}s{_fmt_pct(t_fin_vf, t_sv)}{_fmt_us(result.get('t_solver_finalize_verify', 0.0))}")
-                    print(f"      - solver_obj:   {t_fin_so:>12.2f}s{_fmt_pct(t_fin_so, t_sv)}{_fmt_us(result.get('t_solver_finalize_solver_obj', 0.0))}")
+                    msg = f"{t_fin_rb:>12.2f}s{_fmt_pct(t_fin_rb, t_sv)}"
+                    print(f"      - rebuild:      {msg:<35}{_fmt_us(result.get('t_solver_finalize_rebuild', 0.0))}")
+                    msg = f"{t_fin_vf:>12.2f}s{_fmt_pct(t_fin_vf, t_sv)}"
+                    print(f"      - verify:       {msg:<35}{_fmt_us(result.get('t_solver_finalize_verify', 0.0))}")
+                    msg = f"{t_fin_so:>12.2f}s{_fmt_pct(t_fin_so, t_sv)}"
+                    print(f"      - solver_obj:   {msg:<35}{_fmt_us(result.get('t_solver_finalize_solver_obj', 0.0))}")
             if t_chk > 0:
-                print(f"    - check:          {t_chk:>12.2f}s{_fmt_pct(t_chk, t_sv)}{_fmt_us(result.get('t_solver_check', 0.0))}")
+                msg = f"{t_chk:>12.2f}s{_fmt_pct(t_chk, t_sv)}"
+                print(f"    - check:          {msg:<35}{_fmt_us(result.get('t_solver_check', 0.0))}")
             if t_setup > 0:
-                print(f"    - setup/other:    {t_setup:>12.2f}s{_fmt_pct(t_setup, t_sv)}{_fmt_us(result.get('t_solver_setup', 0.0))}")
+                msg = f"{t_setup:>12.2f}s{_fmt_pct(t_setup, t_sv)}"
+                print(f"    - setup/other:    {msg:<35}{_fmt_us(result.get('t_solver_setup', 0.0))}")
                 if t_setup_cp > 0:
-                    print(f"      - copy_arrays:  {t_setup_cp:>12.2f}s{_fmt_pct(t_setup_cp, t_sv)}{_fmt_us(result.get('t_solver_setup_copy', 0.0))}")
-                    print(f"      - find_indices: {t_setup_ix:>12.2f}s{_fmt_pct(t_setup_ix, t_sv)}{_fmt_us(result.get('t_solver_setup_indices', 0.0))}")
-                    print(f"      - build_numba:  {t_setup_nb:>12.2f}s{_fmt_pct(t_setup_nb, t_sv)}{_fmt_us(result.get('t_solver_setup_numba', 0.0))}")
-                    print(f"      - guesses:      {t_setup_g:>12.2f}s{_fmt_pct(t_setup_g, t_sv)}{_fmt_us(result.get('t_solver_setup_guesses', 0.0))}")
+                    msg = f"{t_setup_cp:>12.2f}s{_fmt_pct(t_setup_cp, t_sv)}"
+                    print(f"      - copy_arrays:  {msg:<35}{_fmt_us(result.get('t_solver_setup_copy', 0.0))}")
+                    msg = f"{t_setup_ix:>12.2f}s{_fmt_pct(t_setup_ix, t_sv)}"
+                    print(f"      - find_indices: {msg:<35}{_fmt_us(result.get('t_solver_setup_indices', 0.0))}")
+                    msg = f"{t_setup_nb:>12.2f}s{_fmt_pct(t_setup_nb, t_sv)}"
+                    print(f"      - build_numba:  {msg:<35}{_fmt_us(result.get('t_solver_setup_numba', 0.0))}")
+                    msg = f"{t_setup_g:>12.2f}s{_fmt_pct(t_setup_g, t_sv)}"
+                    print(f"      - guesses:      {msg:<35}{_fmt_us(result.get('t_solver_setup_guesses', 0.0))}")
     if args.weak_equality_solve:
         print(f"total_solver_calls:   {n_solver_calls:>12,d}")
         print(f"skipped_max_vars:     {n_skipped:>12,d}")
         hist = result.get("n_free_histogram", {})
+        calls_by_nf = result.get("solver_calls_by_n_free", {}) or {}
+        time_by_nf = result.get("solver_time_by_n_free", {}) or {}
+        
         if hist:
-            print("\nFree Variables Distribution (n_free bin: count)")
-            bins: dict[int, int] = {}
+            # Build combined bins with distribution + timing
+            bins: dict[int, dict] = {}
             for nf, cnt in hist.items():
                 b = (nf // 10) * 10
-                bins[b] = bins.get(b, 0) + cnt
+                if b not in bins:
+                    bins[b] = {"count": 0, "calls": 0, "time": 0.0}
+                bins[b]["count"] += cnt
             
+            for nf_raw, calls_raw in calls_by_nf.items():
+                nf = int(nf_raw)
+                calls = int(calls_raw)
+                b = (nf // 10) * 10
+                if b not in bins:
+                    bins[b] = {"count": 0, "calls": 0, "time": 0.0}
+                bins[b]["calls"] += calls
+                bins[b]["time"] += float(time_by_nf.get(nf_raw, 0.0))
+            
+            print("\nFree Variables Distribution and Solver Cost")
+            print("  bin(vars)         count       calls   total_time(s)   avg_ms/call")
             for b in sorted(bins.keys()):
-                cnt = bins[b]
-                bin_str = f"{b}-{b+9}"
-                print(f"  {bin_str:>7s} vars: {cnt:>12,d}")
+                cnt = bins[b]["count"]
+                calls = bins[b]["calls"]
+                ttot = bins[b]["time"]
+                avg_ms = (ttot / calls * 1000.0) if calls > 0 else 0.0
+                bin_str = f"{b:>2d}-{b+9:<9d}"
+                print(f"  {bin_str} {cnt:>10,d} {calls:>10,d} {ttot:>14.2f} {avg_ms:>13.2f}")
             
             if args.weak_equality_max_vars is not None:
                 max_v = args.weak_equality_max_vars
                 skipped_nfs = [nf for nf in hist.keys() if nf > max_v]
                 if skipped_nfs:
                     print(f"Note: Combinations with > {max_v} free variables were skipped (range {min(skipped_nfs)}-{max(skipped_nfs)}).")
+
         ec = result.get("exit_stats_counts")
         if ec is not None and np.any(ec):
             _outcome_labels = ["nb_newton_hit", "success(scipy)", "conv_badresid",
@@ -391,8 +595,23 @@ def main():
                 if np.any(ec[gi]):
                     row_str = f"  {gi:>5d}" + "".join(f"  {int(ec[gi, oi]):>13,d}" for oi in range(ec.shape[1]))
                     print(row_str)
+        _print_solver_execution_summary(
+            result=result,
+            all_successes=all_successes,
+            n_hits=n_hits,
+            tested=result["tested"],
+            n_solver_calls=n_solver_calls,
+            output_dir=output_dir,
+            dedup_by=args.dedup_by,
+        )
     print(f"interrupted:          {str(interrupted):>12s}")
     print(f"verified_successes:   {n_hits:>12,d}")
+    if all_successes:
+        n_frees = [s.get("n_free", 0) for s in all_successes]
+        if len(n_frees) > 1:
+            print(f"  - free_vars:        {', '.join(map(str, n_frees))}")
+        else:
+            print(f"  - free_vars:        {n_frees[0]}")
     print(f"stored_successes:     {n_hits:>12,d}")
     if output_dir and all_successes:
         manifest_rows = result.get("manifest", [])
@@ -432,13 +651,20 @@ def main():
 
         if cli_ok:
             out_path = _resolve_output_path(payoff_path, args.write_output)
+            meta: dict = {
+                "payoff_source": "precomputed_table",
+                "payoff_table": str(config.get("payoff_table", "")),
+                "power_rule": config.get("power_rule", "power_threshold"),
+                "unanimity_required": config.get("unanimity_required", True),
+                "discounting": config.get("discounting", 0.99),
+            }
             write_strategy_table_excel(
                 df=df,
                 excel_file_path=str(out_path),
                 players=players,
                 effectivity=setup["effectivity"],
                 states=states,
-                metadata={"payoff_table": config.get("payoff_table", "")},
+                metadata=meta,
                 value_functions=solver.value_functions,
                 static_payoffs=solver.payoffs,
                 transition_matrix=solver.transition_matrix,

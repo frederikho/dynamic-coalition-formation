@@ -42,6 +42,7 @@ def _init_worker_ctx(
     weak_equality_max_vars: int | None = None,
     unanimity_required: bool = True,
     effectivity: dict | None = None,
+    power_rule: str = "power_threshold",
     use_newton: bool = True,
 ) -> None:
     global _WORKER_CTX
@@ -83,6 +84,7 @@ def _init_worker_ctx(
         "state_idx": {s: i for i, s in enumerate(states)},
         "protocol": {p: float(protocol_arr[i]) for i, p in enumerate(players)},
         "effectivity": effectivity,
+        "power_rule": power_rule,
         "use_newton": use_newton,
     }
 
@@ -173,6 +175,8 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
     n_skipped = 0
     n_hits = 0
     n_free_histogram: dict[int, int] = {}
+    solver_calls_by_n_free: dict[int, int] = {}
+    solver_time_by_n_free: dict[int, float] = {}
     exit_stats_counts = np.zeros((7, 8), dtype=np.int64)
     weak_solver_flow_stats: dict[str, int] = {}
     weak_payload_returned = 0
@@ -250,6 +254,7 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                             discounting=discounting,
                             unanimity_required=ctx.get("unanimity_required", True),
                             effectivity=ctx.get("effectivity"),
+                            power_rule=ctx.get("power_rule", "power_threshold"),
                             tiers=tiers_tuple,
                             committee_idxs=ctx["committee_idxs"],
                             max_vars=weak_equality_max_vars,
@@ -277,6 +282,8 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                             else:
                                 weak_payload_verified_false += 1
                         _d_sv = time.perf_counter() - t_sv0
+                        solver_calls_by_n_free[n_free] = solver_calls_by_n_free.get(n_free, 0) + 1
+                        solver_time_by_n_free[n_free] = solver_time_by_n_free.get(n_free, 0.0) + _d_sv
                         t_solver += _d_sv
                         t_solver_root += solver_timing["solver_root"]
                         t_solver_finalize += solver_timing["solver_finalize"]
@@ -322,9 +329,11 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
             if solved_payload is not None and solved_payload.get("verification_success"):
                 success.update({
                     "source": "weak_equality_solve",
-                    "P": solved_payload["P"],
-                    "V": solved_payload["V"],
-                    "strategy_df": solved_payload["strategy_df"],
+                    "payload": {
+                        "P": solved_payload["P"],
+                        "V": solved_payload["V"],
+                        "strategy_df": solved_payload["strategy_df"],
+                    },
                 })
             else:
                 success["source"] = "canonical"
@@ -348,6 +357,8 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                     "t_solver_finalize_solver_obj": t_solver_finalize_solver_obj,
                     "n_solver_calls": n_solver_calls, "n_skipped": n_skipped, "n_hits": n_hits,
                     "n_free_histogram": n_free_histogram,
+                    "solver_calls_by_n_free": solver_calls_by_n_free,
+                    "solver_time_by_n_free": solver_time_by_n_free,
                     "exit_stats_counts": exit_stats_counts,
                     "weak_solver_flow_stats": weak_solver_flow_stats,
                     "weak_payload_returned": weak_payload_returned,
@@ -375,6 +386,8 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
         "t_solver_finalize_solver_obj": t_solver_finalize_solver_obj,
         "n_solver_calls": n_solver_calls, "n_skipped": n_skipped, "n_hits": n_hits,
         "n_free_histogram": n_free_histogram,
+        "solver_calls_by_n_free": solver_calls_by_n_free,
+        "solver_time_by_n_free": solver_time_by_n_free,
         "exit_stats_counts": exit_stats_counts,
         "weak_solver_flow_stats": weak_solver_flow_stats,
         "weak_payload_returned": weak_payload_returned,

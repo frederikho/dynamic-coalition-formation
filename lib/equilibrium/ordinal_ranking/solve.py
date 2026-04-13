@@ -114,6 +114,7 @@ def solve_with_ordinal_ranking_n3(
     dedup_by: str = "none",
     payoff_path: Path | None = None,
     use_newton: bool = True,
+    extra_metadata: dict | None = None,
     logger=None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     players = solver.players
@@ -212,6 +213,8 @@ def solve_with_ordinal_ranking_n3(
     n_skipped = 0
     total_hits = 0
     n_free_histogram: dict[int, int] = {}
+    solver_calls_by_n_free: dict[int, int] = {}
+    solver_time_by_n_free: dict[int, float] = {}
     exit_stats_counts = np.zeros((7, 8), dtype=np.int64)
     weak_solver_flow_stats: dict[str, int] = {}
     weak_payload_returned = 0
@@ -228,6 +231,7 @@ def solve_with_ordinal_ranking_n3(
             dedup_by=dedup_by,
             weak_orders=weak_orders,
             committee_idxs=committee_idxs,
+            extra_metadata=extra_metadata or {},
         )
 
     if workers > 1:
@@ -255,6 +259,7 @@ def solve_with_ordinal_ranking_n3(
                 weak_equality_solve, weak_equality_max_vars,
                 getattr(solver, "unanimity_required", True),
                 getattr(solver, "effectivity", None),
+                getattr(solver, "power_rule", "power_threshold"),
                 use_newton,
             ),
         )
@@ -298,6 +303,12 @@ def solve_with_ordinal_ranking_n3(
                 total_hits += res.get("n_hits", 0)
                 for nf, cnt in res.get("n_free_histogram", {}).items():
                     n_free_histogram[nf] = n_free_histogram.get(nf, 0) + cnt
+                for nf, cnt in res.get("solver_calls_by_n_free", {}).items():
+                    nfi = int(nf)
+                    solver_calls_by_n_free[nfi] = solver_calls_by_n_free.get(nfi, 0) + int(cnt)
+                for nf, tval in res.get("solver_time_by_n_free", {}).items():
+                    nfi = int(nf)
+                    solver_time_by_n_free[nfi] = solver_time_by_n_free.get(nfi, 0.0) + float(tval)
                 ec = res.get("exit_stats_counts")
                 if ec is not None:
                     exit_stats_counts += ec
@@ -440,6 +451,8 @@ def solve_with_ordinal_ranking_n3(
         "total_hits": total_hits,
         "n_workers": workers,
         "n_free_histogram": n_free_histogram,
+        "solver_calls_by_n_free": solver_calls_by_n_free,
+        "solver_time_by_n_free": solver_time_by_n_free,
         "exit_stats_counts": exit_stats_counts,
         "weak_solver_flow_stats": weak_solver_flow_stats,
         "weak_payload_returned": weak_payload_returned,
@@ -449,15 +462,26 @@ def solve_with_ordinal_ranking_n3(
 
     if all_successes:
         success = first_success or all_successes[0]
-        if weak_orders:
-            _induce_profile_from_weak_orders(solver, players, states, success["rankings"], committee_idxs)
+        payload = success.get("payload")
+        if weak_orders and payload is not None:
+            # Use the pre-solved strategy and V from the Newton/Scipy solver
+            strategy_df = payload["strategy_df"]
+            P = payload["P"]
+            V = payload["V"]
+            # Also update the solver's internal strategy dicts if they are present in the payload.
+            # In _finalize_weak_solution, we don't return r_acceptances directly, but the strategy_df
+            # is what matters most for the Excel output and verification.
         else:
-            _induce_profile_from_rankings(solver, players, states, success["rankings"], committee_idxs)
+            if weak_orders:
+                _induce_profile_from_weak_orders(solver, players, states, success["rankings"], committee_idxs)
+            else:
+                _induce_profile_from_rankings(solver, players, states, success["rankings"], committee_idxs)
+            strategy_df, P, V = _solve_induced(solver)
 
-        strategy_df, P, V = _solve_induced(solver)
         # Expose on solver so callers can retrieve them without re-computing.
         solver.transition_matrix = P
         solver.value_functions = V
+
 
         if write_all_dir:
             if streaming_writer is not None:
@@ -473,6 +497,7 @@ def solve_with_ordinal_ranking_n3(
                     dedup_by=dedup_by,
                     weak_orders=weak_orders,
                     committee_idxs=committee_idxs,
+                    extra_metadata=extra_metadata or {},
                 )
                 result_meta["manifest"] = manifest
 
