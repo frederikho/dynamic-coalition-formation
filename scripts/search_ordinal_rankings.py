@@ -428,11 +428,82 @@ if _NUMBA_AVAILABLE:
         protocol_arr, payoff_array, discounting,
         n_players, n_states
     ):
+        """Numba JIT regularised Newton solver for weak-equality constraints.
+
+        Returns (best_alpha, converged, progress_factor) where
+        progress_factor = initial_residual / best_residual_seen.
+        A factor >= 3.0 means the residual dropped by at least 3×, indicating
+        the system is likely solvable and scipy hybr should be tried as fallback.
+        A factor < 3.0 means the analytical Jacobian found no traction — the
+        caller can skip the expensive scipy call for this guess.
+        """
+        n_v = alpha_init.shape[0]
         alpha = alpha_init.copy()
-        tol = 1e-9
+        best_alpha = alpha.copy()
+        tol = 1e-8
         max_iters = 50
+        max_step = 5.0   # clip Newton step norm to avoid divergence
+
+        # Compute residual and Jacobian for the starting point.
+        res, jac = _residuals_nb_core(
+            alpha, canon_probs, canon_action, canon_pass,
+            fa_arr, n_fa,
+            pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
+            aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
+            comm_arr, comm_size, tiers,
+            protocol_arr, payoff_array, discounting,
+            n_players, n_states, compute_jac=True,
+        )
+        initial_res = np.max(np.abs(res))
+        if initial_res < tol:
+            return alpha, True, np.inf
+
+        # Degenerate Jacobian: the canonical proposal probabilities assign zero
+        # weight to the transitions corresponding to the free approval variables,
+        # so d(pass)/d(alpha) = 0 and the entire analytical Jacobian is zero.
+        # scipy's FD Jacobian evaluates at perturbed alpha where probs may be
+        # nonzero, so it can still find solutions — signal the caller to fall
+        # back to scipy immediately rather than burning 50 iterations here.
+        max_jac = np.max(np.abs(jac))
+        if max_jac < 1e-9:
+            return alpha, False, 1.0  # progress = 1.0 → caller falls back to scipy
+
+        best_res = initial_res
 
         for i in range(max_iters):
+            curr_res = np.max(np.abs(res))
+            if curr_res < best_res:
+                best_res = curr_res
+                best_alpha[:] = alpha[:]
+
+            if curr_res < tol:
+                return best_alpha, True, initial_res / (curr_res + 1e-300)
+
+            # Tikhonov regularisation to keep solve stable.
+            # lambda is small relative to |J| so it barely distorts non-degenerate steps.
+            lam = max_jac * 1e-4
+            if lam < 1e-9:
+                lam = 1e-9
+            for j in range(n_v):
+                jac[j, j] += lam
+
+            try:
+                delta = -np.linalg.solve(jac, res)
+            except Exception:
+                break
+
+            # Clip step norm to prevent large oscillations
+            step_sq = 0.0
+            for j in range(n_v):
+                step_sq += delta[j] * delta[j]
+            if step_sq > max_step * max_step:
+                scale = max_step / math.sqrt(step_sq)
+                for j in range(n_v):
+                    delta[j] *= scale
+
+            alpha += 0.5 * delta
+
+            # Recompute residual and Jacobian for next iteration
             res, jac = _residuals_nb_core(
                 alpha, canon_probs, canon_action, canon_pass,
                 fa_arr, n_fa,
@@ -440,19 +511,12 @@ if _NUMBA_AVAILABLE:
                 aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
                 comm_arr, comm_size, tiers,
                 protocol_arr, payoff_array, discounting,
-                n_players, n_states, compute_jac=True
+                n_players, n_states, compute_jac=True,
             )
+            max_jac = np.max(np.abs(jac))
 
-            if np.max(np.abs(res)) < tol:
-                return alpha, True
-
-            try:
-                delta = -np.linalg.solve(jac, res)
-                alpha += 0.5 * delta
-            except Exception:
-                break
-
-        return alpha, False
+        progress = initial_res / (best_res + 1e-300)
+        return best_alpha, False, progress
 
 
 def _resolve_payoff_file(value: str) -> Path:
@@ -1198,20 +1262,30 @@ def _solve_weak_equalities(
     if timing_data is not None:
         timing_data["solver_setup"] += (time.perf_counter() - t_start)
 
-    # _exit_stats_counts shape: (n_guesses, 7)
-    # outcome indices: 0=nb_newton_hit, 1=success(scipy), 2=converged+bad_resid,
-    #                  3=maxfev, 4=xtol, 5=bad_progress(status 4 or 5), 6=exception
+    # _exit_stats_counts shape: (n_guesses, 8)
+    # outcome indices:
+    #   0=nb_newton_hit        — NB Newton converged, residual ok, scipy skipped
+    #   1=success(scipy)       — scipy converged, residual ok (NB Newton made progress → warm start)
+    #   2=conv_badresid        — solver converged but final residual > 1e-7
+    #   3=maxfev               — scipy hit maxfev
+    #   4=xtol                 — scipy xtol too small
+    #   5=bad_progress         — scipy stagnated
+    #   6=exception            — exception in scipy
+    #   7=nb_skip              — NB Newton made no progress, scipy skipped entirely
     _OUTCOME_NB_HIT = 0; _OUTCOME_SUCCESS = 1; _OUTCOME_CONV_BADRESID = 2
-    _OUTCOME_MAXFEV = 3; _OUTCOME_XTOL = 4; _OUTCOME_BADPROG = 5; _OUTCOME_EXCEPTION = 6
+    _OUTCOME_MAXFEV = 3; _OUTCOME_XTOL = 4; _OUTCOME_BADPROG = 5
+    _OUTCOME_EXCEPTION = 6; _OUTCOME_NB_SKIP = 7
+    _NB_PROGRESS_THRESHOLD = 3.0  # residual must drop by 3× to justify scipy fallback
 
     for guess_idx, guess in enumerate(guesses):
         raw: np.ndarray | None = None
         _nb_hit = False
+        scipy_start = guess   # default scipy start; overridden if NB Newton makes progress
 
         # Primary path: Numba Newton with analytical Jacobian (fully JIT, zero Python overhead)
         if _use_nb:
             t_nb0 = time.perf_counter()
-            nb_alpha, nb_converged = _solve_weak_equalities_nb(
+            nb_alpha, nb_converged, nb_progress = _solve_weak_equalities_nb(
                 guess,
                 canon_probs, canon_action, canon_pass,
                 _fa_arr, _n_fa,
@@ -1226,12 +1300,20 @@ def _solve_weak_equalities(
             if nb_converged:
                 raw = nb_alpha
                 _nb_hit = True
+            elif nb_progress > 1.0 + 1e-6:
+                # Non-degenerate partial progress — use NB Newton's best point as warm start for scipy
+                scipy_start = nb_alpha
+            else:
+                # Degenerate (zero Jacobian) — track in stats but still fall through to scipy
+                if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
+                    _exit_stats_counts[guess_idx, _OUTCOME_NB_SKIP] += 1
+                # scipy_start remains as original guess
 
         # Fallback: scipy hybr (also sole path when Numba unavailable)
         if raw is None:
             try:
                 t_r0 = time.perf_counter()
-                sol = scipy_root(_scipy_fn, guess, method="hybr", options={"maxfev": 200})
+                sol = scipy_root(_scipy_fn, scipy_start, method="hybr", options={"maxfev": 200})
                 if timing_data is not None:
                     timing_data["solver_root"] += (time.perf_counter() - t_r0)
             except Exception:
@@ -2565,10 +2647,10 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
     total_solver_calls = 0
     total_skipped_max_vars = 0
     n_free_histogram: dict[int, int] = {}
-    # Exit stats: shape (7, 7) — 7 guesses × 7 outcome codes
-    # outcomes: 0=nb_newton_hit, 1=success(scipy), 2=converged+bad_resid,
-    #           3=maxfev, 4=xtol, 5=bad_progress, 6=exception
-    exit_stats_counts = np.zeros((7, 7), dtype=np.int64)
+    # Exit stats: shape (7, 8) — 7 guesses × 8 outcome codes
+    # outcomes: 0=nb_newton_hit, 1=success(scipy), 2=conv_badresid,
+    #           3=maxfev, 4=xtol, 5=bad_progress, 6=exception, 7=nb_skip
+    exit_stats_counts = np.zeros((7, 8), dtype=np.int64)
 
     # Per-progress-interval counters (reset after each send)
     iv_numba_t = 0.0
@@ -2659,7 +2741,7 @@ def _worker_search_batch(args: tuple) -> dict[str, Any]:
                     iv_solver_calls += 1
                     total_solver_calls += 1
                     
-                    _call_exit_stats = np.zeros((7, 7), dtype=np.int64)
+                    _call_exit_stats = np.zeros((7, 8), dtype=np.int64)
                     solver_timing = {
                         "solver_root": 0.0, "solver_finalize": 0.0, "solver_setup": 0.0, "solver_check": 0.0,
                         "solver_setup_copy": 0.0, "solver_setup_indices": 0.0, "solver_setup_numba": 0.0,
@@ -2860,7 +2942,7 @@ def _merge_worker_results(worker_results: list[dict[str, Any]]) -> dict[str, Any
             merged_hist[k] = merged_hist.get(k, 0) + v
     merged["n_free_histogram"] = merged_hist
 
-    merged_exit = np.zeros((7, 7), dtype=np.int64)
+    merged_exit = np.zeros((7, 8), dtype=np.int64)
     for r in worker_results:
         ec = r.get("exit_stats_counts")
         if ec is not None:
@@ -3321,9 +3403,9 @@ def main() -> None:
 
         ec = result.get("exit_stats_counts")
         if ec is not None and np.any(ec):
-            # outcomes: 0=nb_newton_hit, 1=success(scipy), 2=converged+bad_resid,
-            #           3=maxfev, 4=xtol, 5=bad_progress, 6=exception
-            _outcome_labels = ["nb_newton_hit", "success(scipy)", "conv_badresid", "maxfev", "xtol", "bad_progress", "exception"]
+            # outcomes: 0=nb_newton_hit, 1=success(scipy), 2=conv_badresid,
+            #           3=maxfev, 4=xtol, 5=bad_progress, 6=exception, 7=nb_skip
+            _outcome_labels = ["nb_newton_hit", "success(scipy)", "conv_badresid", "maxfev", "xtol", "bad_progress", "exception", "nb_skip"]
             print("\nSolver Exit Reasons (rows=guess_idx, cols=outcome, counts across all workers)")
             header = f"  {'guess':>5s}" + "".join(f"  {lbl:>13s}" for lbl in _outcome_labels)
             print(header)
