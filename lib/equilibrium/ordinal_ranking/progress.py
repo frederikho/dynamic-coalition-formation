@@ -6,7 +6,15 @@ import math
 import time
 
 
-def _print_progress(done: int, total: int | None, start_time: float) -> None:
+def _print_progress(
+    done: int,
+    total: int | None,
+    start_time: float,
+    *,
+    hits: int = 0,
+    breakdown: str = "",
+    recent_rate: float | None = None,
+) -> None:
     elapsed = max(1e-9, time.perf_counter() - start_time)
     rate = done / elapsed
     frac = done / total if total else 0.0
@@ -22,10 +30,17 @@ def _print_progress(done: int, total: int | None, start_time: float) -> None:
         eta = f"{hours:d}:{mins:02d}:{secs:02d}" if hours else f"{mins:02d}:{secs:02d}"
     else:
         eta = "∞"
-    total_str = f"{total:.3e}" if total and total > 1_000_000_000 else f"{total:,d}" if total else "?"
+    total_str = (
+        f"{total:.3e}" if total and total > 1_000_000_000
+        else f"{total:,d}" if total
+        else "?"
+    )
+    recent_str = f"  recent={recent_rate:8.0f}/s" if recent_rate is not None else ""
+    suffix = f"  [{breakdown.strip()}]" if breakdown else (f"  hits:{hits}" if hits > 0 else "")
+    pct_str = f"{pct:.2f}%" if pct >= 0.01 else f"{pct:.2e}%"
     print(
-        f"\r\033[2K[{bar}] {done:>9,d}/{total_str}  {pct:.2e}%  "
-        f"rate={rate:8.0f}/s  eta={eta}",
+        f"\r\033[2K[{bar}] {done:>9,d}/{total_str}  {pct_str}  "
+        f"rate={rate:8.0f}/s{recent_str}  eta={eta}{suffix}",
         end="",
         flush=True,
     )

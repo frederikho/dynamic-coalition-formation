@@ -1131,6 +1131,52 @@ def _parse_players_from_payoff_table(path: Path) -> list[str]:
     return sorted(players)
 
 
+def _infer_players_from_payoff_table(path: Path) -> list[str]:
+    """
+    Infer player names by reading the 'Payoffs' sheet column headers.
+
+    Falls back to this when the filename does not encode RICE50x player codes
+    (e.g. 'simple_cycle_usachnnde-60-reduced.xlsx').
+
+    Path resolution matches _load_payoff_table: tries path as given, then
+    payoff_tables/<basename>.
+    """
+    _default_dir = Path(__file__).parent.parent.parent / "payoff_tables"
+    resolved = path
+    if not resolved.exists():
+        fallback = _default_dir / path.name
+        if fallback.exists():
+            resolved = fallback
+        else:
+            raise FileNotFoundError(
+                f"Payoff table '{path.name}' not found. "
+                f"Searched: {path.resolve()}, {fallback.resolve()}"
+            )
+
+    df = pd.read_excel(str(resolved), sheet_name="Payoffs", header=1, index_col=0)
+    excluded_prefixes = ("W_SAI",)
+    excluded_names = {"Source file"}
+    players = [
+        str(col) for col in df.columns
+        if not any(str(col).startswith(p) for p in excluded_prefixes)
+        and str(col) not in excluded_names
+    ]
+    if not players:
+        raise ValueError(f"Could not infer players from payoff table columns in {path.name}")
+    return players
+
+
+def _infer_or_parse_players_from_payoff_table(path: Path) -> list[str]:
+    """
+    Infer player names from a payoff table, trying filename parsing first and
+    falling back to reading the Excel sheet if the filename is non-standard.
+    """
+    try:
+        return _parse_players_from_payoff_table(path)
+    except (ValueError, ImportError):
+        return _infer_players_from_payoff_table(path)
+
+
 def is_valid_rice_payoff_table_filename(path: Path) -> bool:
     """Return True if the payoff table filename encodes a player set."""
     if path.suffix.lower() != ".xlsx":
