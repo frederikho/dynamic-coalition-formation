@@ -125,6 +125,7 @@ class EquilibriumSolver:
                  payoffs: pd.DataFrame,
                  discounting: float,
                  unanimity_required: bool,
+                 power_rule: str = "power_threshold",
                  forbidden_proposals: frozenset = frozenset(),
                  verbose: bool = True,
                  random_seed: Optional[int] = None,
@@ -151,6 +152,7 @@ class EquilibriumSolver:
         self.payoffs = payoffs
         self.discounting = discounting
         self.unanimity_required = unanimity_required
+        self.power_rule = power_rule
         self.forbidden_proposals = forbidden_proposals
         self.verbose = verbose
         self.logger = logger

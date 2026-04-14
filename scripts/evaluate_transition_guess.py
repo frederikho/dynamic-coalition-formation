@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Evaluate absorbing-state predictors against verified n=3 strategy tables.
 
-Two predictors are compared:
-  heuristic  — short-term best-response: approve iff short-term payoff weakly
-               improves for every required approver; propose to the short-term
-               best viable target.
-  lcs        — Largest Consistent Set (Chwe 1994): set of all outcomes that
-               can possibly be farsightedly stable given the payoff structure
-               and the effectivity correspondence.
+Predictors:
+  Heuristic  — short-term best-response (STBR)
+  LCS        — Largest Consistent Set (Chwe 1994)
+  LCCS       — Largest Cautious Consistent Set (Mauleon & Vannetelbosch 2004)
+  HREFS      — Largest History-dependent Rational Expectation Farsighted Stable Set (Dutta & Vartiainen 2020)
+  HSREFS     — Largest History-dependent Strongly Rational Expectation Farsighted Stable Set (Dutta & Vartiainen 2020)
 """
 
 from __future__ import annotations
@@ -16,6 +15,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 import sys
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -26,12 +26,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from lib.equilibrium.find import _parse_players_from_payoff_table
-from lib.equilibrium.lcs import compute_lcs
+from lib.equilibrium.lcs import compute_lcs, compute_lccs, compute_largest_hrefs
 from lib.equilibrium.scenarios import fill_players, get_scenario
 from lib.equilibrium.solver import EquilibriumSolver
 from lib.effectivity import heyen_lehtomaa_2021
 from lib.utils import get_approval_committee
-
 
 
 def _load_metadata(path: Path) -> dict[str, Any] | None:
@@ -148,28 +147,15 @@ def _guess_transition_matrix(
 
 
 def _absorbing_states(P: pd.DataFrame, edge_threshold: float = 0.05) -> tuple[str, ...]:
-    """Return all states in absorbing SCCs of the transition graph.
-
-    An edge x→y is included iff P[x,y] > edge_threshold.  A singleton SCC is
-    absorbing only if it has a self-loop; multi-node SCCs are absorbing if they
-    have no outgoing edges to states outside the component.
-
-    Using a graph-based approach (rather than requiring P[x,x]=1.0) makes
-    detection robust to both hard equilibria (P[x,x]=1.0 exactly) and files
-    where strategies have not been fully projected to hard values.
-    """
     states = [str(s) for s in P.index]
     n = len(states)
     idx = {s: i for i, s in enumerate(states)}
-
-    # Build adjacency list from thresholded edges
     adj: list[list[int]] = [[] for _ in range(n)]
     for i, s in enumerate(states):
         for j, t in enumerate(states):
             if float(P.loc[s, t]) > edge_threshold:
                 adj[i].append(j)
 
-    # Tarjan's SCC
     index_counter = [0]
     stack: list[int] = []
     on_stack = [False] * n
@@ -194,275 +180,171 @@ def _absorbing_states(P: pd.DataFrame, edge_threshold: float = 0.05) -> tuple[st
                 w = stack.pop()
                 on_stack[w] = False
                 scc.append(w)
-                if w == v:
-                    break
+                if w == v: break
             sccs.append(scc)
 
-    import sys
-    sys.setrecursionlimit(max(sys.getrecursionlimit(), n * 10 + 100))
     for v in range(n):
-        if index[v] == -1:
-            strongconnect(v)
+        if index[v] == -1: strongconnect(v)
 
-    # Identify absorbing SCCs: no outgoing edges to outside the component
     absorbing: list[str] = []
     for scc in sccs:
         scc_set = set(scc)
-        has_outgoing = any(
-            w not in scc_set
-            for v in scc
-            for w in adj[v]
-        )
-        if has_outgoing:
-            continue
+        has_outgoing = any(w not in scc_set for v in scc for w in adj[v])
+        if has_outgoing: continue
         if len(scc) > 1:
-            # Multi-node SCC with no outgoing edges → absorbing set
             absorbing.extend(states[v] for v in scc)
         else:
-            # Singleton: absorbing only if it has a self-loop
             v = scc[0]
-            if v in adj[v]:
-                absorbing.append(states[v])
-
+            if v in adj[v]: absorbing.append(states[v])
     return tuple(sorted(absorbing))
 
 
+def _run_payoff_table_mode(path: Path) -> None:
+    print("Stability Prediction from Payoff Table")
+    print("-" * 80)
+    print(f"file: {path}")
+
+    try:
+        meta_df = pd.read_excel(path, sheet_name="Metadata", header=None)
+        meta: dict[str, Any] = {row.iloc[0]: row.iloc[1] for _, row in meta_df.iterrows() if isinstance(row.iloc[0], str)}
+    except Exception as exc:
+        print(f"error loading metadata: {exc}")
+        return
+
+    players = _parse_players(meta.get("players"))
+    if not players: return
+
+    u: pd.DataFrame | None = None
+    for sheet in ("Payoffs", "Short-term Values"):
+        try:
+            raw = pd.read_excel(path, sheet_name=sheet, header=1, index_col=0)
+            u = raw[[p for p in players if p in raw.columns]].astype(float)
+            break
+        except Exception: continue
+    if u is None: return
+
+    states = [str(s) for s in u.index.tolist()]
+    effectivity = heyen_lehtomaa_2021(players, states)
+    
+    try:
+        lcs, _ = compute_lcs(players, states, u, effectivity)
+        lccs_s, _ = compute_lccs(players, states, u, effectivity, weak=False)
+        lccs_w, _ = compute_lccs(players, states, u, effectivity, weak=True)
+        hrefs = compute_largest_hrefs(players, states, u, effectivity, strong=False)
+        hsrefs = compute_largest_hrefs(players, states, u, effectivity, strong=True)
+    except Exception as exc:
+        print(f"Prediction error: {exc}")
+        return
+
+    print(f"LCS (Strict):  {tuple(sorted(lcs))}")
+    print(f"LCCS (Strict): {tuple(sorted(lccs_s))}")
+    print(f"LCCS (Weak):   {tuple(sorted(lccs_w))}")
+    print(f"HREFS (L):     {tuple(sorted(hrefs))}")
+    print(f"HSREFS (L):    {tuple(sorted(hsrefs))}")
+    print()
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Evaluate a payoff-based transition guess against verified n=3 strategy tables."
-    )
-    parser.add_argument(
-        "--root",
-        default="strategy_tables",
-        help="Directory to scan for top-level .xlsx strategy tables",
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Optional limit on number of files processed",
-    )
-    parser.add_argument(
-        "--file",
-        type=str,
-        default=None,
-        help="Evaluate one specific strategy table in detail",
-    )
+    parser = argparse.ArgumentParser(description="Evaluate farsighted stability predictors.")
+    parser.add_argument("--root", default="strategy_tables", help="Directory to scan")
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of files")
+    parser.add_argument("--file", type=str, default=None, help="Evaluate a specific file")
     args = parser.parse_args()
 
     root = Path(args.root)
-    if args.file is not None:
+    if args.file:
         file_path = Path(args.file)
-        if not file_path.exists():
-            candidate = root / file_path.name
-            if candidate.exists():
-                file_path = candidate
+        if not file_path.exists(): file_path = root / file_path.name
+        try:
+            sheet_names = pd.ExcelFile(file_path).sheet_names
+        except Exception: return
+        if "Short-term Values" not in sheet_names and "Payoffs" in sheet_names:
+            _run_payoff_table_mode(file_path)
+            return
         files = [file_path]
     else:
         files = sorted(root.glob("*.xlsx"))
-        if args.limit is not None:
-            files = files[: args.limit]
+        if args.limit: files = files[:args.limit]
 
-    evaluated = 0
-    exact_transition_matches = 0
-    exact_absorbing_matches = 0
-    lcs_contains_actual = 0   # actual absorbing ⊆ LCS  (Chwe Prop. 2 guarantee)
-    lcs_exact_matches = 0     # LCS == actual absorbing (tight prediction)
+    stats = {
+        "Heuristic":   {"evaluated": 0, "contains": 0, "exact": 0, "sizes": []},
+        "LCS (S)":     {"evaluated": 0, "contains": 0, "exact": 0, "sizes": []},
+        "LCS (W)":     {"evaluated": 0, "contains": 0, "exact": 0, "sizes": []},
+        "LCCS (S)":    {"evaluated": 0, "contains": 0, "exact": 0, "sizes": []},
+        "LCCS (W)":    {"evaluated": 0, "contains": 0, "exact": 0, "sizes": []},
+        "HREFS (L)":   {"evaluated": 0, "contains": 0, "exact": 0, "sizes": []},
+        "HSREFS (L)":  {"evaluated": 0, "contains": 0, "exact": 0, "sizes": []},
+    }
     rows: list[dict[str, Any]] = []
 
     for path in files:
         metadata = _load_metadata(path)
-        if not metadata:
-            continue
-        if not _truthy(metadata.get("verification_success")):
-            continue
-        if int(float(metadata.get("n_players", 0) or 0)) != 3:
+        if not (metadata and _truthy(metadata.get("verification_success")) and int(float(metadata.get("n_players", 0))) == 3):
             continue
         try:
-            short_term_values = _load_short_term_values(path)
+            u_df = _load_short_term_values(path)
             actual_P = _load_transition_matrix(path)
-        except Exception:
-            continue
+        except Exception: continue
 
         players = _parse_players(metadata.get("players"))
-        states = [str(s) for s in short_term_values.index.tolist()]
-        if not players or len(states) != 5:
-            continue
+        states = [str(s) for s in u_df.index.tolist()]
+        if not players or len(states) != 5: continue
 
         try:
             config = _load_config_from_metadata(path, metadata, players)
-            guessed_P = _guess_transition_matrix(players, states, short_term_values, config)
-        except Exception as exc:
-            rows.append({
-                "file": str(path),
-                "status": f"error: {exc}",
-            })
-            continue
-
-        actual_P = actual_P.loc[states, states].astype(float)
-        guessed_P = guessed_P.loc[states, states].astype(float)
-        transition_match = bool(np.allclose(actual_P.to_numpy(), guessed_P.to_numpy(), rtol=0.0, atol=1e-9))
-        actual_abs = _absorbing_states(actual_P)
-        guessed_abs = _absorbing_states(guessed_P)
-        absorbing_match = actual_abs == guessed_abs
-
-        # LCS prediction
-        try:
+            guessed_P = _guess_transition_matrix(players, states, u_df, config)
+            u = u_df.loc[states, players].astype(float)
             effectivity = heyen_lehtomaa_2021(players, states)
-            u = short_term_values.loc[states, players].astype(float)
-            lcs, indirect_dom = compute_lcs(players, states, u, effectivity)
+            
+            actual_abs = _absorbing_states(actual_P.loc[states, states])
+            guessed_abs = _absorbing_states(guessed_P.loc[states, states])
+            
+            # Predictors
+            preds = {
+                "Heuristic":   set(guessed_abs),
+                "LCS (S)":     compute_lcs(players, states, u, effectivity, weak=False)[0],
+                "LCS (W)":     compute_lcs(players, states, u, effectivity, weak=True)[0],
+                "LCCS (S)":    compute_lccs(players, states, u, effectivity, weak=False)[0],
+                "LCCS (W)":    compute_lccs(players, states, u, effectivity, weak=True)[0],
+                "HREFS (L)":   compute_largest_hrefs(players, states, u, effectivity, strong=False),
+                "HSREFS (L)":  compute_largest_hrefs(players, states, u, effectivity, strong=True),
+            }
+            
+            for name, members in preds.items():
+                stats[name]["evaluated"] += 1
+                stats[name]["contains"] += int(all(s in members for s in actual_abs))
+                stats[name]["exact"] += int(frozenset(actual_abs) == members)
+                stats[name]["sizes"].append(len(members))
+                
+            rows.append({"file": path.name, "actual": actual_abs, "preds": preds})
         except Exception as exc:
-            lcs = None
-            indirect_dom = None
-            lcs_exc = str(exc)
-        else:
-            lcs_exc = None
+            print(f"Error processing {path.name}: {exc}")
 
-        lcs_abs_contains = (
-            lcs is not None
-            and all(s in lcs for s in actual_abs)
-        )
-        lcs_abs_exact = (
-            lcs is not None
-            and frozenset(actual_abs) == lcs
-        )
+    print("Stability Predictor Evaluation (Summary Table)")
+    print("=" * 95)
+    print(f"{'Stability Concept':<15} | {'Contains Actual':<18} | {'Exact Match':<15} | {'Mean Size':<10} | {'Size Dist'}")
+    print("-" * 95)
+    for name, s in stats.items():
+        n = s["evaluated"]
+        if n == 0: continue
+        c_pct = (s["contains"] / n) * 100
+        e_pct = (s["exact"] / n) * 100
+        m_size = np.mean(s["sizes"])
+        dist = dict(Counter(s["sizes"]))
+        print(f"{name:<15} | {s['contains']:>3}/{n:<3} ({c_pct:>5.1f}%) | {s['exact']:>3}/{n:<3} ({e_pct:>5.1f}%) | {m_size:>9.2f} | {dist}")
+    print("-" * 95)
+    evaluated_n = stats['LCS (S)']['evaluated']
+    print(f"evaluated_files: {evaluated_n}")
+    print()
 
-        evaluated += 1
-        exact_transition_matches += int(transition_match)
-        exact_absorbing_matches += int(absorbing_match)
-        lcs_contains_actual += int(lcs_abs_contains)
-        lcs_exact_matches += int(lcs_abs_exact)
-        rows.append({
-            "file": str(path),
-            "status": "ok",
-            "transition_match": transition_match,
-            "absorbing_match": absorbing_match,
-            "actual_absorbing": actual_abs,
-            "guessed_absorbing": guessed_abs,
-            "lcs": lcs,
-            "lcs_contains_actual": lcs_abs_contains,
-            "lcs_exact": lcs_abs_exact,
-            "lcs_error": lcs_exc,
-            "indirect_dom": indirect_dom,
-            "actual_P": actual_P,
-            "guessed_P": guessed_P,
-            "short_term_values": short_term_values.loc[states, players],
-        })
-
-    if args.file is not None:
-        print("Transition Guess Evaluation")
-        print("-" * 80)
-        if not rows:
-            print("No evaluable result.")
-            return
-        row = rows[0]
-        if row.get("status") != "ok":
-            print(f"error: {row.get('status')}")
-            return
-        print(f"file: {row['file']}")
-        print(f"transition_match:    {row['transition_match']}")
-        print(f"absorbing_match:     {row['absorbing_match']}")
-        print(f"actual_absorbing:    {row['actual_absorbing']}")
-        print(f"guessed_absorbing:   {row['guessed_absorbing']}")
-        if row.get("lcs_error"):
-            print(f"lcs_error:           {row['lcs_error']}")
-        else:
-            lcs_sorted = tuple(sorted(row["lcs"])) if row["lcs"] is not None else None
-            print(f"lcs:                 {lcs_sorted}")
-            print(f"lcs_contains_actual: {row['lcs_contains_actual']}")
-            print(f"lcs_exact:           {row['lcs_exact']}")
-
-        print("\nShort-term Values")
-        print("-" * 80)
-        print(row["short_term_values"].to_string(float_format=lambda x: f"{x:.6f}"))
-        print("\nActual Transition Matrix")
-        print("-" * 80)
-        print(row["actual_P"].to_string(float_format=lambda x: f"{x:.6f}"))
-        print("\nGuessed Transition Matrix")
-        print("-" * 80)
-        print(row["guessed_P"].to_string(float_format=lambda x: f"{x:.6f}"))
-        print("\nDifference (guessed - actual)")
-        print("-" * 80)
-        diff = row["guessed_P"] - row["actual_P"]
-        print(diff.to_string(float_format=lambda x: f"{x:.6f}"))
-
-        if row.get("indirect_dom") and row.get("lcs") is not None:
-            states_list = list(row["short_term_values"].index)
-            print("\nIndirect Dominance (a ≪ b)")
-            print("-" * 80)
-            header = f"{'a \\ b':<20}" + "".join(f"{b:<20}" for b in states_list)
-            print(header)
-            for a in states_list:
-                cells = "".join(
-                    f"{'<<':<20}" if row["indirect_dom"].get((a, b), False) else f"{'.':<20}"
-                    for b in states_list
-                )
-                print(f"{a:<20}{cells}")
-        return
-
-    print("Transition Guess Evaluation")
-    print("-" * 80)
-    print("Heuristic:")
-    print("  approvals: approve iff short-term payoff weakly improves for every required approver")
-    print("  proposals: each proposer chooses their short-term best among approval-viable targets")
-    print("LCS (Chwe 1994):")
-    print("  set of all farsightedly possibly-stable outcomes given payoffs + effectivity")
-    print("")
-    print("Summary")
-    print("-" * 80)
-    print(f"evaluated_files:             {evaluated}")
-    print(f"exact_transition_matches:    {exact_transition_matches}")
-    print(f"exact_absorbing_matches:     {exact_absorbing_matches}  (heuristic == actual)")
-    print(f"lcs_contains_actual:         {lcs_contains_actual}  (actual ⊆ LCS  — Chwe guarantee)")
-    print(f"lcs_exact_matches:           {lcs_exact_matches}  (LCS == actual absorbing set)")
-
-    # LCS size distribution
-    ok_rows = [r for r in rows if r.get("status") == "ok" and r.get("lcs") is not None]
-    if ok_rows:
-        sizes = [len(r["lcs"]) for r in ok_rows]
-        from collections import Counter
-        size_counts = sorted(Counter(sizes).items())
-        print(f"lcs_size_distribution:       { {k: v for k, v in size_counts} }")
-
-    mismatch_limit = 20
-    print("\nHeuristic absorbing mismatches")
-    print("-" * 80)
-    mismatch_rows = [row for row in rows if row.get("status") == "ok" and (not row["transition_match"] or not row["absorbing_match"])]
-    if not mismatch_rows:
-        print("none")
-    else:
-        print(f"showing first {min(mismatch_limit, len(mismatch_rows))} of {len(mismatch_rows)} mismatches")
-        print(f"{'file':<40} {'P':<5} {'A':<5} {'actual_abs':<28} {'guessed_abs':<28} {'lcs':<28}")
-        print(f"{'-' * 40} {'-' * 5} {'-' * 5} {'-' * 28} {'-' * 28} {'-' * 28}")
-        for row in mismatch_rows[:mismatch_limit]:
-            file_label = Path(row["file"]).name
-            actual_abs = str(row["actual_absorbing"])
-            guessed_abs = str(row["guessed_absorbing"])
-            lcs_str = str(tuple(sorted(row["lcs"]))) if row.get("lcs") is not None else "err"
-            print(
-                f"{file_label:<40} "
-                f"{str(row['transition_match']):<5} "
-                f"{str(row['absorbing_match']):<5} "
-                f"{actual_abs:<28.28} "
-                f"{guessed_abs:<28.28} "
-                f"{lcs_str:<28.28}"
-            )
-
-    print("\nLCS non-exact predictions (LCS ≠ actual absorbing)")
-    print("-" * 80)
-    lcs_nonexact = [r for r in rows if r.get("status") == "ok" and r.get("lcs") is not None and not r["lcs_exact"]]
-    if not lcs_nonexact:
-        print("none")
-    else:
-        print(f"showing first {min(mismatch_limit, len(lcs_nonexact))} of {len(lcs_nonexact)} cases")
-        print(f"{'file':<42} {'actual_abs':<36} lcs")
-        print(f"{'-' * 42} {'-' * 36} {'-' * 36}")
-        for row in lcs_nonexact[:mismatch_limit]:
-            file_label = Path(row["file"]).name
-            actual_abs = str(row["actual_absorbing"])
-            lcs_str = str(tuple(sorted(row["lcs"])))
-            print(f"{file_label:<42} {actual_abs:<36} {lcs_str}")
-
+    # Show some failures for LCCS
+    lccs_fails = [r for r in rows if not all(s in r["preds"]["LCCS (S)"] for s in r["actual"])]
+    if lccs_fails:
+        print("Notable LCCS (Strict) Failures (actual absorbing ⊈ LCCS)")
+        print("-" * 95)
+        for r in lccs_fails[:10]:
+            print(f"{r['file']:<40} | actual: {r['actual']} | lccs_s: {tuple(sorted(r['preds']['LCCS (S)']))}")
+        print()
 
 if __name__ == "__main__":
     main()

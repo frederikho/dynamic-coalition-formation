@@ -44,6 +44,7 @@ def _init_worker_ctx(
     effectivity: dict | None = None,
     power_rule: str = "power_threshold",
     use_newton: bool = True,
+    use_broyden: bool = False,
 ) -> None:
     global _WORKER_CTX
     n_players = len(players)
@@ -86,6 +87,7 @@ def _init_worker_ctx(
         "effectivity": effectivity,
         "power_rule": power_rule,
         "use_newton": use_newton,
+        "use_broyden": use_broyden,
     }
 
     # Workers ignore SIGINT so only the main process handles Ctrl+C.
@@ -104,6 +106,9 @@ def _init_worker_ctx(
         _dummy_V = np.zeros((n_states, n_players))
         _verify_fast_nb(_dummy_pp, _dummy_aa, _dummy_ap, _dummy_V, comm_arr, comm_size)
         if weak_equality_solve:
+            from lib.equilibrium.ordinal_ranking.numba_loops import (
+                _solve_broyden_nb as _broyden_warmup,
+            )
             _dummy_raw = np.zeros(1, dtype=np.float64)
             _dummy_fa = np.zeros((1, 4), dtype=np.int8)
             _dummy_pt_pi = np.zeros(1, dtype=np.int8)
@@ -113,6 +118,16 @@ def _init_worker_ctx(
             _dummy_aff_pi = np.zeros(1, dtype=np.int8)
             _dummy_aff_ci = np.zeros(1, dtype=np.int8)
             _dummy_aff_is_pt = np.zeros(1, dtype=np.bool_)
+            _nb_solver_args = (
+                _dummy_raw,
+                _dummy_pp, _dummy_aa, _dummy_ap,
+                _dummy_fa, 1,
+                _dummy_pt_pi, _dummy_pt_si, _dummy_pt_widxs, _dummy_pt_nwidxs, 0,
+                _dummy_aff_pi, _dummy_aff_ci, _dummy_aff_is_pt, 0,
+                comm_arr, comm_size, _tiers_buf,
+                protocol_arr, payoff_array, discounting,
+                n_players, n_states,
+            )
             _residuals_nb_core(
                 _dummy_raw, _dummy_pp, _dummy_aa, _dummy_ap,
                 _dummy_fa, 1,
@@ -122,6 +137,8 @@ def _init_worker_ctx(
                 protocol_arr, payoff_array, discounting,
                 n_players, n_states,
             )
+            if use_broyden:
+                _broyden_warmup(*_nb_solver_args)
 
 
 def _make_solver_timing() -> dict[str, float]:
@@ -259,6 +276,7 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                             committee_idxs=ctx["committee_idxs"],
                             max_vars=weak_equality_max_vars,
                             use_newton=ctx.get("use_newton", True),
+                            use_broyden=ctx.get("use_broyden", False),
                             _precomputed_tie_structure=tie_struct,
                             _precomputed_canon_arrays=(proposal_probs, approval_action, approval_pass),
                             _numba_comm_arr=comm_arr if _NUMBA_AVAILABLE else None,

@@ -18,6 +18,7 @@ from lib.equilibrium.ordinal_ranking.value_mdp import _solve_values, _verify_fas
 from lib.equilibrium.ordinal_ranking.numba_loops import (
     _NUMBA_AVAILABLE,
     _solve_weak_equalities_nb,
+    _solve_broyden_nb,
     _residuals_nb_prep,
     _residuals_nb_p_agg,
     _residuals_nb_residuals,
@@ -260,6 +261,7 @@ def _solve_weak_equalities(
     power_rule: str = "power_threshold",
     max_vars: int | None = None,
     use_newton: bool = True,
+    use_broyden: bool = False,
     _precomputed_tie_structure: tuple[
         list[tuple[str, str, str, str]],
         list[tuple[str, str, tuple[str, ...]]],
@@ -341,7 +343,7 @@ def _solve_weak_equalities(
         timing_data["solver_setup_indices"] += (time.perf_counter() - t_s_indices)
 
     _use_nb = (
-        use_newton
+        (use_newton or use_broyden)
         and _NUMBA_AVAILABLE
         and _numba_comm_arr is not None
         and _numba_comm_size is not None
@@ -529,9 +531,11 @@ def _solve_weak_equalities(
         scipy_start = guess
 
         if _use_nb:
-            _bump_flow("newton_attempted")
+            _solver_label = "broyden" if use_broyden else "newton"
+            _bump_flow(f"{_solver_label}_attempted")
             t_nb0 = time.perf_counter()
-            nb_alpha, nb_converged, nb_progress = _solve_weak_equalities_nb(
+            _nb_solver = _solve_broyden_nb if use_broyden else _solve_weak_equalities_nb
+            nb_alpha, nb_converged, nb_progress, nb_iters, nb_exit_res = _nb_solver(
                 guess,
                 canon_probs, canon_action, canon_pass,
                 _fa_arr, _n_fa,
@@ -546,13 +550,14 @@ def _solve_weak_equalities(
             if nb_converged:
                 raw = nb_alpha
                 _nb_hit = True
-                _bump_flow("newton_converged")
+                _bump_flow(f"{_solver_label}_converged")
+                _bump_flow(f"{_solver_label}_iters_on_converged", nb_iters)
             elif nb_progress > 1.0 + 1e-6:
                 scipy_start = nb_alpha
                 _seeded_from_newton = True
-                _bump_flow("newton_progress_seeded")
+                _bump_flow(f"{_solver_label}_progress_seeded")
             else:
-                _bump_flow("newton_no_progress")
+                _bump_flow(f"{_solver_label}_no_progress")
                 if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
                     _exit_stats_counts[guess_idx, _OUTCOME_NB_SKIP] += 1
 
@@ -582,6 +587,7 @@ def _solve_weak_equalities(
                         _exit_stats_counts[guess_idx, _OUTCOME_EXCEPTION] += 1
                 continue
             _bump_flow("scipy_success_flag")
+            _bump_flow("scipy_nfev_total", int(getattr(sol, "nfev", 0)))
             raw = np.asarray(sol.x, dtype=np.float64)
 
         phys = raw.copy()
@@ -655,6 +661,13 @@ def _solve_weak_equalities(
                 best_source_path = "scipy_unseeded"
         if best_resid < 1e-7:
             _bump_flow("final_residual_success")
+            # Log Newton diagnostics at the successful guess for later analysis.
+            _bump_flow("success_newton_iters", nb_iters)
+            # nb_exit_res is in raw (logit) space, but its magnitude tells us
+            # how much work Newton did before handing off to SciPy.
+            # We store it scaled to int(res * 1e9) to fit in the int counter.
+            _bump_flow("success_newton_exit_res_e9", max(0, int(nb_exit_res * 1e9)))
+            _bump_flow("success_n_free", n_vars)
             if _exit_stats_counts is not None and guess_idx < _exit_stats_counts.shape[0]:
                 if _nb_hit:
                     _exit_stats_counts[guess_idx, _OUTCOME_NB_HIT] += 1

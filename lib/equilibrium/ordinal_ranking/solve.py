@@ -114,6 +114,7 @@ def solve_with_ordinal_ranking_n3(
     dedup_by: str = "none",
     payoff_path: Path | None = None,
     use_newton: bool = True,
+    use_broyden: bool = False,
     extra_metadata: dict | None = None,
     logger=None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
@@ -261,6 +262,7 @@ def solve_with_ordinal_ranking_n3(
                 getattr(solver, "effectivity", None),
                 getattr(solver, "power_rule", "power_threshold"),
                 use_newton,
+                use_broyden,
             ),
         )
         pending = {}

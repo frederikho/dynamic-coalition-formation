@@ -11,6 +11,9 @@ try:
 except ImportError:
     _NUMBA_AVAILABLE = False
 
+# Newton solver configuration
+_NEWTON_MAX_ITERS = 20
+
 
 if _NUMBA_AVAILABLE:
     @_numba.njit(cache=True)
@@ -355,12 +358,18 @@ if _NUMBA_AVAILABLE:
         protocol_arr, payoff_array, discounting,
         n_players, n_states
     ):
-        """Numba JIT regularised Newton solver for weak-equality constraints."""
+        """Numba JIT regularised Newton solver for weak-equality constraints.
+
+        Returns (alpha, converged, progress_ratio, iters_run, best_res).
+        iters_run counts how many Newton steps were taken (0 if converged on
+        first residual eval or Jacobian was degenerate).
+        best_res is the smallest max-abs residual seen across all iterations.
+        """
         n_v = alpha_init.shape[0]
         alpha = alpha_init.copy()
         best_alpha = alpha.copy()
         tol = 1e-8
-        max_iters = 20
+        max_iters = _NEWTON_MAX_ITERS
         max_step = 5.0
         n_fa = int(n_fa)
         n_pt = int(n_pt)
@@ -376,13 +385,14 @@ if _NUMBA_AVAILABLE:
         )
         initial_res = np.max(np.abs(res))
         if initial_res < tol:
-            return alpha, True, np.inf
+            return alpha, True, np.inf, 0, initial_res
 
         max_jac = np.max(np.abs(jac))
         if max_jac < 1e-9:
-            return alpha, False, 1.0
+            return alpha, False, 1.0, 0, initial_res
 
         best_res = initial_res
+        iters_run = 0
 
         for i in range(max_iters):
             curr_res = np.max(np.abs(res))
@@ -391,7 +401,7 @@ if _NUMBA_AVAILABLE:
                 best_alpha[:] = alpha[:]
 
             if curr_res < tol:
-                return best_alpha, True, initial_res / (curr_res + 1e-300)
+                return best_alpha, True, initial_res / (curr_res + 1e-300), iters_run, best_res
 
             lam = max_jac * 1e-4
             if lam < 1e-9: lam = 1e-9
@@ -407,8 +417,9 @@ if _NUMBA_AVAILABLE:
             if step_sq > max_step * max_step:
                 scale = max_step / math.sqrt(step_sq)
                 for j in range(n_v): delta[j] *= scale
-            
+
             alpha += 0.5 * delta
+            iters_run += 1
             res, jac = _residuals_nb_core(
                 alpha, canon_probs, canon_action, canon_pass,
                 fa_arr, n_fa, pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
@@ -423,8 +434,140 @@ if _NUMBA_AVAILABLE:
         if final_res < best_res:
             best_res = final_res
             best_alpha[:] = alpha[:]
-        
-        return best_alpha, (best_res < tol), initial_res / (best_res + 1e-300)
+
+        return best_alpha, (best_res < tol), initial_res / (best_res + 1e-300), iters_run, best_res
+
+    @_numba.njit(cache=True)
+    def _solve_broyden_nb(
+        alpha_init,
+        canon_probs, canon_action, canon_pass,
+        fa_arr, n_fa,
+        pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
+        aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
+        comm_arr, comm_size, tiers,
+        protocol_arr, payoff_array, discounting,
+        n_players, n_states
+    ):
+        """Broyden's Good Method for weak-equality constraints.
+
+        Same interface as _solve_weak_equalities_nb.  Each iteration costs
+        one residual evaluation plus O(n_vars^2) rank-1 matrix ops — no
+        Jacobian recomputation.  H (approximate inverse Jacobian) is
+        initialised as the identity and updated via the Good-Broyden
+        Sherman-Morrison formula:
+
+            H_{k+1} = H_k + (s - H_k y)(s^T H_k) / (s^T H_k y)
+
+        where s = step taken, y = change in residual.
+
+        Returns (alpha, converged, progress_ratio, iters_run, best_res).
+        """
+        n_v = alpha_init.shape[0]
+        alpha = alpha_init.copy()
+        best_alpha = alpha.copy()
+        tol = 1e-8
+        max_iters = 200
+        max_step = 5.0
+        n_fa = int(n_fa)
+        n_pt = int(n_pt)
+        n_aff = int(n_aff)
+
+        # Initial residual — no Jacobian needed.
+        res, _ = _residuals_nb_core(
+            alpha, canon_probs, canon_action, canon_pass,
+            fa_arr, n_fa, pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
+            aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
+            comm_arr, comm_size, tiers,
+            protocol_arr, payoff_array, discounting,
+            n_players, n_states, compute_jac=False,
+        )
+        initial_res = np.max(np.abs(res))
+        if initial_res < tol:
+            return alpha, True, np.inf, 0, initial_res
+
+        # H = I: first step is -f(x), pure gradient-descent style.
+        H = np.eye(n_v)
+        best_res = initial_res
+        iters_run = 0
+
+        for i in range(max_iters):
+            curr_res = np.max(np.abs(res))
+            if curr_res < best_res:
+                best_res = curr_res
+                best_alpha[:] = alpha[:]
+
+            if curr_res < tol:
+                return best_alpha, True, initial_res / (curr_res + 1e-300), iters_run, best_res
+
+            # Broyden step: s = -H f
+            s = np.zeros(n_v)
+            for r in range(n_v):
+                v = 0.0
+                for c in range(n_v):
+                    v += H[r, c] * res[c]
+                s[r] = -v
+
+            # Clamp step size.
+            step_sq = 0.0
+            for j in range(n_v):
+                step_sq += s[j] * s[j]
+            if step_sq > max_step * max_step:
+                scale = max_step / math.sqrt(step_sq)
+                for j in range(n_v):
+                    s[j] *= scale
+
+            alpha_new = alpha + s
+
+            res_new, _ = _residuals_nb_core(
+                alpha_new, canon_probs, canon_action, canon_pass,
+                fa_arr, n_fa, pt_pi_arr, pt_si_arr, pt_widxs_arr, pt_nwidxs_arr, n_pt,
+                aff_pi_arr, aff_ci_arr, aff_is_pt_arr, n_aff,
+                comm_arr, comm_size, tiers,
+                protocol_arr, payoff_array, discounting,
+                n_players, n_states, compute_jac=False,
+            )
+
+            # Good-Broyden inverse-Jacobian update:
+            #   y     = res_new - res
+            #   H_y   = H @ y
+            #   denom = s^T H y  (= s . H_y)
+            #   H    += outer(s - H_y, H^T s) / denom
+            y = res_new - res
+
+            H_y = np.zeros(n_v)
+            for r in range(n_v):
+                for c in range(n_v):
+                    H_y[r] += H[r, c] * y[c]
+
+            denom = 0.0
+            for j in range(n_v):
+                denom += s[j] * H_y[j]
+
+            if abs(denom) > 1e-14:
+                # num_vec = s - H y
+                num_vec = s - H_y
+                # row_vec = H^T s  (the transposed row)
+                row_vec = np.zeros(n_v)
+                for c in range(n_v):
+                    for r in range(n_v):
+                        row_vec[c] += H[r, c] * s[r]
+
+                inv_denom = 1.0 / denom
+                for r in range(n_v):
+                    for c in range(n_v):
+                        H[r, c] += num_vec[r] * row_vec[c] * inv_denom
+
+            alpha = alpha_new
+            res = res_new
+            iters_run += 1
+
+        final_res = np.max(np.abs(res))
+        if final_res < best_res:
+            best_res = final_res
+            best_alpha[:] = alpha[:]
+
+        return best_alpha, (best_res < tol), initial_res / (best_res + 1e-300), iters_run, best_res
+
 else:
     # Minimal stubs if numba is missing
     def _build_arrays_weak_nb(*args): raise ImportError("numba required")
@@ -434,4 +577,5 @@ else:
     def _residuals_nb_p_agg(*args): raise ImportError("numba required")
     def _residuals_nb_residuals(*args): raise ImportError("numba required")
     def _residuals_nb_core(*args): raise ImportError("numba required")
-    def _solve_weak_equalities_nb(*args): raise ImportError("numba required")
+    def _solve_weak_equalities_nb(*args): raise ImportError("numba required")  # returns (alpha, converged, progress, iters_run, best_res)
+    def _solve_broyden_nb(*args): raise ImportError("numba required")  # same signature

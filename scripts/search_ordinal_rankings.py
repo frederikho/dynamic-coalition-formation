@@ -21,6 +21,7 @@ from lib.equilibrium.solver import EquilibriumSolver
 from lib.equilibrium.ordinal_ranking import solve_with_ordinal_ranking_n3
 from lib.equilibrium.ordinal_ranking.ranking_orders import _generate_weak_orders
 from lib.equilibrium.ordinal_ranking.weak_equality import _NEWTON_GUESS_LIMIT
+from lib.equilibrium.ordinal_ranking.numba_loops import _NEWTON_MAX_ITERS
 from lib.equilibrium.find import (
     setup_experiment,
     _infer_or_parse_players_from_payoff_table,
@@ -186,13 +187,19 @@ def _print_solver_execution_summary(
 
     newton_attempted = int(flow.get("newton_attempted", 0))
     newton_converged = int(flow.get("newton_converged", 0))
+    newton_iters_on_converged = int(flow.get("newton_iters_on_converged", 0))
     newton_progress_seeded = int(flow.get("newton_progress_seeded", 0))
     newton_no_progress = int(flow.get("newton_no_progress", 0))
 
     scipy_attempted = int(flow.get("scipy_attempted", 0))
     scipy_success_flag = int(flow.get("scipy_success_flag", 0))
+    scipy_nfev_total = int(flow.get("scipy_nfev_total", 0))
     scipy_unsuccessful = int(flow.get("scipy_unsuccessful", 0))
     scipy_exception = int(flow.get("scipy_exception", 0))
+
+    success_newton_iters = int(flow.get("success_newton_iters", 0))
+    success_newton_exit_res = float(flow.get("success_newton_exit_res_e9", 0)) / 1e9
+    success_n_free = int(flow.get("success_n_free", 0))
 
     final_residual_success = int(flow.get("final_residual_success", 0))
     final_residual_fail = int(flow.get("final_residual_fail", 0))
@@ -247,13 +254,18 @@ def _print_solver_execution_summary(
     print("Process Flow:")
     print(f"  - Newton's Method ({nb_pct:4.1f}% of solver time)")
     print(f"    - Attempted guesses:        {newton_attempted:>12,d}")
-    print(f"    - Converged (Newton):       {newton_converged:>12,d}")
+    if newton_converged > 0:
+        avg_iters = newton_iters_on_converged / newton_converged
+        print(f"    - Converged (Newton):       {newton_converged:>12,d}  (avg iters: {avg_iters:.1f})")
+    else:
+        print(f"    - Converged (Newton):       {newton_converged:>12,d}")
     print(f"    - No progress (nb_skip):    {newton_no_progress:>12,d}")
     print(f"    - Made progress (seed):     {newton_progress_seeded:>12,d}")
     print()
     print(f"  - Scipy Root Search ({root_pct:4.1f}% of solver time)")
     print(f"    - Attempted:                {scipy_attempted:>12,d}")
-    print(f"    - success flag=True:        {scipy_success_flag:>12,d}")
+    avg_nfev = (scipy_nfev_total / scipy_success_flag) if scipy_success_flag > 0 else 0.0
+    print(f"    - success flag=True:        {scipy_success_flag:>12,d}  (avg nfev on success: {avg_nfev:.0f})")
     print(f"    - success flag=False:       {scipy_unsuccessful:>12,d}")
     print("      - Failed outcomes (subset of success flag=False):")
     print(f"        - bad_progress:         {terminal_outcomes['bad_progress']:>12,d}")
@@ -292,6 +304,18 @@ def _print_solver_execution_summary(
     print(f"    - Canonical verify path:    {source_counts['canonical']:>12,d}")
     print(f"    - Weak-equality path:       {source_counts['weak_equality_solve']:>12,d}")
     print(f"    - Unknown source label:     {source_counts['unknown']:>12,d}")
+    if final_residual_success > 0:
+        print()
+        print("Newton Diagnostics at Successful Residual Gate (GPU sizing data):")
+        print(f"  - n_free at success:          {success_n_free:>12,d}  (total across {final_residual_success} hits)")
+        avg_free = success_n_free / final_residual_success if final_residual_success > 0 else 0
+        print(f"  - avg n_free per success:     {avg_free:>12.1f}")
+        print(f"  - Newton iters (total):       {success_newton_iters:>12,d}")
+        avg_nb = success_newton_iters / final_residual_success if final_residual_success > 0 else 0
+        print(f"  - avg Newton iters/success:   {avg_nb:>12.1f}  ← safe K for fixed-iter Newton")
+        print(f"  - Newton exit residual (sum): {success_newton_exit_res:>12.6f}")
+        avg_res = success_newton_exit_res / final_residual_success if final_residual_success > 0 else 0
+        print(f"  - avg Newton exit residual:   {avg_res:>12.6f}  ← residual at SciPy handoff")
     if output_dir:
         print(f"  - Pre-dedup successes:        {n_hits:>12,d}")
         print(f"  - Written unique files:       {written_unique:>12,d}")
@@ -337,6 +361,9 @@ def main():
     parser.add_argument("--random-seed", type=int, default=0)
     parser.add_argument("--disable-newton", action="store_true",
                         help="Disable Newton's method in weak-equality solver (use only Scipy)")
+    parser.add_argument("--use-broyden", action="store_true",
+                        help="Use Broyden's Good Method instead of Newton for warm-up "
+                             "(residual-only per iteration, no Jacobian recomputation)")
 
     args = parser.parse_args()
 
@@ -406,6 +433,9 @@ def main():
     print(f"shuffle: {args.shuffle}")
     if args.weak_equality_solve:
         print(f"newton_guess_limit: {_NEWTON_GUESS_LIMIT}")
+        print(f"newton_max_iters: {_NEWTON_MAX_ITERS}")
+        warm_up_method = "broyden" if args.use_broyden else ("newton" if not args.disable_newton else "none")
+        print(f"warm_up_method: {warm_up_method}")
     print()
 
     # ── Search ───────────────────────────────────────────────────────────────
@@ -445,6 +475,7 @@ def main():
         dedup_by=args.dedup_by,
         payoff_path=payoff_path,
         use_newton=(not args.disable_newton),
+        use_broyden=args.use_broyden,
         extra_metadata=extra_metadata,
     )
 
