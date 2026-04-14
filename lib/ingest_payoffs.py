@@ -290,15 +290,17 @@ def compute_welfare_sums(
 def _build_global_token_map() -> dict[str, str]:
     """
     Build a mapping from all known RICE50x filename tokens (lowercase) to UPPERCASE
-    display names, using the full RICE50X_REGIONS registry.
+    display names, using the full RICE50X_REGIONS registry plus RICE50X_BLOCS.
 
     Display names are the uppercase GDX codes (e.g. 'chn' → 'CHN').
+    Bloc entries (e.g. 'eur' → 'EUR', 'eu27' → 'EUR') are included so that GDX
+    filenames containing bloc coalition names are parsed correctly.
     """
-    from lib.rice50x_regions import RICE50X_REGIONS
+    from lib.rice50x_regions import RICE50X_REGIONS, RICE50X_BLOCS
     token_map: dict[str, str] = {}
     for gdx_code in RICE50X_REGIONS:
-        display_name = gdx_code.upper()
-        token_map[gdx_code.lower()] = display_name
+        token_map[gdx_code.lower()] = gdx_code.upper()
+    token_map.update(RICE50X_BLOCS)
     return token_map
 
 

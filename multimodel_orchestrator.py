@@ -461,12 +461,26 @@ def _build_gams_jobs(
     #    we set it explicitly here for consistency across all phases.)
     jobs.append(("baseline", base + ["--can_deploy=no"]))
 
-    # 2. Unilateral (noncoop) runs — one per country
+    # 2. Unilateral (noncoop) runs — one per country.
+    # For aggregate blocs (e.g. 'eur' → eu27), RICE has no single region with
+    # that code, so we run a coalition job with the bloc's GAMS coalition name
+    # instead of a noncoop job.  The output GDX will be named with the GAMS
+    # coalition name (e.g. '_eu27_deployed'), which the ingest step maps back
+    # to the framework token (EUR) via RICE50X_BLOCS in the token map.
+    from lib.rice50x_regions import RICE50X_BLOC_GAMS_COALITION
     for country in countries:
-        cmd = base + [
-            "--cooperation=noncoop",
-            f"--can_deploy={country}",
-        ]
+        if country in RICE50X_BLOC_GAMS_COALITION:
+            gams_coalition = RICE50X_BLOC_GAMS_COALITION[country]
+            cmd = base + [
+                "--cooperation=coalitions",
+                "--sel_coalition=sai_farsighted",
+                f"--sai_coalition={gams_coalition}",
+            ]
+        else:
+            cmd = base + [
+                "--cooperation=noncoop",
+                f"--can_deploy={country}",
+            ]
         jobs.append((f"noncoop_{country}", cmd))
 
     # 3. Coalition runs — all subsets of size 2 up to N (including grand coalition)
@@ -925,14 +939,15 @@ def orchestrate(
     payoff_metadata: Optional[dict[str, object]] = None,
     payoff_range: Optional[tuple[Optional[int], int]] = None,
     average_payoffs: bool = False,
+    payoffs_only: bool = False,
 ) -> list[dict]:
     """Run the full multi-period orchestration.
 
     For each period:
       1. Run all GAMS simulations in parallel (with SAI history from previous phase).
       2. Ingest GDX outputs into a payoff table.
-      3. Find the coalition equilibrium.
-      4. Extract absorbing states and their W_SAI values.
+      3. Find the coalition equilibrium.            (skipped with payoffs_only=True)
+      4. Extract absorbing states and their W_SAI values. (skipped with payoffs_only=True)
       5. Determine the SAI history GDX for the next phase.
 
     Args:
@@ -959,7 +974,7 @@ def orchestrate(
     """
     t0 = time.monotonic()
 
-    countries_slug = "".join(countries)
+    countries_slug = "".join(sorted(countries))
     payoff_dir  = COALITION_DIR / "payoff_tables"
     strategy_dir = COALITION_DIR / "strategy_tables"
     payoff_dir.mkdir(parents=True, exist_ok=True)
@@ -974,6 +989,8 @@ def orchestrate(
     _log(f"  RICE dir:     {rice_dir}")
     _log(f"  Max workers:  {max_workers}")
     _log(f"  Fresh:        {fresh}")
+    if payoffs_only:
+        _log("  Mode:         payoffs only (equilibrium step skipped)")
     if payoff_range is not None:
         pr_start, pr_end = payoff_range
         if pr_start is None:
@@ -1030,7 +1047,8 @@ def orchestrate(
         solver_log_dir = COALITION_DIR / "logs"
 
         # ── Step 1: GAMS simulations ─────────────────────────────────────────
-        _step(1, 4, "Running GAMS simulations", t0)
+        n_steps = 2 if payoffs_only else 4
+        _step(1, n_steps, "Running GAMS simulations", t0)
         if not fresh and _gams_outputs_exist(gams_workdir, len(countries)):
             _skip(f"GDX outputs already in {gams_workdir.name}")
         else:
@@ -1047,7 +1065,7 @@ def orchestrate(
             )
 
         # ── Step 2: Ingest payoffs ───────────────────────────────────────────
-        _step(2, 4, "Ingesting payoffs from GDX files", t0)
+        _step(2, n_steps, "Ingesting payoffs from GDX files", t0)
         if not fresh and payoff_table.exists():
             _skip(f"payoff table already exists: {payoff_table.name}")
         else:
@@ -1064,6 +1082,11 @@ def orchestrate(
                 extra_metadata=payoff_metadata,
                 average_payoffs=average_payoffs,
             )
+
+        if payoffs_only:
+            phase_results.append({"period": period_label, "payoff_table": str(payoff_table)})
+            _ok(f"Payoff table written: {payoff_table.name}")
+            continue
 
         # ── Step 3: Find equilibrium ─────────────────────────────────────────
         _step(3, 4, "Finding coalition equilibrium", t0)
@@ -1166,6 +1189,15 @@ def orchestrate(
 
     # ── Final summary ──────────────────────────────────────────────────────
     _section(f"RESULTS SUMMARY  (total elapsed: {_elapsed(t0)})")
+    if payoffs_only:
+        col_period = 18
+        col_table  = 60
+        _log(f"  {'Period':<{col_period}}  {'Payoff Table':<{col_table}}")
+        _log(f"  {'─' * col_period}  {'─' * col_table}")
+        for r in phase_results:
+            _log(f"  {r['period']:<{col_period}}  {r['payoff_table']:<{col_table}}")
+        _log("")
+        return phase_results
     col_period  = 18
     col_states  = 36
     col_sai     = 12
@@ -1399,6 +1431,16 @@ def main() -> None:
             "undiscounted per-period welfare measure."
         ),
     )
+    parser.add_argument(
+        "--payoffs-only",
+        action="store_true",
+        default=False,
+        help=(
+            "Run GAMS simulations and ingest payoff tables, then stop. "
+            "Skips equilibrium finding and absorbing-state extraction. "
+            "For multi-period runs, SAI history chaining between phases is disabled."
+        ),
+    )
 
     args = parser.parse_args()
     _validate_periods(args.periods)
@@ -1437,6 +1479,7 @@ def main() -> None:
             rice_dir=args.rice_dir,
             max_workers=args.max_workers,
             fresh=args.fresh,
+            payoffs_only=args.payoffs_only,
             extra_gams_args=extra_gams_args or None,
             payoff_metadata=payoff_metadata,
             payoff_range=args.payoff_range,

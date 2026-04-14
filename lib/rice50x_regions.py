@@ -70,6 +70,22 @@ RICE50X_REGIONS = {
     "zaf":    "South Africa",
 }
 
+# Aggregate blocs: tokens that represent a group of RICE50x regions rather than a
+# single region.  Each entry maps both the framework token (e.g. 'eur') and the
+# GAMS coalition name (e.g. 'eu27') to the same uppercase display name ('EUR').
+# Used by ingest_payoffs for GDX token parsing and by the orchestrator to build
+# correct GAMS jobs (coalition run instead of noncoop run for these blocs).
+RICE50X_BLOCS: dict[str, str] = {
+    "eur":  "EUR",   # framework token used in coalition names (eurusa, chneur, …)
+    "eu27": "EUR",   # GAMS coalition name used in the singleton GDX filename
+}
+
+# GAMS coalition name to use when running a bloc "unilaterally" (singleton state).
+# For normal regions this is just the region code; for blocs it differs.
+RICE50X_BLOC_GAMS_COALITION: dict[str, str] = {
+    "eur": "eu27",
+}
+
 # Player name (uppercase code) → full country/region name
 RICE50X_PLAYER_NAMES = {code.upper(): name for code, name in RICE50X_REGIONS.items()}
 

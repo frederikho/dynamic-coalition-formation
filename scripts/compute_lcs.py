@@ -75,7 +75,7 @@ def main() -> None:
         "--effectivity-rule",
         type=str,
         default=None,
-        choices=("heyen_lehtomaa_2021", "unanimous_consent", "deployer_exit", "free_exit"),
+        choices=("heyen_lehtomaa_2021", "unanimous_consent", "deployer_exit", "free_exit", "adjacent_step"),
         help="Effectivity rule. Overrides whatever the scenario config specifies.",
     )
     parser.add_argument(
@@ -178,17 +178,20 @@ def main() -> None:
 
     # Detailed indirect dominance for the default (LCS Strict)
     _, indirect_dom = results["LCS (Strict)"]
-    print("Indirect Dominance (Strict)  (row a ≪ col b)")
-    print("-" * 60)
-    col_w = max(len(s) for s in state_names) + 2
-    header_dom = f"{'a \\ b':<{col_w}}" + "".join(f"{b:<{col_w}}" for b in state_names)
-    print(header_dom)
-    for a in state_names:
-        cells = "".join(
-            f"{'<<':<{col_w}}" if indirect_dom.get((a, b), False) else f"{'.':<{col_w}}"
-            for b in state_names
-        )
-        print(f"{a:<{col_w}}{cells}")
+    if len(state_names) <= 5:
+        print("Indirect Dominance (Strict)  (row a ≪ col b)")
+        print("-" * 60)
+        col_w = max(len(s) for s in state_names) + 2
+        header_dom = f"{'a \\ b':<{col_w}}" + "".join(f"{b:<{col_w}}" for b in state_names)
+        print(header_dom)
+        for a in state_names:
+            cells = "".join(
+                f"{'<<':<{col_w}}" if indirect_dom.get((a, b), False) else f"{'.':<{col_w}}"
+                for b in state_names
+            )
+            print(f"{a:<{col_w}}{cells}")
+    else:
+        print("(Indirect dominance table skipped for >5 states)")
 
 
 if __name__ == "__main__":

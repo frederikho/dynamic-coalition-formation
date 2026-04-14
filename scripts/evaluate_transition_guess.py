@@ -19,6 +19,7 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -29,7 +30,7 @@ from lib.equilibrium.find import _parse_players_from_payoff_table
 from lib.equilibrium.lcs import compute_lcs, compute_lccs, compute_largest_hrefs
 from lib.equilibrium.scenarios import fill_players, get_scenario
 from lib.equilibrium.solver import EquilibriumSolver
-from lib.effectivity import heyen_lehtomaa_2021
+from lib.effectivity import get_effectivity, get_forbidden_proposals
 from lib.utils import get_approval_committee
 
 
@@ -93,8 +94,10 @@ def _guess_transition_matrix(
     states: list[str],
     short_term_values: pd.DataFrame,
     config: dict[str, Any],
+    effectivity_rule: str = "heyen_lehtomaa_2021",
 ) -> pd.DataFrame:
-    effectivity = heyen_lehtomaa_2021(players, states)
+    effectivity = get_effectivity(effectivity_rule, players, states)
+    forbidden = get_forbidden_proposals(effectivity_rule, players, states)
     solver = EquilibriumSolver(
         players=players,
         states=states,
@@ -113,6 +116,8 @@ def _guess_transition_matrix(
         for current_state in states:
             viable_targets: list[str] = []
             for next_state in states:
+                if (proposer, current_state, next_state) in forbidden:
+                    continue
                 committee = get_approval_committee(effectivity, players, proposer, current_state, next_state)
                 if all(
                     float(short_term_values.loc[next_state, approver]) >= float(short_term_values.loc[current_state, approver])
@@ -199,7 +204,7 @@ def _absorbing_states(P: pd.DataFrame, edge_threshold: float = 0.05) -> tuple[st
     return tuple(sorted(absorbing))
 
 
-def _run_payoff_table_mode(path: Path) -> None:
+def _run_payoff_table_mode(path: Path, effectivity_rule: str | None = None) -> None:
     print("Stability Prediction from Payoff Table")
     print("-" * 80)
     print(f"file: {path}")
@@ -207,12 +212,18 @@ def _run_payoff_table_mode(path: Path) -> None:
     try:
         meta_df = pd.read_excel(path, sheet_name="Metadata", header=None)
         meta: dict[str, Any] = {row.iloc[0]: row.iloc[1] for _, row in meta_df.iterrows() if isinstance(row.iloc[0], str)}
-    except Exception as exc:
-        print(f"error loading metadata: {exc}")
-        return
+    except Exception:
+        meta = {}
 
     players = _parse_players(meta.get("players"))
-    if not players: return
+    if not players:
+        # Fallback to inference from columns
+        try:
+            df = pd.read_excel(path, sheet_name="Payoffs", header=1, index_col=0)
+            players = [c for c in df.columns if c not in ("W_SAI", "Source file") and not str(c).startswith("W_SAI")]
+        except Exception:
+            print("error: could not determine players")
+            return
 
     u: pd.DataFrame | None = None
     for sheet in ("Payoffs", "Short-term Values"):
@@ -224,7 +235,10 @@ def _run_payoff_table_mode(path: Path) -> None:
     if u is None: return
 
     states = [str(s) for s in u.index.tolist()]
-    effectivity = heyen_lehtomaa_2021(players, states)
+    file_rule = meta.get("effectivity_rule", "heyen_lehtomaa_2021")
+    rule_to_use = effectivity_rule or file_rule
+    print(f"Effectivity Rule: {rule_to_use}")
+    effectivity = get_effectivity(rule_to_use, players, states)
     
     try:
         lcs, _ = compute_lcs(players, states, u, effectivity)
@@ -249,6 +263,7 @@ def main() -> None:
     parser.add_argument("--root", default="strategy_tables", help="Directory to scan")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of files")
     parser.add_argument("--file", type=str, default=None, help="Evaluate a specific file")
+    parser.add_argument("--effectivity-rule", type=str, default=None, help="Filter by or force effectivity rule")
     args = parser.parse_args()
 
     root = Path(args.root)
@@ -259,7 +274,7 @@ def main() -> None:
             sheet_names = pd.ExcelFile(file_path).sheet_names
         except Exception: return
         if "Short-term Values" not in sheet_names and "Payoffs" in sheet_names:
-            _run_payoff_table_mode(file_path)
+            _run_payoff_table_mode(file_path, effectivity_rule=args.effectivity_rule)
             return
         files = [file_path]
     else:
@@ -277,7 +292,7 @@ def main() -> None:
     }
     rows: list[dict[str, Any]] = []
 
-    for path in files:
+    for path in tqdm(files, desc="Computing stability predictors", unit="file"):
         metadata = _load_metadata(path)
         if not (metadata and _truthy(metadata.get("verification_success")) and int(float(metadata.get("n_players", 0))) == 3):
             continue
@@ -288,13 +303,17 @@ def main() -> None:
 
         players = _parse_players(metadata.get("players"))
         states = [str(s) for s in u_df.index.tolist()]
-        if not players or len(states) != 5: continue
+        if not players or len(states) < 5: continue
+
+        file_rule = metadata.get("effectivity_rule", "heyen_lehtomaa_2021")
+        if args.effectivity_rule and args.effectivity_rule != file_rule:
+            continue
 
         try:
             config = _load_config_from_metadata(path, metadata, players)
-            guessed_P = _guess_transition_matrix(players, states, u_df, config)
+            guessed_P = _guess_transition_matrix(players, states, u_df, config, effectivity_rule=file_rule)
             u = u_df.loc[states, players].astype(float)
-            effectivity = heyen_lehtomaa_2021(players, states)
+            effectivity = get_effectivity(file_rule, players, states)
             
             actual_abs = _absorbing_states(actual_P.loc[states, states])
             guessed_abs = _absorbing_states(guessed_P.loc[states, states])
@@ -321,18 +340,27 @@ def main() -> None:
             print(f"Error processing {path.name}: {exc}")
 
     print("Stability Predictor Evaluation (Summary Table)")
-    print("=" * 95)
-    print(f"{'Stability Concept':<15} | {'Contains Actual':<18} | {'Exact Match':<15} | {'Mean Size':<10} | {'Size Dist'}")
-    print("-" * 95)
+    print("=" * 105)
+    print("Legend:")
+    print("  (S) Strict  : based on indirect strict dominance (all deviators must gain)")
+    print("  (W) Weak    : based on indirect weak dominance (all deviators >= equal, some must gain)")
+    print("  (L) Largest : the unique largest set containing all coherent stable sets")
+    print("-" * 105)
+    print(f"{'Stability Concept':<15} | {'Contains Actual':<22} | {'Exact Match':<22} | {'Mean Size':>10} | {'Size Dist'}")
+    print("-" * 105)
     for name, s in stats.items():
         n = s["evaluated"]
         if n == 0: continue
         c_pct = (s["contains"] / n) * 100
         e_pct = (s["exact"] / n) * 100
         m_size = np.mean(s["sizes"])
-        dist = dict(Counter(s["sizes"]))
-        print(f"{name:<15} | {s['contains']:>3}/{n:<3} ({c_pct:>5.1f}%) | {s['exact']:>3}/{n:<3} ({e_pct:>5.1f}%) | {m_size:>9.2f} | {dist}")
-    print("-" * 95)
+        dist = dict(sorted(Counter(s["sizes"]).items()))
+        
+        c_str = f"{s['contains']}/{n} ({c_pct:.1f}%)"
+        e_str = f"{s['exact']}/{n} ({e_pct:.1f}%)"
+        
+        print(f"{name:<15} | {c_str:<22} | {e_str:<22} | {m_size:>10.2f} | {dist}")
+    print("-" * 105)
     evaluated_n = stats['LCS (S)']['evaluated']
     print(f"evaluated_files: {evaluated_n}")
     print()
@@ -341,9 +369,14 @@ def main() -> None:
     lccs_fails = [r for r in rows if not all(s in r["preds"]["LCCS (S)"] for s in r["actual"])]
     if lccs_fails:
         print("Notable LCCS (Strict) Failures (actual absorbing ⊈ LCCS)")
-        print("-" * 95)
-        for r in lccs_fails[:10]:
-            print(f"{r['file']:<40} | actual: {r['actual']} | lccs_s: {tuple(sorted(r['preds']['LCCS (S)']))}")
+        print("-" * 150)
+        print(f"{'file':<45} | {'actual_abs':<40} | {'lccs_s':<20} | {'lcs_s'}")
+        print("-" * 150)
+        for r in lccs_fails:
+            actual_str = str(r['actual'])
+            lccs_s_str = str(tuple(sorted(r['preds']['LCCS (S)'])))
+            lcs_s_str = str(tuple(sorted(r['preds']['LCS (S)'])))
+            print(f"{r['file']:<45} | {actual_str:<40} | {lccs_s_str:<20} | {lcs_s_str}")
         print()
 
 if __name__ == "__main__":

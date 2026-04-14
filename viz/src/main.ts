@@ -515,6 +515,7 @@ function updateMetadata(data: GraphData) {
 
     // Check basic fields
     if (prevMeta.power_rule !== fileMetadata.power_rule) changedFields.add('power_rule');
+    if (prevMeta.effectivity_rule !== fileMetadata.effectivity_rule) changedFields.add('effectivity_rule');
     if (prevMeta.min_power !== fileMetadata.min_power) changedFields.add('min_power');
     if (prevConfig.unanimity_required !== currConfig.unanimity_required) changedFields.add('unanimity');
     if (prevMeta.discounting !== fileMetadata.discounting) changedFields.add('discounting');
@@ -706,6 +707,7 @@ function updateMetadata(data: GraphData) {
     <div><strong>Transitions:</strong> ${data.metadata.num_transitions}</div>
     <div${highlight('power_rule')}><strong>Power Rule:</strong> ${fileMetadata.power_rule || data.metadata.config.power_rule}</div>
     ${fileMetadata.min_power ? `<div${highlight('min_power')}><strong>Min Power:</strong> ${fileMetadata.min_power}</div>` : ''}
+    ${fileMetadata.effectivity_rule ? `<div${highlight('effectivity_rule')}><strong>Effectivity Rule:</strong> ${fileMetadata.effectivity_rule}</div>` : ''}
     <div${highlight('unanimity')}>
       <strong>Unanimity:</strong> ${unanimityValue ? 'Yes' : 'No'}
       <span class="info-icon" style="margin-left:4px;">

@@ -536,7 +536,7 @@ def main() -> None:
         "--effectivity-rule",
         type=str,
         default="heyen_lehtomaa_2021",
-        choices=["heyen_lehtomaa_2021", "unanimous_consent", "deployer_exit", "free_exit"],
+        choices=["heyen_lehtomaa_2021", "unanimous_consent", "deployer_exit", "free_exit", "adjacent_step"],
         help="Effectivity rule to validate against (default: heyen_lehtomaa_2021).",
     )
     parser.add_argument(

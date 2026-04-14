@@ -520,6 +520,7 @@ def main():
             _, pruning_report_pre = _compute_absorbing_pruning_masks(
                 order_arrays, payoff_array, list(states), list(players),
                 committee_idxs_pre, lccs_absorbing_state,
+                forbidden_proposals=setup["forbidden_proposals"],
             )
             _print_pruning_report(
                 pruning_report_pre, list(players), list(states), payoff_array, total_triples,

@@ -148,10 +148,75 @@ def deployer_exit_forbidden_proposals(players: list, states: list) -> frozenset:
     return frozenset(forbidden)
 
 
+def _states_are_adjacent(state_x: str, state_y: str, players: list) -> bool:
+    """Return True if state_x and state_y differ by exactly one membership event.
+
+    Two states are adjacent when you can get from one to the other by a single
+    operation: one player either joins an existing coalition (leaving their
+    singleton) or leaves a coalition (becoming a singleton).
+
+    The rule handles both directions:
+      - One player joins: sym_diff of active-coalition members has size 1
+        (the joiner is the single changed element).
+      - Singleton pair forms / 2-coalition dissolves: sym_diff size 2 but
+        one of the two states has an empty active coalition (i.e. is '( )').
+        Forming a 2-player coalition from singletons counts as one player
+        joining another's singleton group.
+
+    Anything with sym_diff > 2, or sym_diff == 2 where neither state is
+    the all-singletons state, requires multiple operations and is not adjacent.
+    """
+    members_x = set(list_members(state_x, players))
+    members_y = set(list_members(state_y, players))
+    diff = len(members_x.symmetric_difference(members_y))
+    if diff == 1:
+        return True
+    if diff == 2:
+        # Allow only when one side has no active coalition (all singletons)
+        return len(members_x) == 0 or len(members_y) == 0
+    return False
+
+
+def adjacent_step(players: list, states: list) -> dict:
+    """Effectivity rule that restricts proposals to adjacent states.
+
+    A state is adjacent to the current state if it differs by exactly one
+    membership event (one player joins or leaves a coalition).  The approval
+    committees for permitted transitions follow the same logic as
+    heyen_lehtomaa_2021.  Non-adjacent proposals are blocked via the
+    adjacent_step_forbidden_proposals registry entry.
+
+    Concretely, for n=3 players the reachable neighbours of each state are:
+        ( )          <-> (AB), (AC), (BC)   [pair forms / dissolves]
+        (AB)         <-> ( ), (ABC)
+        (AC)         <-> ( ), (ABC)
+        (BC)         <-> ( ), (ABC)
+        (ABC)        <-> (AB), (AC), (BC)
+    """
+    return heyen_lehtomaa_2021(players, states)
+
+
+def adjacent_step_forbidden_proposals(players: list, states: list) -> frozenset:
+    """Return all (proposer, current_state, next_state) triples where
+    next_state is not adjacent to current_state.  These proposals are
+    forbidden under the adjacent_step effectivity rule.
+    """
+    forbidden = set()
+    for proposer in players:
+        for current_state in states:
+            for next_state in states:
+                if current_state == next_state:
+                    continue
+                if not _states_are_adjacent(current_state, next_state, players):
+                    forbidden.add((proposer, current_state, next_state))
+    return frozenset(forbidden)
+
+
 # Registry of forbidden-proposal functions, keyed by effectivity rule name.
 # Rules with no forbidden proposals are absent from this registry.
 FORBIDDEN_PROPOSALS_RULES = {
     'deployer_exit': deployer_exit_forbidden_proposals,
+    'adjacent_step': adjacent_step_forbidden_proposals,
 }
 
 
@@ -312,6 +377,7 @@ EFFECTIVITY_RULES = {
     'unanimous_consent': unanimous_consent,
     'deployer_exit': deployer_exit,
     'free_exit': free_exit,
+    'adjacent_step': adjacent_step,
 }
 
 
