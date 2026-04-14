@@ -27,6 +27,7 @@ from lib.equilibrium.ordinal_ranking.ranking_orders import (
     _generate_weak_orders,
     _payoff_ordering,
     _payoff_ordering_weak,
+    _compute_absorbing_pruning_masks,
 )
 from lib.equilibrium.ordinal_ranking.search import (
     _init_worker_ctx,
@@ -116,13 +117,14 @@ def solve_with_ordinal_ranking_n3(
     use_newton: bool = True,
     use_broyden: bool = False,
     extra_metadata: dict | None = None,
+    lccs_absorbing_state: str | None = None,
     logger=None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     players = solver.players
     states = solver.states
     n_players = len(players)
     n_states = len(states)
-    
+
     payoff_array = solver.payoffs.loc[states, players].to_numpy(dtype=np.float64)
     protocol_arr = np.array([float(solver.protocol[p]) for p in players], dtype=np.float64)
 
@@ -167,8 +169,32 @@ def solve_with_ordinal_ranking_n3(
             proposer_rows.append(row)
         committee_idxs.append(proposer_rows)
 
+    # LCCS pruning: filter weak orders per player based on the trusted absorbing state
+    pruning_report: dict[str, Any] | None = None
+    lccs_valid_idx: list[np.ndarray] | None = None
+    if lccs_absorbing_state is not None and weak_orders and state_perms is not None:
+        lccs_valid_idx, pruning_report = _compute_absorbing_pruning_masks(
+            state_perms, payoff_array, list(states), list(players),
+            committee_idxs, lccs_absorbing_state,
+            forbidden_proposals=solver.forbidden_proposals,
+        )
+        # Merge with existing payoff-order arrays (intersect valid sets, preserving order)
+        if perm_orders is not None:
+            valid_sets = [set(v.tolist()) for v in lccs_valid_idx]
+            perm_orders = tuple(
+                np.array([idx for idx in perm_orders[pi] if int(idx) in valid_sets[pi]], dtype=np.int64)
+                for pi in range(n_players)
+            )
+        else:
+            perm_orders = tuple(v for v in lccs_valid_idx)
+
     if large_mode:
         flat_total = perm_count ** n_players
+    elif perm_orders is not None:
+        # Per-player valid sets may differ in size; product gives actual search space
+        flat_total = 1
+        for arr in perm_orders:
+            flat_total *= len(arr)
     else:
         flat_total = n_perms ** n_players
     total = min(flat_total, max_combinations) if max_combinations is not None else flat_total
@@ -245,7 +271,10 @@ def solve_with_ordinal_ranking_n3(
             batches = _iter_batches(combos_iter, batch_size)
             search_fn = _search_chunk_large
         else:
-            triples_iter = _iter_tuples(n_players, n_perms, total, shuffle, random_seed, perm_orders)
+            triples_iter = _iter_tuples(
+                n_players, n_perms, total, shuffle, random_seed,
+                perm_orders, lccs_valid_idx,
+            )
             batches = _iter_batches(triples_iter, batch_size)
             search_fn = _search_chunk
 
@@ -410,7 +439,10 @@ def solve_with_ordinal_ranking_n3(
                 if progress_every > 0 and tested % progress_every == 0:
                     _print_progress(tested, total, start_time)
         else:
-            triples_iter = _iter_tuples(n_players, n_perms, total, shuffle, random_seed, perm_orders)
+            triples_iter = _iter_tuples(
+                n_players, n_perms, total, shuffle, random_seed,
+                perm_orders, lccs_valid_idx,
+            )
             for order_ids in triples_iter:
                 tested += 1
                 # (Same logic as search_chunk...)
@@ -460,6 +492,7 @@ def solve_with_ordinal_ranking_n3(
         "weak_payload_returned": weak_payload_returned,
         "weak_payload_verified_true": weak_payload_verified_true,
         "weak_payload_verified_false": weak_payload_verified_false,
+        "pruning_report": pruning_report,
     }
 
     if all_successes:

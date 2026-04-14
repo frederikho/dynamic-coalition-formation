@@ -110,6 +110,7 @@ class StreamingWriter:
             "payoff_source": "precomputed_table",
             "payoff_table": str(self.payoff_path),
             "power_rule": solver.power_rule,
+            "effectivity_rule": getattr(solver, "effectivity_rule", "heyen_lehtomaa_2021"),
             "unanimity_required": solver.unanimity_required,
             "discounting": solver.discounting,
             "dedup_key": key,

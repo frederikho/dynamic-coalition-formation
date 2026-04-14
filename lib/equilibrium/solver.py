@@ -127,6 +127,7 @@ class EquilibriumSolver:
                  unanimity_required: bool,
                  power_rule: str = "power_threshold",
                  forbidden_proposals: frozenset = frozenset(),
+                 effectivity_rule: str = "heyen_lehtomaa_2021",
                  verbose: bool = True,
                  random_seed: Optional[int] = None,
                  initialization_mode: str = "uniform",
@@ -154,6 +155,7 @@ class EquilibriumSolver:
         self.unanimity_required = unanimity_required
         self.power_rule = power_rule
         self.forbidden_proposals = forbidden_proposals
+        self.effectivity_rule = effectivity_rule
         self.verbose = verbose
         self.logger = logger
 

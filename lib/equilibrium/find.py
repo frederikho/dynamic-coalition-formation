@@ -308,6 +308,7 @@ def setup_experiment(config):
         'state_names': state_names,
         'effectivity': effectivity,
         'forbidden_proposals': forbidden_proposals,
+        'effectivity_rule': config.get("effectivity_rule", "heyen_lehtomaa_2021"),
         'protocol': config["protocol"],
         'payoffs': payoffs,
         'geoengineering': geoengineering,
@@ -716,6 +717,7 @@ def _build_metadata(config, setup, solver_params, solver_result,
         'states': ', '.join(setup['state_names']),
         'power_rule': config['power_rule'],
         'min_power': config.get('min_power', 'N/A'),
+        'effectivity_rule': config.get('effectivity_rule', 'heyen_lehtomaa_2021'),
         'unanimity_required': config['unanimity_required'],
         'discounting': config['discounting'],
         '  ': '',
@@ -940,6 +942,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         unanimity_required=setup['unanimity_required'],
         power_rule=setup['power_rule'],
         forbidden_proposals=setup.get('forbidden_proposals', frozenset()),
+        effectivity_rule=setup.get('effectivity_rule', 'heyen_lehtomaa_2021'),
         verbose=verbose,
         random_seed=random_seed,
         initialization_mode=solver_params.get("initialization_mode", "uniform"),
@@ -1524,9 +1527,10 @@ Available scenarios (use --list-scenarios to see all):
         default=None,
         help=(
             'Effectivity rule to use when generating approval committees. '
-            'Available rules: heyen_lehtomaa_2021 (default), unanimous_consent, deployer_exit, free_exit. '
+            'Available rules: heyen_lehtomaa_2021 (default), unanimous_consent, deployer_exit, free_exit, adjacent_step. '
             'deployer_exit: the named deployer can exit unilaterally to ( ), all other transitions require unanimity. '
-            'free_exit: any player can exit to the no-coordination state unilaterally; entering/switching coordination requires unanimity.'
+            'free_exit: any player can exit to the no-coordination state unilaterally; entering/switching coordination requires unanimity. '
+            'adjacent_step: proposals restricted to states differing by exactly one membership event (one player joins or leaves); approval committees follow heyen_lehtomaa_2021.'
         )
     )
     parser.add_argument(

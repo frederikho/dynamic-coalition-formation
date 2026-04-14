@@ -19,9 +19,14 @@ if str(REPO_ROOT) not in sys.path:
 
 from lib.equilibrium.solver import EquilibriumSolver
 from lib.equilibrium.ordinal_ranking import solve_with_ordinal_ranking_n3
-from lib.equilibrium.ordinal_ranking.ranking_orders import _generate_weak_orders
+from lib.equilibrium.ordinal_ranking.ranking_orders import (
+    _generate_weak_orders,
+    _compute_absorbing_pruning_masks,
+)
 from lib.equilibrium.ordinal_ranking.weak_equality import _NEWTON_GUESS_LIMIT
 from lib.equilibrium.ordinal_ranking.numba_loops import _NEWTON_MAX_ITERS
+from lib.equilibrium.lcs import compute_lccs
+from lib.utils import get_approval_committee
 from lib.equilibrium.find import (
     setup_experiment,
     _infer_or_parse_players_from_payoff_table,
@@ -114,6 +119,7 @@ def _verify_via_cli(
             "payoff_source": "precomputed_table",
             "payoff_table": str(config.get("payoff_table", "")),
             "power_rule": config.get("power_rule", "power_threshold"),
+            "effectivity_rule": effectivity_rule,
             "unanimity_required": config.get("unanimity_required", True),
             "discounting": config.get("discounting", 0.99),
         }
@@ -325,6 +331,69 @@ def _print_solver_execution_summary(
 
 
 # ---------------------------------------------------------------------------
+# LCCS pruning report printer
+# ---------------------------------------------------------------------------
+
+def _print_pruning_report(
+    report: dict,
+    players: list,
+    states: list,
+    payoff_array,
+    total_original: int,
+) -> None:
+    print()
+    print("LCCS Absorbing-State Pruning Analysis")
+    print("=" * 80)
+    absorbing = report["absorbing_state"]
+    n_orig = report["n_orders_original"]
+    total_pruned = report["total_after_pruning"]
+    factor = report["reduction_factor"]
+    pct_kept = 100.0 * total_pruned / max(total_original, 1)
+    print(f"  Absorbing state (trusted from LCCS): {absorbing}")
+    print(f"  Weak orders per player (original):   {n_orig:,d}")
+    print()
+    print(f"  {'Player':<10}  {'Valid':>8}  {'Pruned':>8}  {'% kept':>8}  Constraints")
+    print(f"  {'-'*10}  {'-'*8}  {'-'*8}  {'-'*8}  -----------")
+    for pi, player in enumerate(players):
+        pp = report["per_player"][pi]
+        n_valid = pp["n_valid"]
+        n_pruned = pp["n_pruned"]
+        pct = 100.0 * n_valid / n_orig
+        cs = pp["constraints"]
+        if cs:
+            c_strs = [
+                f"{states[c['bi']]} ({c['rule']})" for c in cs
+            ]
+            c_label = "; ".join(c_strs)
+        else:
+            c_label = "(none)"
+        print(f"  {player:<10}  {n_valid:>8,d}  {n_pruned:>8,d}  {pct:>7.1f}%  {c_label}")
+    print()
+    print(f"  Full search space:  {total_original:>15,d}")
+    print(f"  After pruning:      {total_pruned:>15,d}")
+    print(f"  Reduction factor:   {factor:>15.1f}×  ({pct_kept:.2f}% of original)")
+    print()
+    # Print payoff comparison for constrained pairs
+    constraints = report["constraints"]
+    if constraints:
+        absorbing_idx = states.index(absorbing)
+        print("  Payoff comparison (why constraints apply):")
+        print(f"  {'Player':<10}  {'State B':<20}  {'u(B)':>12}  {'u(A)':>12}  {'Rule'}")
+        print(f"  {'-'*10}  {'-'*20}  {'-'*12}  {'-'*12}  ------")
+        seen = set()
+        for c in constraints:
+            key = (c["pi"], c["bi"])
+            if key in seen:
+                continue
+            seen.add(key)
+            pi, bi = c["pi"], c["bi"]
+            u_b = float(payoff_array[bi, pi])
+            u_a = float(payoff_array[absorbing_idx, pi])
+            print(f"  {players[pi]:<10}  {states[bi]:<20}  {u_b:>12.4f}  {u_a:>12.4f}  {c['rule']}")
+    print()
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -341,7 +410,7 @@ def main():
         "--effectivity-rule",
         type=str,
         default=None,
-        choices=("heyen_lehtomaa_2021", "unanimous_consent", "deployer_exit", "free_exit"),
+        choices=("heyen_lehtomaa_2021", "unanimous_consent", "deployer_exit", "free_exit", "adjacent_step"),
     )
     parser.add_argument("--max-combinations", type=int, default=None)
     parser.add_argument("--workers", type=int, default=8)
@@ -364,6 +433,20 @@ def main():
     parser.add_argument("--use-broyden", action="store_true",
                         help="Use Broyden's Good Method instead of Newton for warm-up "
                              "(residual-only per iteration, no Jacobian recomputation)")
+    parser.add_argument(
+        "--prune-lccs",
+        action="store_true",
+        help=(
+            "Automatically compute LCCS (weak), and if it identifies a unique absorbing state, "
+            "apply safe pruning to reduce the weak-order search space. Two rules are used: "
+            "Rule 1 (unilateral exit): if player i can unilaterally exit the absorbing state "
+            "to state B and ui(B) < ui(absorbing), require tier_i[B] > tier_i[absorbing]; "
+            "Rule 2 (strict dominance): if the absorbing state has strictly max payoff for "
+            "player i over all states, all non-absorbing states rank below it. "
+            "Both rules are safe: no valid equilibrium is discarded. "
+            "Requires --weak-orders."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -402,6 +485,46 @@ def main():
     if args.write_all and not output_dir:
         output_dir = str(REPO_ROOT / "strategy_tables" / f"ordinal_all_{payoff_path.stem}")
 
+    # ── LCCS auto-pruning ─────────────────────────────────────────────────────
+    lccs_absorbing_state: str | None = None
+    if args.prune_lccs:
+        if not args.weak_orders:
+            print("ERROR: --prune-lccs requires --weak-orders")
+            sys.exit(1)
+        lccs_members, _ = compute_lccs(
+            list(players), list(states),
+            setup["payoffs"][list(players)], setup["effectivity"], weak=True,
+        )
+        if len(lccs_members) != 1:
+            print(
+                f"WARNING: --prune-lccs: LCCS (weak) contains {len(lccs_members)} states "
+                f"{sorted(lccs_members)} — pruning requires a unique absorbing state; skipping."
+            )
+        else:
+            lccs_absorbing_state = next(iter(lccs_members))
+            # Build committee structure to evaluate pruning rules upfront
+            payoff_array = setup["payoffs"].loc[states, players].to_numpy()
+            player_idx_map = {p: i for i, p in enumerate(players)}
+            committee_idxs_pre: list = []
+            for proposer in players:
+                proposer_rows = []
+                for current_state in states:
+                    row = []
+                    for next_state in states:
+                        committee = get_approval_committee(
+                            setup["effectivity"], players, proposer, current_state, next_state
+                        )
+                        row.append(tuple(player_idx_map[p] for p in committee))
+                    proposer_rows.append(row)
+                committee_idxs_pre.append(proposer_rows)
+            _, pruning_report_pre = _compute_absorbing_pruning_masks(
+                order_arrays, payoff_array, list(states), list(players),
+                committee_idxs_pre, lccs_absorbing_state,
+            )
+            _print_pruning_report(
+                pruning_report_pre, list(players), list(states), payoff_array, total_triples,
+            )
+
     # ── Header ───────────────────────────────────────────────────────────────
     print("Ordinal Ranking Verification Search")
     print("-" * 80)
@@ -416,6 +539,8 @@ def main():
     if args.effectivity_rule:
         print(f"effectivity_rule: {args.effectivity_rule}")
     print(f"total_ranking_triples: {total_triples:,d}")
+    if lccs_absorbing_state:
+        print(f"prune_lccs: absorbing={lccs_absorbing_state}")
     if args.max_combinations:
         print(f"max_combinations: {args.max_combinations:,d}")
     print(f"stop_on_success: {args.stop_on_success}")
@@ -439,6 +564,8 @@ def main():
     print()
 
     # ── Search ───────────────────────────────────────────────────────────────
+    _effectivity_rule = setup.get("effectivity_rule", "heyen_lehtomaa_2021")
+
     solver = EquilibriumSolver(
         players=players,
         states=states,
@@ -449,9 +576,10 @@ def main():
         unanimity_required=setup["unanimity_required"],
         power_rule=setup["power_rule"],
         forbidden_proposals=setup["forbidden_proposals"],
+        effectivity_rule=_effectivity_rule,
     )
 
-    extra_metadata: dict = {}
+    extra_metadata: dict = {"effectivity_rule": _effectivity_rule}
     if config.get("power_rule") == "power_threshold":
         extra_metadata["min_power"] = config.get("min_power", 0.501)
     for player in players:
@@ -477,6 +605,7 @@ def main():
         use_newton=(not args.disable_newton),
         use_broyden=args.use_broyden,
         extra_metadata=extra_metadata,
+        lccs_absorbing_state=lccs_absorbing_state,
     )
 
     # ── Summary ──────────────────────────────────────────────────────────────

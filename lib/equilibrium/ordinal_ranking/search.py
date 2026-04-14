@@ -461,13 +461,23 @@ def _iter_tuples(
     n_players: int, n_perms: int, total: int | None = None,
     shuffle: bool = False, random_seed: int = 0,
     perm_orders: list[np.ndarray] | None = None,
+    valid_idx_per_player: list[np.ndarray] | None = None,
 ):
     count = 0
     if shuffle:
         rng = np.random.default_rng(random_seed)
-        while total is None or count < total:
-            yield rng.integers(0, n_perms, size=n_players)
-            count += 1
+        if valid_idx_per_player is not None:
+            # Sample uniformly from each player's valid index set
+            while total is None or count < total:
+                yield np.array([
+                    int(rng.choice(valid_idx_per_player[pi]))
+                    for pi in range(n_players)
+                ])
+                count += 1
+        else:
+            while total is None or count < total:
+                yield rng.integers(0, n_perms, size=n_players)
+                count += 1
     elif perm_orders:
         for pt in itertools.product(*perm_orders):
             if total is not None and count >= total:
