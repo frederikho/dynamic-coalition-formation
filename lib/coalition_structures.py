@@ -63,62 +63,61 @@ def generate_set_partitions(elements: List[str]) -> List[List[Set[str]]]:
     return result
 
 
-def partition_to_string(partition: List[Set[str]]) -> str:
+def partition_to_string(partition: List[Set[str]], 
+                        power: dict[str, float] | None = None,
+                        min_power: float | None = None) -> str:
     """
     Convert a partition to a readable string format.
 
     Args:
         partition: List of sets representing coalitions
+        power: Optional mapping of player name -> power share
+        min_power: Optional threshold to include singleton coalitions in the name
 
     Returns:
         String representation, e.g., '(WTC)' or '( )' or '(WT)(CF)'
-
-    Examples:
-        >>> partition_to_string([{'W'}, {'T'}, {'C'}])
-        '( )'
-        >>> partition_to_string([{'W', 'T', 'C'}])
-        '(WTC)'
-        >>> partition_to_string([{'W', 'T'}, {'C'}])
-        '(WT)'
-        >>> partition_to_string([{'W', 'T'}, {'C', 'F'}])
-        '(CF)(WT)'
+        If a singleton coalition meets the power threshold, it is included,
+        e.g., '(USA)' for a 3-player game where USA is a singleton.
     """
-    # Special case: all singletons
-    if all(len(coalition) == 1 for coalition in partition):
+    # Identify non-singletons AND singletons that meet the power threshold
+    relevant_coalitions = []
+    for coalition in partition:
+        if len(coalition) > 1:
+            relevant_coalitions.append(coalition)
+        elif len(coalition) == 1 and power and min_power is not None:
+            player = next(iter(coalition))
+            if power.get(player, 0.0) >= min_power:
+                relevant_coalitions.append(coalition)
+
+    if not relevant_coalitions:
         return '( )'
 
-    # Filter out singletons and format non-singleton coalitions
-    non_singletons = [coalition for coalition in partition if len(coalition) > 1]
-
-    if not non_singletons:
-        return '( )'
-
-    # Sort non-singleton coalitions: by size (descending), then alphabetically by first member
-    sorted_non_singletons = sorted(non_singletons,
-                                   key=lambda c: (-len(c), ''.join(sorted(c))))
+    # Sort coalitions: by size (descending), then alphabetically by first member
+    sorted_coalitions = sorted(relevant_coalitions,
+                               key=lambda c: (-len(c), ''.join(sorted(c))))
 
     # Format each coalition
-    formatted = ['(' + ''.join(sorted(coalition)) + ')' for coalition in sorted_non_singletons]
+    formatted = ['(' + ''.join(sorted(coalition)) + ')' for coalition in sorted_coalitions]
 
     return ''.join(formatted)
 
 
-def generate_coalition_structures(players: List[str]) -> List[str]:
+def generate_coalition_structures(players: List[str],
+                                  power: dict[str, float] | None = None,
+                                  min_power: float | None = None) -> List[str]:
     """
     Generate all coalition structure names for a list of players.
 
     Args:
         players: List of player names (e.g., ['W', 'T', 'C', 'F'])
+        power: Optional player power mapping
+        min_power: Optional power threshold
 
     Returns:
         List of coalition structure names, sorted by convention
-
-    Example:
-        >>> generate_coalition_structures(['W', 'T', 'C'])
-        ['( )', '(TC)', '(WC)', '(WT)', '(WTC)']
     """
     partitions = generate_set_partitions(players)
-    structures = [partition_to_string(p) for p in partitions]
+    structures = [partition_to_string(p, power=power, min_power=min_power) for p in partitions]
 
     # Remove duplicates (due to our naming convention) and sort
     unique_structures = sorted(set(structures), key=lambda s: (len(s), s))
@@ -136,10 +135,6 @@ def partition_to_coalition_map(partition: List[Set[str]], all_players: List[str]
 
     Returns:
         List of lists, where each sublist contains player names in that coalition
-
-    Example:
-        >>> partition_to_coalition_map([{'W', 'T'}, {'C'}], ['W', 'T', 'C'])
-        [['W', 'T'], ['C']]
     """
     # Sort coalitions by size (descending), then alphabetically
     sorted_coalitions = sorted(partition, key=lambda c: (-len(c), sorted(c)))
@@ -147,29 +142,25 @@ def partition_to_coalition_map(partition: List[Set[str]], all_players: List[str]
     return [sorted(list(coalition)) for coalition in sorted_coalitions]
 
 
-def generate_all_coalition_maps(players: List[str]) -> dict:
+def generate_all_coalition_maps(players: List[str],
+                                power: dict[str, float] | None = None,
+                                min_power: float | None = None) -> dict:
     """
     Generate coalition maps for all possible coalition structures.
 
     Args:
         players: List of player names
+        power: Optional player power mapping
+        min_power: Optional power threshold
 
     Returns:
         Dictionary mapping structure names to lists of coalitions
-
-    Example:
-        >>> generate_all_coalition_maps(['W', 'T', 'C'])
-        {
-            '( )': [['W'], ['T'], ['C']],
-            '(TC)': [['T', 'C'], ['W']],
-            ...
-        }
     """
     partitions = generate_set_partitions(players)
     result = {}
 
     for partition in partitions:
-        name = partition_to_string(partition)
+        name = partition_to_string(partition, power=power, min_power=min_power)
         if name not in result:  # Avoid duplicates due to naming convention
             result[name] = partition_to_coalition_map(partition, players)
 

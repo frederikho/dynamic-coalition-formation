@@ -13,7 +13,25 @@ The scenario name is the dict key and is automatically injected as 'scenario_nam
 when retrieved via get_scenario().
 """
 
+import csv
 import warnings
+from pathlib import Path
+
+# Mapping: RICE player code (uppercase) -> World Bank country code
+# Only needed where they differ.
+RICE_TO_WB_CODE = {
+    "NDE": "IND",
+}
+
+# Regional composition for aggregate players.
+# Maps uppercase player name -> list of World Bank country codes.
+RICE_REGIONAL_COMPOSITION = {
+    "EUR": [
+        "AUT", "BEL", "BGR", "HRV", "CZE", "DNK", "ESP", "FIN", "FRA", "DEU",
+        "GRC", "HUN", "IRL", "ITA", "EST", "LVA", "LTU", "NLD", "POL", "PRT",
+        "ROU", "SVK", "SVN", "SWE"
+    ]
+}
 
 
 class _ScenarioRegistry(dict):
@@ -42,6 +60,83 @@ def _apply_defaults(config):
     return config
 
 
+def _calculate_gdp_power(players: list[str]) -> dict[str, float]:
+    """
+    Calculate power distribution based on GDP values from 'GDP World Bank Data.csv'.
+    Power is the share of the group's total GDP.
+    """
+    csv_path = Path("GDP World Bank Data.csv")
+    if not csv_path.exists():
+        # Fallback if file is missing
+        warnings.warn(f"GDP data file not found at {csv_path}. Using equal power.")
+        n = len(players)
+        return {p: 1/n for p in players}
+
+    # Collect all WB codes needed (both direct mappings and regional constituents)
+    needed_wb_codes = set()
+    for p in players:
+        p_up = p.upper()
+        if p_up in RICE_REGIONAL_COMPOSITION:
+            needed_wb_codes.update(RICE_REGIONAL_COMPOSITION[p_up])
+        else:
+            needed_wb_codes.add(RICE_TO_WB_CODE.get(p_up, p_up))
+    
+    gdp_values = {}
+    try:
+        with open(csv_path, mode="r", encoding="utf-8-sig") as f:
+            # Skip first 4 lines (metadata/junk)
+            for _ in range(4):
+                next(f)
+            reader = csv.DictReader(f)
+            for row in reader:
+                code = row.get("Country Code")
+                if code in needed_wb_codes:
+                    val_str = row.get("2024", "")
+                    if val_str and val_str.strip():
+                        try:
+                            val = float(val_str)
+                            # Some countries in the CSV (mostly European) have values
+                            # missing a decimal point, resulting in values in the 
+                            # quadrillions (1e14) instead of billions (1e11/1e12).
+                            # Example: Austria (AUT) shows 534,790,720,466,822
+                            # but should be ~534 billion.
+                            if val > 5e13:
+                                val /= 1_000_000
+                            gdp_values[code] = val
+                        except ValueError:
+                            pass
+    except Exception as e:
+        warnings.warn(f"Error reading GDP data: {e}. Using equal power.")
+        n = len(players)
+        return {p: 1/n for p in players}
+
+    # Map back to RICE player names and calculate totals
+    player_gdps = {}
+    for p in players:
+        p_up = p.upper()
+        if p_up in RICE_REGIONAL_COMPOSITION:
+            # Sum up all constituent countries
+            total = sum(gdp_values.get(c, 0.0) for c in RICE_REGIONAL_COMPOSITION[p_up])
+            player_gdps[p] = total
+            if total <= 0:
+                warnings.warn(f"No GDP data found for region {p}. Using 0.0.")
+        else:
+            wb_code = RICE_TO_WB_CODE.get(p_up, p_up)
+            if wb_code in gdp_values:
+                player_gdps[p] = gdp_values[wb_code]
+            else:
+                warnings.warn(f"No GDP data found for player {p} (WB code {wb_code}). Using 0.0.")
+                player_gdps[p] = 0.0
+
+    total_gdp = sum(player_gdps.values())
+    if total_gdp <= 0:
+        warnings.warn("Total GDP is zero or negative. Using equal power.")
+        n = len(players)
+        return {p: 1/n for p in players}
+
+    return {p: gdp / total_gdp for p, gdp in player_gdps.items()}
+
+
 def fill_players(config, players: list[str]) -> dict:
     """
     Inject a concrete player list into a config that was defined with players=None.
@@ -56,7 +151,13 @@ def fill_players(config, players: list[str]) -> dict:
     config.setdefault("base_temp",  {p: 13.0 for p in players})
     config.setdefault("ideal_temp", {p: 13.0 for p in players})
     config.setdefault("delta_temp", {p: 3.0  for p in players})
-    config.setdefault("power",      {p: 1/n  for p in players})
+
+    # Special handling for GDP-based power
+    if config.get("scenario_name") == "power_threshold_RICE_by_GDP":
+        config.setdefault("power", _calculate_gdp_power(players))
+    else:
+        config.setdefault("power", {p: 1/n for p in players})
+
     config.setdefault("protocol",   {p: 1/n  for p in players})
     config.setdefault("m_damage",   {p: 1.0  for p in players})
     return config
@@ -211,6 +312,46 @@ def _base_rice():
         "state_names": None,
     }
 
+
+SCENARIOS["power_threshold_RICE"] = {
+    **_base_rice(),
+    "scenario_description": (
+        "General RICE scenario: power threshold with equal power. "
+        "Players are inferred from the payoff table. "
+        "Default majority requirement: 0.501. Unanimity required."
+    ),
+    "power_rule": "power_threshold",
+}
+
+SCENARIOS["power_threshold_RICE_by_GDP"] = {
+    **_base_rice(),
+    "scenario_description": (
+        "General RICE scenario: power threshold with power derived from GDP. "
+        "Players are inferred from the payoff table. "
+        "Power is calculated as the share of the group's total 2024 GDP "
+        "using 'GDP World Bank Data.csv'."
+    ),
+    "power_rule": "power_threshold",
+}
+
+SCENARIOS["power_threshold_no_unanimity_RICE"] = {
+    **_base_rice(),
+    "scenario_description": (
+        "General RICE scenario: power threshold, no unanimity, equal power. "
+        "Players are inferred from the payoff table."
+    ),
+    "power_rule": "power_threshold",
+    "unanimity_required": False,
+}
+
+SCENARIOS["weak_governance_RICE"] = {
+    **_base_rice(),
+    "scenario_description": (
+        "General RICE scenario: weak governance (unilateral exit allowed). "
+        "Players are inferred from the payoff table."
+    ),
+    "power_rule": "weak_governance",
+}
 
 SCENARIOS["power_threshold_RICE_n3"] = {
     **_base_rice(),

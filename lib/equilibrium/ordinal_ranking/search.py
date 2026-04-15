@@ -154,6 +154,34 @@ def _make_solver_timing() -> dict[str, float]:
 
 def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dict[str, Any]:
     assert _WORKER_CTX is not None
+    if len(batch_tuples) == 0:
+        return {
+            "tested": 0, "success": None, "all_successes": [],
+            "t_numba": 0.0, "t_tie_struct": 0.0, "t_solver": 0.0,
+            "t_solver_root": 0.0, "t_solver_finalize": 0.0,
+            "t_solver_setup": 0.0, "t_solver_check": 0.0,
+            "t_solver_setup_copy": 0.0,
+            "t_solver_setup_indices": 0.0,
+            "t_solver_setup_numba": 0.0,
+            "t_solver_root_v_solve": 0.0,
+            "t_solver_root_p_agg": 0.0,
+            "t_solver_root_mapping": 0.0,
+            "t_solver_root_residuals": 0.0,
+            "t_solver_setup_guesses": 0.0,
+            "t_solver_nb_newton": 0.0,
+            "t_solver_finalize_rebuild": 0.0,
+            "t_solver_finalize_verify": 0.0,
+            "t_solver_finalize_solver_obj": 0.0,
+            "n_solver_calls": 0, "n_skipped": 0, "n_hits": 0,
+            "n_free_histogram": {},
+            "solver_calls_by_n_free": {},
+            "solver_time_by_n_free": {},
+            "exit_stats_counts": np.zeros((7, 8), dtype=np.int64),
+            "weak_solver_flow_stats": {},
+            "weak_payload_returned": 0,
+            "weak_payload_verified_true": 0,
+            "weak_payload_verified_false": 0,
+        }
     ctx = _WORKER_CTX
     players, states = ctx["players"], ctx["states"]
     n_states = len(states)
@@ -426,6 +454,12 @@ def _payoffs_df_from_ctx(ctx: dict[str, Any]):
 
 def _search_chunk_large(batch_ranks: np.ndarray, stop_on_success: bool = True) -> dict[str, Any]:
     assert _WORKER_CTX is not None
+    if len(batch_ranks) == 0:
+        return {
+            "tested": 0, "success": None, "all_successes": [],
+            "t_numba": 0.0, "t_tie_struct": 0.0, "t_solver": 0.0,
+            "n_solver_calls": 0, "n_skipped": 0, "n_hits": 0,
+        }
     ctx = _WORKER_CTX
     players, states = ctx["players"], ctx["states"]
     n_players, n_states = len(players), len(states)

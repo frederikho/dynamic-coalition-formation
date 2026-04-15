@@ -114,12 +114,15 @@ def _load_payoff_table(path: Path, states: list, players: list) -> tuple:
     geo_levels = pd.DataFrame(index=state_names, columns=["G"], dtype=np.float64) if sai_col else None
 
     for state in states:
-        # Prefer direct state-name rows when available (used by --save-payoffs).
-        # Fallback to deployer-key rows for ingest_payoffs-style tables.
-        if state.name in df.index:
+        # Prefer the deployer-key derived from the state's geo_deployment_level
+        # and strongest_coalition. This ensures that in scenarios with dominant
+        # players (like USA > 50%), even the '()' state correctly loads the
+        # payoffs for the (USA) row instead of the empty ( ) row.
+        # Fallback to direct state-name lookup for custom tables.
+        row_key = _deployer_key(state)
+        if row_key not in df.index and state.name in df.index:
             row_key = state.name
-        else:
-            row_key = _deployer_key(state)
+
         if row_key not in df.index:
             needed_key = _deployer_key(state)
             raise ValueError(
@@ -211,7 +214,20 @@ def setup_experiment(config):
     # subset directly. This also supports reduced tables that still contain extra
     # helper rows such as singleton states.
     if "state_names" not in config or config["state_names"] is None:
-        canonical_state_names = generate_coalition_structures(players)
+        # In power_threshold scenarios, if a single player has more than 50% power,
+        # they can deploy unilaterally. Using the power-aware naming convention
+        # would merge several distinct partitions (e.g. () and (BC)) into a
+        # single state named (A). To preserve the full state space (e.g. 5 states
+        # for n=3), we ignore min_power during name generation for the GDP-based
+        # RICE scenario. The State objects will still correctly use the power
+        # threshold to determine the deployer.
+        gen_min_power = config.get("min_power")
+        if config.get("scenario_name") == "power_threshold_RICE_by_GDP":
+            gen_min_power = None
+
+        canonical_state_names = generate_coalition_structures(
+            players, power=config.get("power"), min_power=gen_min_power
+        )
         payoff_table_path = config.get("payoff_table", None)
         if payoff_table_path is not None:
             payoff_rows = _read_payoff_table_index(Path(payoff_table_path))
@@ -242,7 +258,12 @@ def setup_experiment(config):
         state_names = config["state_names"]
 
     # Generate coalition maps for all states
-    all_coalition_maps = generate_all_coalition_maps(players)
+    gen_min_power = config.get("min_power")
+    if config.get("scenario_name") == "power_threshold_RICE_by_GDP":
+        gen_min_power = None
+    all_coalition_maps = generate_all_coalition_maps(
+        players, power=config.get("power"), min_power=gen_min_power
+    )
 
     # Create State objects for each coalition structure
     states = []
@@ -876,6 +897,22 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
 
     # Setup experiment
     setup = setup_experiment(config)
+
+    if verbose:
+        logger.info("Resolved Payoffs (Internal Framework States):")
+        players = setup['players']
+        payoff_header = f"  {'State':<15}" + "".join(f"{p:>12}" for p in players) + f"{'G':>10}"
+        logger.info(payoff_header)
+        logger.info("  " + "-" * (15 + 12 * len(players) + 10))
+        for state_name in setup['state_names']:
+            payoff_row = f"  {state_name:<15}"
+            for p in players:
+                val = setup['payoffs'].loc[state_name, p]
+                payoff_row += f"{val:>12.4f}"
+            g_val = setup['geoengineering'].loc[state_name, 'G']
+            payoff_row += f"{g_val:>10.3f}"
+            logger.info(payoff_row)
+        logger.info("")
 
     # Generate config hash for checkpoint identification
     config_hash = generate_config_hash(config, length=10)

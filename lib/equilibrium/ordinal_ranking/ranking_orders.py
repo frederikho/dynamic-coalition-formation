@@ -161,8 +161,10 @@ def _compute_absorbing_pruning_masks(
         u_absorbing = float(payoff_array[absorbing_idx, pi])
 
         # Rule 2: absorbing state has strictly max payoff for this player
+        # Use a small epsilon to be robust against numerical noise in payoff tables
+        eps = 1e-10
         all_others_lower = all(
-            float(payoff_array[bi, pi]) < u_absorbing
+            float(payoff_array[bi, pi]) < u_absorbing - eps
             for bi in range(n_states)
             if bi != absorbing_idx
         )
@@ -183,7 +185,7 @@ def _compute_absorbing_pruning_masks(
             if not is_unilateral:
                 continue
             u_b = float(payoff_array[bi, pi])
-            if u_b < u_absorbing:
+            if u_b < u_absorbing - eps:
                 constraints.append({"pi": pi, "bi": bi, "rule": "unilateral_exit"})
 
     # Deduplicate

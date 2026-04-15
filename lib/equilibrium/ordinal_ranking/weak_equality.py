@@ -352,7 +352,7 @@ def _solve_weak_equalities(
 
     t_s_numba = time.perf_counter()
     _n_fa = n_free_approvals
-    _fa_arr = np.array(fa_idx, dtype=np.int8).reshape(max(_n_fa, 1), 4)
+    _fa_arr = np.array(fa_idx, dtype=np.int8).reshape(-1, 4)
     _n_pt = len(pt_idx)
     _max_nw = max((len(w) for _, _, w in pt_idx), default=1)
     _pt_pi = np.zeros(max(_n_pt, 1), dtype=np.int8)

@@ -264,7 +264,7 @@ def solve_with_ordinal_ranking_n3(
     if workers > 1:
         # Auto-reduce batch size if solving expensive weak equalities
         if weak_equality_solve and batch_size == 20000:
-            batch_size = 1000
+            batch_size = 100
 
         if large_mode:
             combos_iter = _iter_rank_combos_large(n_players, n_states, total, random_seed)
@@ -308,7 +308,12 @@ def solve_with_ordinal_ranking_n3(
             while pending:
                 future = next(as_completed(pending))
                 count = pending.pop(future)
-                res = future.result()
+                try:
+                    res = future.result()
+                except Exception as e:
+                    print(f"\nWorker error: {e}")
+                    continue
+                    
                 tested += res["tested"]
                 t_numba += res.get("t_numba", 0.0)
                 t_tie_struct += res.get("t_tie_struct", 0.0)

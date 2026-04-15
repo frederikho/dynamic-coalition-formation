@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+from tqdm import tqdm
 
 from lib.utils import get_approval_committee
 
@@ -58,6 +59,7 @@ def compute_indirect_strict_dominance(
     u: pd.DataFrame,
     effectivity: dict,
     tol: float = 1e-12,
+    pbar: tqdm | None = None,
 ) -> dict[tuple[str, str], bool]:
     """Compute the full indirect strict dominance relation ≪ (Chwe 1994).
 
@@ -84,6 +86,8 @@ def compute_indirect_strict_dominance(
                             changed = True
                             break
                     if a in ancestors: break
+                if pbar is not None:
+                    pbar.update(1)
     return indirect_dom
 
 
@@ -93,6 +97,7 @@ def compute_indirect_weak_dominance(
     u: pd.DataFrame,
     effectivity: dict,
     tol: float = 1e-12,
+    pbar: tqdm | None = None,
 ) -> dict[tuple[str, str], bool]:
     """Compute the full indirect weak dominance relation ≾ (Mauleon & Vannetelbosch 2004).
 
@@ -123,6 +128,8 @@ def compute_indirect_weak_dominance(
                             changed = True
                             break
                     if a in ancestors: break
+                if pbar is not None:
+                    pbar.update(1)
     return indirect_dom
 
 
@@ -137,6 +144,8 @@ def compute_lcs(
     effectivity: dict,
     weak: bool = False,
     tol: float = 1e-12,
+    show_progress: bool = False,
+    progress_desc: str | None = None,
 ) -> tuple[frozenset[str], dict[tuple[str, str], bool]]:
     """Compute the Largest Consistent Set (LCS).
 
@@ -144,14 +153,20 @@ def compute_lcs(
     If weak=True: Mauleon & Vannetelbosch (2004) LCS based on indirect weak dominance.
     """
     transitions = _build_effective_transitions(players, states, effectivity)
+
+    progress_label = progress_desc or ("LCS (Weak)" if weak else "LCS (Strict)")
+    pbar = tqdm(total=len(states), desc=progress_label, unit="step", leave=True) if show_progress else None
+
     if weak:
-        indirect_dom = compute_indirect_weak_dominance(players, states, u, effectivity, tol)
+        indirect_dom = compute_indirect_weak_dominance(players, states, u, effectivity, tol, pbar=pbar)
     else:
-        indirect_dom = compute_indirect_strict_dominance(players, states, u, effectivity, tol)
+        indirect_dom = compute_indirect_strict_dominance(players, states, u, effectivity, tol, pbar=pbar)
 
     def _f(X: frozenset[str]) -> frozenset[str]:
         result: list[str] = []
         for a in states:
+            if pbar is not None:
+                pbar.update(1)
             if a not in X: continue
             all_deterred = True
             for b in states:
@@ -190,10 +205,18 @@ def compute_lcs(
         return frozenset(result)
 
     X: frozenset[str] = frozenset(states)
+    iter_count = 0
     while True:
+        iter_count += 1
+        if pbar is not None:
+            pbar.total += len(states)
+            pbar.set_postfix_str(f"fixed-point {iter_count}")
+            pbar.refresh()
         X_new = _f(X)
         if X_new == X: break
         X = X_new
+    if pbar is not None:
+        pbar.close()
     return X, indirect_dom
 
 
@@ -208,6 +231,8 @@ def compute_lccs(
     effectivity: dict,
     weak: bool = False,
     tol: float = 1e-12,
+    show_progress: bool = False,
+    progress_desc: str | None = None,
 ) -> tuple[frozenset[str], dict[tuple[str, str], bool]]:
     """Compute the Largest Cautious Consistent Set (LCCS).
 
@@ -215,14 +240,18 @@ def compute_lccs(
     If weak=True: Def 6 from M&V (2004) based on indirect weak dominance.
     """
     transitions = _build_effective_transitions(players, states, effectivity)
+    progress_label = progress_desc or ("LCCS (Weak)" if weak else "LCCS (Strict)")
+    pbar = tqdm(total=len(states), desc=progress_label, unit="step", leave=True) if show_progress else None
     if weak:
-        indirect_dom = compute_indirect_weak_dominance(players, states, u, effectivity, tol)
+        indirect_dom = compute_indirect_weak_dominance(players, states, u, effectivity, tol, pbar=pbar)
     else:
-        indirect_dom = compute_indirect_strict_dominance(players, states, u, effectivity, tol)
+        indirect_dom = compute_indirect_strict_dominance(players, states, u, effectivity, tol, pbar=pbar)
 
     def _f(X: frozenset[str]) -> frozenset[str]:
         result: list[str] = []
         for a in states:
+            if pbar is not None:
+                pbar.update(1)
             if a not in X: continue
             all_deterred = True
             for b in states:
@@ -267,10 +296,18 @@ def compute_lccs(
         return frozenset(result)
 
     X: frozenset[str] = frozenset(states)
+    iter_count = 0
     while True:
+        iter_count += 1
+        if pbar is not None:
+            pbar.total += len(states)
+            pbar.set_postfix_str(f"fixed-point {iter_count}")
+            pbar.refresh()
         X_new = _f(X)
         if X_new == X: break
         X = X_new
+    if pbar is not None:
+        pbar.close()
     return X, indirect_dom
 
 # ---------------------------------------------------------------------------
@@ -285,6 +322,8 @@ def compute_largest_hrefs(
     effectivity: dict,
     strong: bool = False,
     tol: float = 1e-12,
+    show_progress: bool = False,
+    progress_desc: str | None = None,
 ) -> frozenset[str]:
     """Compute the Largest HREFS (or HSREFS if strong=True).
     
@@ -292,15 +331,24 @@ def compute_largest_hrefs(
     Dutta & Vartiainen (2020), Section 9.1.
     """
     transitions = _build_effective_transitions(players, states, effectivity)
+    progress_label = progress_desc or ("HSREFS (L)" if strong else "HREFS (L)")
+    # Unknown work size: use an indeterminate bar to avoid misleading percentages.
+    pbar = tqdm(total=None, desc=progress_label, unit="step", leave=True) if show_progress else None
     
     # 1. Find all acyclic objection paths. 
     # An objection path is (x0, S1, x1, ..., xm) s.t. Sk in E(xk-1, xk) and u_Sk(xm) > u_Sk(xk-1).
     
     all_paths: set[tuple] = set()
+    if pbar is not None:
+        pbar.set_postfix_str("seed paths")
     for x in states:
         all_paths.add((x,)) # Trivial paths
+        if pbar is not None:
+            pbar.update(1)
         
     queue = [(x,) for x in states]
+    if pbar is not None:
+        pbar.set_postfix_str("expand paths")
     while queue:
         p = queue.pop(0)
         curr = p[-1]
@@ -313,12 +361,18 @@ def compute_largest_hrefs(
                 new_p = p + (S, next_s)
                 all_paths.add(new_p)
                 queue.append(new_p)
+        if pbar is not None:
+            pbar.update(1)
 
     # Filter paths to keep only valid objection paths
     objection_paths = set()
+    if pbar is not None:
+        pbar.set_postfix_str("filtering paths")
     for p in all_paths:
         if len(p) == 1:
             objection_paths.add(p)
+            if pbar is not None:
+                pbar.update(1)
             continue
         xm = p[-1]
         valid = True
@@ -330,9 +384,13 @@ def compute_largest_hrefs(
                 break
         if valid:
             objection_paths.add(p)
+        if pbar is not None:
+            pbar.update(1)
 
     # 2. UUD algorithm: recursively eliminate dominated paths
     P = objection_paths
+    if pbar is not None:
+        pbar.set_postfix_str("UUD elimination")
     while True:
         paths_by_start = {x: [p for p in P if p[0] == x] for x in states}
         new_P = set()
@@ -376,8 +434,12 @@ def compute_largest_hrefs(
                     if dominated: break
                 if not dominated:
                     new_P.add(p)
+            if pbar is not None:
+                pbar.update(1)
         
         if new_P == P: break
         P = new_P
-        
+    if pbar is not None:
+        pbar.close()
+
     return frozenset(p[-1] for p in P)
