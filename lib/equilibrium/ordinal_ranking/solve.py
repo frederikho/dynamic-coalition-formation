@@ -28,6 +28,7 @@ from lib.equilibrium.ordinal_ranking.ranking_orders import (
     _payoff_ordering,
     _payoff_ordering_weak,
     _compute_absorbing_pruning_masks,
+    _compute_lcs_topology_pruning_masks,
 )
 from lib.equilibrium.ordinal_ranking.search import (
     _init_worker_ctx,
@@ -118,6 +119,7 @@ def solve_with_ordinal_ranking_n3(
     use_broyden: bool = False,
     extra_metadata: dict | None = None,
     lccs_absorbing_state: str | None = None,
+    lcs_states: frozenset | None = None,
     logger=None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     players = solver.players
@@ -171,6 +173,7 @@ def solve_with_ordinal_ranking_n3(
 
     # LCCS pruning: filter weak orders per player based on the trusted absorbing state
     pruning_report: dict[str, Any] | None = None
+    topology_pruning_report: dict[str, Any] | None = None
     lccs_valid_idx: list[np.ndarray] | None = None
     if lccs_absorbing_state is not None and weak_orders and state_perms is not None:
         lccs_valid_idx, pruning_report = _compute_absorbing_pruning_masks(
@@ -187,6 +190,24 @@ def solve_with_ordinal_ranking_n3(
             )
         else:
             perm_orders = tuple(v for v in lccs_valid_idx)
+
+    # Topology pruning: Theorem 1 + 2 based on LCS connected components.
+    # Applied whenever lcs_states is provided (complements absorbing-state pruning).
+    if lcs_states is not None and weak_orders and state_perms is not None:
+        topo_valid_idx, topology_pruning_report = _compute_lcs_topology_pruning_masks(
+            state_perms, payoff_array, list(states), list(players),
+            committee_idxs, lcs_states,
+            forbidden_proposals=solver.forbidden_proposals,
+        )
+        # Intersect with current perm_orders (or lccs_valid_idx if no payoff ordering)
+        if perm_orders is not None:
+            topo_sets = [set(v.tolist()) for v in topo_valid_idx]
+            perm_orders = tuple(
+                np.array([idx for idx in perm_orders[pi] if int(idx) in topo_sets[pi]], dtype=np.int64)
+                for pi in range(n_players)
+            )
+        else:
+            perm_orders = tuple(v for v in topo_valid_idx)
 
     if large_mode:
         flat_total = perm_count ** n_players
@@ -455,6 +476,7 @@ def solve_with_ordinal_ranking_n3(
                 pass
 
     if progress_every > 0:
+        _print_progress(tested, total, start_time, hits=total_hits)
         print()  # newline after progress bar
 
     wall_time = time.perf_counter() - start_time
@@ -498,6 +520,7 @@ def solve_with_ordinal_ranking_n3(
         "weak_payload_verified_true": weak_payload_verified_true,
         "weak_payload_verified_false": weak_payload_verified_false,
         "pruning_report": pruning_report,
+        "topology_pruning_report": topology_pruning_report,
     }
 
     if all_successes:

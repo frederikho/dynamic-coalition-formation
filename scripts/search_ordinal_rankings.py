@@ -22,10 +22,11 @@ from lib.equilibrium.ordinal_ranking import solve_with_ordinal_ranking_n3
 from lib.equilibrium.ordinal_ranking.ranking_orders import (
     _generate_weak_orders,
     _compute_absorbing_pruning_masks,
+    _compute_lcs_topology_pruning_masks,
 )
 from lib.equilibrium.ordinal_ranking.weak_equality import _NEWTON_GUESS_LIMIT
 from lib.equilibrium.ordinal_ranking.numba_loops import _NEWTON_MAX_ITERS
-from lib.equilibrium.lcs import compute_lccs
+from lib.equilibrium.lcs import compute_lcs, compute_lccs
 from lib.utils import get_approval_committee
 from lib.equilibrium.find import (
     setup_experiment,
@@ -340,16 +341,17 @@ def _print_pruning_report(
     states: list,
     payoff_array,
     total_original: int,
+    concept_label: str,
 ) -> None:
     print()
-    print("LCCS Absorbing-State Pruning Analysis")
+    print(f"{concept_label} Absorbing-State Pruning Analysis")
     print("=" * 80)
     absorbing = report["absorbing_state"]
     n_orig = report["n_orders_original"]
     total_pruned = report["total_after_pruning"]
     factor = report["reduction_factor"]
     pct_kept = 100.0 * total_pruned / max(total_original, 1)
-    print(f"  Absorbing state (trusted from LCCS): {absorbing}")
+    print(f"  Absorbing state (trusted from {concept_label}): {absorbing}")
     print(f"  Weak orders per player (original):   {n_orig:,d}")
     print()
     print(f"  {'Player':<10}  {'Valid':>8}  {'Pruned':>8}  {'% kept':>8}  Constraints")
@@ -394,6 +396,110 @@ def _print_pruning_report(
 
 
 # ---------------------------------------------------------------------------
+# Topology (Theorem 1 + 2) pruning report printer
+# ---------------------------------------------------------------------------
+
+def _print_topology_pruning_report(
+    report: dict,
+    players: list,
+    total_original: int,
+) -> None:
+    n_comp = report["n_components"]
+    components = report["components"]
+    n_orig = report["n_orders_original"]
+    total_after = report["total_after_pruning"]
+    factor = report["reduction_factor"]
+    pct_kept = 100.0 * total_after / max(total_original, 1)
+
+    print()
+    print("LCS Topology Pruning  (Theorem 1 + Theorem 2)")
+    print("=" * 80)
+    print(f"  LCS size:                  {report['lcs_size']} states")
+    print(f"  Connected components:      {n_comp}")
+    for ci, comp in enumerate(components):
+        print(f"    C{ci}: {{{', '.join(comp)}}}")
+
+    if n_comp <= 1:
+        print()
+        print(f"  {report.get('message', 'Single component — no cross-component pruning.')}")
+        print()
+        return
+
+    # Per-component payoff bounds
+    comp_min = report.get("comp_min", [])
+    comp_max = report.get("comp_max", [])
+    if comp_min and comp_max:
+        print()
+        print("  Payoff bounds per component per player:")
+        header = f"  {'Comp':<8}" + "".join(f"  {p:>12}" for p in players)
+        print(header)
+        print(f"  {'-'*8}" + "".join(f"  {'-'*12}" for _ in players))
+        for ci, comp in enumerate(components):
+            row_min = "  " + f"C{ci} min  " + "".join(f"  {comp_min[ci][pi]:>12.4g}" for pi in range(len(players)))
+            row_max = "  " + f"C{ci} max  " + "".join(f"  {comp_max[ci][pi]:>12.4g}" for pi in range(len(players)))
+            print(row_min)
+            print(row_max)
+
+    # Non-LCS reachability
+    non_lcs_reach = report.get("non_lcs_reachable", {})
+    if non_lcs_reach:
+        print()
+        print("  Non-LCS state reachability (Theorem 1):")
+        for t_name, comps in sorted(non_lcs_reach.items()):
+            comp_labels = [f"C{c}" for c in sorted(comps)] if comps else ["none"]
+            print(f"    {t_name}: can reach {', '.join(comp_labels)}")
+
+    # Per-player constraint summary
+    print()
+    print(f"  Constraints generated:     {report['n_constraints']}")
+    print()
+    print(f"  {'Player':<10}  {'Valid':>8}  {'Pruned':>8}  {'% kept':>8}  Constraints")
+    print(f"  {'-'*10}  {'-'*8}  {'-'*8}  {'-'*8}  -----------")
+    for pi, player in enumerate(players):
+        pp = report["per_player"][pi]
+        n_valid = pp["n_valid"]
+        n_pruned = pp["n_pruned"]
+        pct = 100.0 * n_valid / n_orig
+        cs = pp["constraints"]
+        if cs:
+            # Summarise constraints by theorem
+            thm2 = [c for c in cs if c["theorem"] == "Theorem 2"]
+            thm1 = [c for c in cs if c["theorem"] == "Theorem 1"]
+            parts = []
+            if thm2:
+                pairs = sorted({(c["worse_state"], c["better_state"]) for c in thm2})
+                parts.append(f"Thm2: {len(pairs)} pairs")
+            if thm1:
+                pairs = sorted({(c["worse_state"], c["better_state"]) for c in thm1})
+                parts.append(f"Thm1: {len(pairs)} pairs")
+            c_label = "; ".join(parts)
+        else:
+            c_label = "(none)"
+        print(f"  {player:<10}  {n_valid:>8,d}  {n_pruned:>8,d}  {pct:>7.1f}%  {c_label}")
+
+    print()
+    print(f"  Full search space:  {total_original:>15,d}")
+    print(f"  After pruning:      {total_after:>15,d}")
+    print(f"  Reduction factor:   {factor:>15.1f}×  ({pct_kept:.2f}% of original)")
+
+    # Detailed per-constraint breakdown (grouped by theorem + reason)
+    constraints = report["constraints"]
+    if constraints:
+        print()
+        print("  Ordering constraints (why each pair is pruned):")
+        # Group by reason to avoid repetition
+        reasons_seen: set[str] = set()
+        for c in constraints:
+            r = c["reason"]
+            if r not in reasons_seen:
+                reasons_seen.add(r)
+                print(f"    [{c['theorem']}] player {players[c['pi']]}: "
+                      f"{c['worse_state']} ranks below {c['better_state']}")
+                print(f"      ↳ {r}")
+    print()
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -434,17 +540,14 @@ def main():
                         help="Use Broyden's Good Method instead of Newton for warm-up "
                              "(residual-only per iteration, no Jacobian recomputation)")
     parser.add_argument(
-        "--prune-lccs",
-        action="store_true",
+        "--prune",
+        type=str,
+        default=None,
+        choices=("lccs", "lcs-weak", "lcs-strict"),
         help=(
-            "Automatically compute LCCS (weak), and if it identifies a unique absorbing state, "
-            "apply safe pruning to reduce the weak-order search space. Two rules are used: "
-            "Rule 1 (unilateral exit): if player i can unilaterally exit the absorbing state "
-            "to state B and ui(B) < ui(absorbing), require tier_i[B] > tier_i[absorbing]; "
-            "Rule 2 (strict dominance): if the absorbing state has strictly max payoff for "
-            "player i over all states, all non-absorbing states rank below it. "
-            "Both rules are safe: no valid equilibrium is discarded. "
-            "Requires --weak-orders."
+            "Automatically compute the selected stability concept and, if it identifies a unique "
+            "absorbing state, apply safe pruning to reduce the weak-order search space. "
+            "Choices: lccs (weak), lcs-weak, lcs-strict. Requires --weak-orders."
         ),
     )
 
@@ -472,6 +575,27 @@ def main():
     states = setup["state_names"]
     n_states = len(states)
 
+    # Early guard: estimate weak-order array size before allocating anything.
+    if args.weak_orders:
+        # Compute ordered Bell number (= number of weak orders of n elements).
+        _dp = [0] * (n_states + 1)
+        _dp[0] = 1
+        for _i in range(1, n_states + 1):
+            for _k in range(1, _i + 1):
+                _dp[_i] += math.comb(_i, _k) * _dp[_i - _k]
+        _n_weak = _dp[n_states]
+        _bytes = _n_weak * n_states  # int8 array
+        _MAX_BYTES = 4 * 1024 ** 3   # 4 GB hard limit
+        if _bytes > _MAX_BYTES:
+            print(f"ERROR: --weak-orders is infeasible for {n_states} states "
+                  f"({len(players)} players: {list(players)}).")
+            print(f"  Weak orders: {_n_weak:,}  |  Array size ≈ {_bytes / 1e9:.1f} GB  "
+                  f"(limit: {_MAX_BYTES / 1e9:.0f} GB)")
+            print(f"  --weak-orders is only practical for ≤ 9 states (≤ 3 countries).")
+            print(f"  For larger problems, drop --weak-orders to use strict-permutation "
+                  f"sampling (large-mode).")
+            sys.exit(1)
+
     # Compute total search space size for header
     if args.weak_orders:
         order_arrays = _generate_weak_orders(n_states)
@@ -485,46 +609,85 @@ def main():
     if args.write_all and not output_dir:
         output_dir = str(REPO_ROOT / "strategy_tables" / f"ordinal_all_{payoff_path.stem}")
 
-    # ── LCCS auto-pruning ─────────────────────────────────────────────────────
-    lccs_absorbing_state: str | None = None
-    if args.prune_lccs:
+    # ── Stability-based auto-pruning ──────────────────────────────────────────
+    absorbing_state: str | None = None
+    lcs_states_for_solver: frozenset | None = None
+    lccs_valid_idx: list[np.ndarray] | None = None
+    prune_concept_label: str | None = None
+    if args.prune:
         if not args.weak_orders:
-            print("ERROR: --prune-lccs requires --weak-orders")
+            print("ERROR: Pruning requires --weak-orders")
             sys.exit(1)
-        lccs_members, _ = compute_lccs(
-            list(players), list(states),
-            setup["payoffs"][list(players)], setup["effectivity"], weak=True,
-        )
-        if len(lccs_members) != 1:
-            print(
-                f"WARNING: --prune-lccs: LCCS (weak) contains {len(lccs_members)} states "
-                f"{sorted(lccs_members)} — pruning requires a unique absorbing state; skipping."
-            )
+
+        prune_mode = args.prune
+        if prune_mode == "lccs":
+            concept_name = "LCCS"
+            concept_is_weak = True
+            compute_fn = compute_lccs
+            prune_concept_label = "LCCS (weak)"
+        elif prune_mode == "lcs-weak":
+            concept_name = "LCS"
+            concept_is_weak = True
+            compute_fn = compute_lcs
+            prune_concept_label = "LCS (weak)"
         else:
-            lccs_absorbing_state = next(iter(lccs_members))
-            # Build committee structure to evaluate pruning rules upfront
-            payoff_array = setup["payoffs"].loc[states, players].to_numpy()
-            player_idx_map = {p: i for i, p in enumerate(players)}
-            committee_idxs_pre: list = []
-            for proposer in players:
-                proposer_rows = []
-                for current_state in states:
-                    row = []
-                    for next_state in states:
-                        committee = get_approval_committee(
-                            setup["effectivity"], players, proposer, current_state, next_state
-                        )
-                        row.append(tuple(player_idx_map[p] for p in committee))
-                    proposer_rows.append(row)
-                committee_idxs_pre.append(proposer_rows)
-            _, pruning_report_pre = _compute_absorbing_pruning_masks(
-                order_arrays, payoff_array, list(states), list(players),
-                committee_idxs_pre, lccs_absorbing_state,
+            concept_name = "LCS"
+            concept_is_weak = False
+            compute_fn = compute_lcs
+            prune_concept_label = "LCS (strict)"
+
+        stable_members, _ = compute_fn(
+            list(players), list(states),
+            setup["payoffs"][list(players)], setup["effectivity"], weak=concept_is_weak,
+        )
+
+        # Build committee structure (needed for both pruning paths).
+        payoff_array_pre = setup["payoffs"].loc[states, players].to_numpy()
+        player_idx_map = {p: i for i, p in enumerate(players)}
+        committee_idxs_pre: list = []
+        for proposer in players:
+            proposer_rows = []
+            for current_state in states:
+                row = []
+                for next_state in states:
+                    committee = get_approval_committee(
+                        setup["effectivity"], players, proposer, current_state, next_state
+                    )
+                    row.append(tuple(player_idx_map[p] for p in committee))
+                proposer_rows.append(row)
+            committee_idxs_pre.append(proposer_rows)
+
+        if len(stable_members) == 1:
+            # ── Absorbing-state pruning (Rules 1 & 2) ────────────────────────
+            absorbing_state = next(iter(stable_members))
+            lccs_valid_idx, pruning_report_pre = _compute_absorbing_pruning_masks(
+                order_arrays, payoff_array_pre, list(states), list(players),
+                committee_idxs_pre, absorbing_state,
                 forbidden_proposals=setup["forbidden_proposals"],
             )
             _print_pruning_report(
-                pruning_report_pre, list(players), list(states), payoff_array, total_triples,
+                pruning_report_pre,
+                list(players),
+                list(states),
+                payoff_array_pre,
+                total_triples,
+                concept_label=prune_concept_label,
             )
+        else:
+            print(
+                f"\nNOTE: {prune_concept_label} contains {len(stable_members)} states "
+                f"{sorted(stable_members)} — absorbing-state pruning (Rules 1/2) skipped; "
+                "applying Theorem 1 + 2 topology pruning instead."
+            )
+
+        # ── Topology pruning (Theorems 1 + 2) — always attempted ─────────────
+        lcs_states_for_solver = stable_members
+        topo_masks_pre, topo_report_pre = _compute_lcs_topology_pruning_masks(
+            order_arrays, payoff_array_pre, list(states), list(players),
+            committee_idxs_pre, stable_members,
+            forbidden_proposals=setup["forbidden_proposals"],
+        )
+        _print_topology_pruning_report(topo_report_pre, list(players), total_triples)
 
     # ── Header ───────────────────────────────────────────────────────────────
     print("Ordinal Ranking Verification Search")
@@ -540,8 +703,12 @@ def main():
     if args.effectivity_rule:
         print(f"effectivity_rule: {args.effectivity_rule}")
     print(f"total_ranking_triples: {total_triples:,d}")
-    if lccs_absorbing_state:
-        print(f"prune_lccs: absorbing={lccs_absorbing_state}")
+    if args.prune:
+        print(f"prune: {args.prune}")
+        if absorbing_state and prune_concept_label:
+            print(f"prune_absorbing_state: {absorbing_state} ({prune_concept_label})")
+        if lcs_states_for_solver is not None:
+            print(f"prune_lcs_states: {sorted(lcs_states_for_solver)} ({prune_concept_label})")
     if args.max_combinations:
         print(f"max_combinations: {args.max_combinations:,d}")
     print(f"stop_on_success: {args.stop_on_success}")
@@ -606,7 +773,8 @@ def main():
         use_newton=(not args.disable_newton),
         use_broyden=args.use_broyden,
         extra_metadata=extra_metadata,
-        lccs_absorbing_state=lccs_absorbing_state,
+        lccs_absorbing_state=absorbing_state,
+        lcs_states=lcs_states_for_solver,
     )
 
     # ── Summary ──────────────────────────────────────────────────────────────
