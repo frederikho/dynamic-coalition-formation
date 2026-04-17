@@ -115,6 +115,9 @@ class StreamingWriter:
             "discounting": solver.discounting,
             "dedup_key": key,
             "weak_orders": self.weak_orders,
+            "players": ", ".join(players),
+            "n_players": len(players),
+            "states": ", ".join(states),
         }
         metadata.update(self.extra_metadata)
         for p_idx, p_name in enumerate(players):
@@ -128,6 +131,7 @@ class StreamingWriter:
             states=states,
             metadata=metadata,
             value_functions=V,
+            geo_levels=solver.geo_levels,
             static_payoffs=solver.payoffs,
             transition_matrix=P,
         )

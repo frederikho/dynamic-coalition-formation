@@ -46,6 +46,10 @@ Then open http://127.0.0.1:8765.
 
 python lib/ingest_payoffs.py --input-dir "/home/frederik/Code/RICE50x/results/Burke" --output "burke_2060" --cutoff-year 2060
 
+# Only get payoffs
+
+python3 multimodel_orchestrator.py --max-workers 8 --periods 2035-2100 --impact kalkuhl --countries usa chn nde bra rus --policy bau_impact --gamma_ineq=0.5 --max_gain=10 --max_damage=0.9 --t_ada_temp=5 --sai_damage_coef=0.1 --average-payoffs --fresh --payoffs-only
+
 # Find equilibrium
 
 Standard:
@@ -74,7 +78,7 @@ python find_equilibrium.py power_threshold_RICE_n3 --payoff-table simple_cycle_u
 
 
 Finding an equilibrium with weak equalities:
- PYTHONPATH=. python3 scripts/search_ordinal_rankings.py     simple_cycle_usachnnde-60-reduced.xlsx     --scenario power_threshold_RICE_n3  --workers 8         --effectivity-rule free_exit     --ranking-order payoff         --write-all     --dedup-by strategy --weak-orders --weak-equality-solve --max-combinations 50000  --weak-equality-max-vars 30 --progress-every 1000
+PYTHONPATH=. python3 scripts/search_ordinal_rankings.py     simple_cycle_usachnnde-60-reduced.xlsx     --scenario power_threshold_RICE_n3  --workers 8         --effectivity-rule free_exit     --ranking-order payoff         --write-all     --dedup-by strategy --weak-orders --weak-equality-solve --max-combinations 50000  --weak-equality-max-vars 30 --progress-every 1000
 
 
 
@@ -83,8 +87,11 @@ PYTHONPATH=. python3 scripts/search_ordinal_rankings.py     simple_cycle_usachnn
 
 
 
+
 LCS:
-PYTHONPATH=. python3 scripts/compute_lcs.py simple_cycle_usachn-1.01-reduced-further.xlsx --scenario power_threshold_RICE_n3 --allow-non-canonical-states --effectivity-rule free_exit
+PYTHONPATH=. python3 scripts/compute_lcs.py simple_cycle_usachn-1.01-reduced-further.xlsx --scenario power_threshold_RICE --allow-non-canonical-states --effectivity-rule free_exit
+
+
 
 
 # Verify an equilibrium

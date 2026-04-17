@@ -311,10 +311,11 @@ def solve_with_ordinal_ranking_n3(
                 getattr(solver, "unanimity_required", True),
                 getattr(solver, "effectivity", None),
                 getattr(solver, "power_rule", "power_threshold"),
-                use_newton,
-                use_broyden,
-            ),
-        )
+                use_newton, use_broyden,
+                solver.geo_levels,
+                ),
+                )
+
         pending = {}
         batch_gen = batches
 

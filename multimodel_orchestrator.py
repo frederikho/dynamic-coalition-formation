@@ -38,6 +38,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Paths
@@ -595,14 +596,16 @@ def run_gams_phase(
             ): label
             for label, cmd in jobs
         }
-        for future in concurrent.futures.as_completed(future_to_label):
-            label = future_to_label[future]
-            exc = future.exception()
-            if exc is not None:
-                _log(f"  ✗  {label}")
-                failures.append((label, str(exc)))
-            else:
-                _ok(label)
+        with tqdm(total=len(jobs), desc="  GAMS jobs", unit="job", leave=True) as pbar:
+            for future in concurrent.futures.as_completed(future_to_label):
+                label = future_to_label[future]
+                exc = future.exception()
+                if exc is not None:
+                    _log(f"  ✗  {label}")
+                    failures.append((label, str(exc)))
+                else:
+                    _ok(label)
+                pbar.update(1)
 
     if failures:
         details = "\n\n".join(
@@ -655,17 +658,20 @@ def run_ingest(
 
     buf = io.StringIO()
     with redirect_stdout(buf):
-        ingest(
-            input_dir=gdx_dir,
-            output_path=payoff_table_path,
-            players=None,          # auto-detect from filenames
-            start_year=start_year,
-            end_year=end_year,
-            end_inclusive=end_inclusive,
-            extra_metadata=extra_metadata,
-            required_stem_prefix=stem_prefix,
-            average=average_payoffs,
-        )
+        with tqdm(total=100, desc="  Ingesting payoffs", unit="%", leave=True) as pbar:
+            pbar.update(10)  # Start at 10%
+            ingest(
+                input_dir=gdx_dir,
+                output_path=payoff_table_path,
+                players=None,          # auto-detect from filenames
+                start_year=start_year,
+                end_year=end_year,
+                end_inclusive=end_inclusive,
+                extra_metadata=extra_metadata,
+                required_stem_prefix=stem_prefix,
+                average=average_payoffs,
+            )
+            pbar.update(90)  # Finish at 100%
 
     # Surface the key lines from ingest output
     for line in buf.getvalue().splitlines():
@@ -778,15 +784,18 @@ def run_find_equilibrium(
 
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    result = find_equilibrium(
-        config=config,
-        output_file=str(output_file),
-        # Keep terminal quiet via file-only logger, but enable verbose logging
-        # so the solver writes progress into the log file.
-        verbose=True,
-        load_from_checkpoint=False,   # always fresh (equivalent to --fresh)
-        logger=solver_logger,
-    )
+    with tqdm(total=100, desc="  Finding equilibrium", unit="%", leave=True) as pbar:
+        pbar.update(5)  # Start at 5%
+        result = find_equilibrium(
+            config=config,
+            output_file=str(output_file),
+            # Keep terminal quiet via file-only logger, but enable verbose logging
+            # so the solver writes progress into the log file.
+            verbose=True,
+            load_from_checkpoint=False,   # always fresh (equivalent to --fresh)
+            logger=solver_logger,
+        )
+        pbar.update(95)  # Finish at 100%
 
     verified = result.get("verification_success", False)
     msg = result.get("verification_message", "")
@@ -1133,7 +1142,10 @@ def orchestrate(
         P          = result["P"]
         geo_levels = result["geoengineering"]
 
-        absorbing, sai_values = extract_absorbing_states(P, geo_levels)
+        with tqdm(total=100, desc="  Extracting states", unit="%", leave=True) as pbar:
+            pbar.update(20)
+            absorbing, sai_values = extract_absorbing_states(P, geo_levels)
+            pbar.update(80)
 
         if not absorbing:
             raise RuntimeError(

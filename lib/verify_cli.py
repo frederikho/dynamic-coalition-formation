@@ -60,8 +60,9 @@ def _deployer_key(state) -> str:
 
 def _load_payoff_table(
     path: Path, state_objects: List, players: List[str]
-) -> "pd.DataFrame":
-    """Load a precomputed payoff table and map rows to framework state names."""
+) -> Tuple[pd.DataFrame, Optional[pd.DataFrame]]:
+    """Load a precomputed payoff table and map rows to framework state names.
+    Returns (payoffs, geo_levels)."""
     if not path.exists():
         fallback = DEFAULT_PAYOFF_TABLE_DIR / path.name
         if fallback.exists():
@@ -82,22 +83,34 @@ def _load_payoff_table(
             f"Available: {df.columns.tolist()}"
         )
 
+    # Find W_SAI column (named W_SAI_sum_≤YYYY by ingest_payoffs)
+    sai_col = next((c for c in df.columns if str(c).startswith("W_SAI")), None)
+
     state_names = [s.name for s in state_objects]
     payoffs = pd.DataFrame(index=state_names, columns=players, dtype=np.float64)
+    geo_levels = pd.DataFrame(index=state_names, columns=["G"], dtype=np.float64) if sai_col else None
+
     for state in state_objects:
-        # Prefer direct state name match; fall back to computed deployer key.
-        if state.name in df.index:
-            key = state.name
-        else:
-            key = _deployer_key(state)
-            if key not in df.index:
-                raise ValueError(
-                    f"Payoff table {path.name} has no row for deployer key '{key}' "
-                    f"(needed by state '{state.name}').\n"
-                    f"Available keys: {df.index.tolist()}"
-                )
-        payoffs.loc[state.name] = df.loc[key, players].values
-    return payoffs
+        # Prefer the deployer-key derived from the state's geo_deployment_level
+        # and strongest_coalition. This ensures that in scenarios with dominant
+        # players (like USA > 50%), even the '()' state correctly loads the
+        # payoffs for the (USA) row instead of the empty ( ) row.
+        # Fallback to direct state-name lookup for custom tables.
+        row_key = _deployer_key(state)
+        if row_key not in df.index and state.name in df.index:
+            row_key = state.name
+
+        if row_key not in df.index:
+            needed_key = _deployer_key(state)
+            raise ValueError(
+                f"Payoff table {path.name} has no row for framework state '{state.name}' "
+                f"or deployer key '{needed_key}'.\n"
+                f"Available keys: {df.index.tolist()}"
+            )
+        payoffs.loc[state.name] = df.loc[row_key, players].values
+        if sai_col is not None:
+            geo_levels.loc[state.name, "G"] = float(df.loc[row_key, sai_col])
+    return payoffs, geo_levels
 
 
 def _read_metadata_from_xlsx(xlsx_path: Path) -> Dict[str, Any]:
@@ -420,12 +433,12 @@ def _run_verification(xlsx_path: Path, skip_effectivity_check: bool = False, eff
 
     if payoff_source == "precomputed_table" and payoff_table_name:
         payoff_table_path = Path(payoff_table_name)
-        payoffs = _load_payoff_table(payoff_table_path, state_objects, players)
+        payoffs, table_geo_levels = _load_payoff_table(payoff_table_path, state_objects, players)
+        geoengineering = table_geo_levels if table_geo_levels is not None else get_geoengineering_levels(states=state_objects)
         print(f"Payoffs: loaded from '{payoff_table_path.name}'")
     else:
         payoffs = get_payoff_matrix(states=state_objects, columns=players)
-
-    geoengineering = get_geoengineering_levels(states=state_objects)
+        geoengineering = get_geoengineering_levels(states=state_objects)
 
     file_effectivity = derive_effectivity(df=strategy_df_raw, players=players, states=states)
     effectivity = get_effectivity(effectivity_rule, players, states)

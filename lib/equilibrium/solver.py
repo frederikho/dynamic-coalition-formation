@@ -131,6 +131,7 @@ class EquilibriumSolver:
                  verbose: bool = True,
                  random_seed: Optional[int] = None,
                  initialization_mode: str = "uniform",
+                 geo_levels: Optional[pd.DataFrame] = None,
                  logger=None):
         """
         Args:
@@ -144,6 +145,7 @@ class EquilibriumSolver:
             verbose: Whether to print progress
             random_seed: Random seed for initialization (if None, generates one)
             initialization_mode: Strategy initialization mode
+            geo_levels: Geoengineering levels for each state (optional)
             logger: Logger instance (if None, uses print statements)
         """
         self.players = players
@@ -158,6 +160,7 @@ class EquilibriumSolver:
         self.effectivity_rule = effectivity_rule
         self.verbose = verbose
         self.logger = logger
+        self.geo_levels = geo_levels
 
         # Set random seed (generate if not provided)
         if random_seed is None:

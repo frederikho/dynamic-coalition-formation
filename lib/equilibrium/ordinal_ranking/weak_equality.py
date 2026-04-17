@@ -177,6 +177,7 @@ def _finalize_weak_solution(
     timing_data: dict[str, float] | None = None,
     effectivity: dict | None = None,
     power_rule: str = "power_threshold",
+    geo_levels: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     from lib.equilibrium.solver import EquilibriumSolver
 
@@ -213,7 +214,9 @@ def _finalize_weak_solution(
             unanimity_required=unanimity_required,
             power_rule=power_rule,
             verbose=False,
-            random_seed=0, initialization_mode="uniform", logger=None,
+            random_seed=0, initialization_mode="uniform", 
+            geo_levels=geo_levels,
+            logger=None,
         )
         # Synchronize solver's strategy dicts with the numerical probabilities from the Newton solver.
         # We use action_arr and probs_arr which already have sigmoid/softmax applied.
@@ -278,6 +281,7 @@ def _solve_weak_equalities(
     _exit_stats_counts: np.ndarray | None = None,
     _flow_stats: dict[str, int] | None = None,
     _source_path: str | None = None,
+    geo_levels: pd.DataFrame | None = None,
 ) -> dict[str, Any] | None:
     """Solve for free approval/proposal probabilities that make V self-consistent."""
     t_start = time.perf_counter()
@@ -705,6 +709,7 @@ def _solve_weak_equalities(
         timing_data=timing_data,
         effectivity=effectivity,
         power_rule=power_rule,
+        geo_levels=geo_levels,
     )
     if timing_data is not None:
         timing_data["solver_finalize"] += (time.perf_counter() - t_f0)

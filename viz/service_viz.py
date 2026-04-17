@@ -32,7 +32,7 @@ from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
 from lib.probabilities_optimized import TransitionProbabilitiesOptimized
-from lib.utils import derive_effectivity
+from lib.utils import derive_effectivity, list_members
 from lib.mdp import MDP
 
 
@@ -145,15 +145,15 @@ DEFAULT_PROFILES_DIR = str(Path(__file__).parent.parent / "strategy_tables")
 # Default configuration (matches main.py base_config)
 DEFAULT_CONFIG = {
     "players": ["W", "T", "C"],
-    "base_temp": {"W": 21.5, "T": 14.0, "C": 11.5},
-    "ideal_temp": {"W": 13.0, "T": 13.0, "C": 13.0},
-    "delta_temp": {"W": 3.0, "T": 3.0, "C": 3.0},
-    "power": {"W": 1/3, "T": 1/3, "C": 1/3},
-    "protocol": {"W": 1/3, "T": 1/3, "C": 1/3},
-    "m_damage": {"W": 1.0, "T": 1.0, "C": 1.0},
-    "power_rule": "weak_governance",
+    "base_temp": {},
+    "ideal_temp": {},
+    "delta_temp": {},
+    "power": {},
+    "protocol": {},
+    "m_damage": {},
+    "power_rule": "power_threshold",
     "min_power": None,
-    "state_names": ['( )', '(TC)', '(WC)', '(WT)', '(WTC)'],
+    "state_names": [],
     "unanimity_required": True,
     "discounting": 0.99,
 }
@@ -170,57 +170,27 @@ def parse_coalition_structure(state_name: str, all_countries: List[Country]) -> 
     Returns:
         List of Coalition objects representing this structure
     """
-    # Create a mapping from country names to country objects
     country_map = {c.name: c for c in all_countries}
+    players = list(country_map.keys())
     
-    if state_name == '( )':
-        # All singletons
-        return [Coalition([c]) for c in all_countries]
+    # Use the library function which handles multi-character names correctly
+    from lib.utils import list_coalitions
+    coalition_member_lists = list_coalitions(state_name, players)
     
-    # Parse coalitions from the state name
-    # Remove outer spaces and split by ')(' to get individual coalitions
-    coalitions_str = state_name.strip().strip('(').strip(')')
-    
-    if not coalitions_str:
-        # Empty means all singletons
-        return [Coalition([c]) for c in all_countries]
-    
-    # Split by ')(' to find multiple coalitions
-    coalition_parts = []
-    current = ""
-    depth = 0
-    for char in state_name:
-        if char == '(':
-            depth += 1
-            if depth == 1:
-                current = ""
-        elif char == ')':
-            depth -= 1
-            if depth == 0 and current:
-                coalition_parts.append(current)
-                current = ""
-        elif depth == 1:
-            current += char
-    
-    # Build set of countries in coalitions
-    countries_in_coalitions = set()
     coalitions = []
+    countries_in_coalitions = set()
     
-    for part in coalition_parts:
-        # Each character is a country name
-        coalition_countries = []
-        for country_name in part:
-            if country_name in country_map:
-                coalition_countries.append(country_map[country_name])
-                countries_in_coalitions.add(country_name)
-        if coalition_countries:
-            coalitions.append(Coalition(coalition_countries))
-    
+    for member_names in coalition_member_lists:
+        coalition_countries = [country_map[name] for name in member_names]
+        coalitions.append(Coalition(coalition_countries))
+        for name in member_names:
+            countries_in_coalitions.add(name)
+            
     # Add singletons for countries not in any coalition
     for country in all_countries:
         if country.name not in countries_in_coalitions:
             coalitions.append(Coalition([country]))
-    
+            
     return coalitions
 
 
@@ -539,6 +509,16 @@ def compute_stationary_distribution(P: pd.DataFrame) -> np.ndarray:
         return pi
 
 
+def _players_from_strategy_df(df: pd.DataFrame) -> List[str]:
+    """Infer player list from acceptance rows in the strategy DataFrame."""
+    players = []
+    # Index is (state, kind, player)
+    for _, kind, player in df.index:
+        if kind == 'Acceptance' and pd.notna(player) and player not in players:
+            players.append(str(player))
+    return players
+
+
 def compute_transition_graph(
     xlsx_path: str,
     config: Dict[str, Any] = None,
@@ -602,14 +582,36 @@ def compute_transition_graph(
         # (Files generated with --payoff-table omit these since payoffs come from
         # an external table; 0 makes it obvious the value was not provided.)
         for player in config['players']:
-            for param in ['base_temp', 'ideal_temp', 'delta_temp', 'm_damage']:
+            for param in ['base_temp', 'ideal_temp', 'delta_temp', 'm_damage', 'power', 'protocol']:
                 if param not in config:
                     config[param] = {}
                 if player not in config[param]:
-                    config[param][player] = 0.0
+                    # For protocol and power, default to uniform if missing
+                    if param in ('protocol', 'power'):
+                        config[param][player] = 1.0 / len(config['players'])
+                    else:
+                        config[param][player] = 0.0
     
-    # 1. Read strategy profile first to get actual state names from columns
+    # 1. Read strategy profile first to get actual state names and players
     strategy_df = pd.read_excel(xlsx_path, header=[0, 1], index_col=[0, 1, 2])
+
+    # Infer players if not specified in metadata
+    if 'players' not in file_metadata:
+        actual_players = _players_from_strategy_df(strategy_df)
+        if actual_players:
+            config['players'] = actual_players
+            n = len(actual_players)
+            logger.info(f"Inferred players from strategy table: {actual_players}")
+            # Ensure protocol and power are also initialized correctly for inferred players
+            for player in config['players']:
+                for param in ('protocol', 'power', 'base_temp', 'ideal_temp', 'delta_temp', 'm_damage'):
+                    if param not in config:
+                        config[param] = {}
+                    if player not in config[param]:
+                        if param in ('protocol', 'power'):
+                            config[param][player] = 1.0 / n
+                        else:
+                            config[param][player] = 0.0
 
     # Extract actual state names from the DataFrame columns (second level of MultiIndex)
     actual_state_names = []
@@ -1019,6 +1021,17 @@ def compute_transition_graph(
     }
 
 
+def _sanitize_json(obj: Any) -> Any:
+    """Recursively replace NaN values with None for JSON compliance."""
+    if isinstance(obj, dict):
+        return {k: _sanitize_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_sanitize_json(v) for v in obj]
+    elif isinstance(obj, float) or isinstance(obj, np.float64):
+        return None if np.isnan(obj) else obj
+    return obj
+
+
 @app.get("/")
 async def root():
     """API root endpoint."""
@@ -1059,7 +1072,8 @@ async def get_graph(
         # Compute graph (configuration is read from file metadata)
         graph_data = compute_transition_graph(str(profile_path))
 
-        return graph_data
+        # Sanitize for JSON compliance (replace NaN with None)
+        return _sanitize_json(graph_data)
 
     except HTTPException:
         raise

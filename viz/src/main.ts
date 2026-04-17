@@ -214,6 +214,10 @@ async function loadGraph() {
 
     currentGraphData = graphData;
 
+    // Auto-hide G values if all nodes have 0 geoengineering level
+    const hasAnyG = graphData.nodes.some(node => (node.meta?.geo_level || 0) > 0);
+    showGeoLevel = hasAnyG;
+
     // Render graph
     initRenderer();
     const threshold = parseFloat(probThresholdInput.value) || 0;
@@ -371,6 +375,9 @@ function updateResultIndicator(data: GraphData) {
 function renderResultIndicator(expectedG: number, pi: any, mixingTime: number | null, absorptionTime: any | null, expanded: boolean) {
   const expandIcon = expanded ? '▼' : '▶';
 
+  // Check if G should be displayed
+  const hasAnyG = currentGraphData?.nodes.some(node => (node.meta?.geo_level || 0) > 0);
+
   // Format convergence time display
   let convergenceDisplay = '';
   if (absorptionTime && absorptionTime.max != null) {
@@ -403,17 +410,24 @@ function renderResultIndicator(expectedG: number, pi: any, mixingTime: number | 
     `;
   }
 
+  let gDisplay = '';
+  if (hasAnyG) {
+    gDisplay = `<div><strong>E<sub>π</sub>[G]:</strong> ${expectedG.toFixed(2)}°C</div>`;
+  } else {
+    gDisplay = `<div style="color:#64748b;font-style:italic;">No geoengineering deployment</div>`;
+  }
+
   let html = `
     <div class="result-summary">
       <div>
-        <div><strong>E<sub>π</sub>[G]:</strong> ${expectedG.toFixed(2)}°C</div>
+        ${gDisplay}
         ${convergenceDisplay}
       </div>
       <span class="expand-icon">${expandIcon}</span>
     </div>
   `;
 
-  if (expanded && pi && currentGraphData) {
+  if (expanded && pi && currentGraphData && hasAnyG) {
     // Collect all unique G levels from nodes
     const allGLevels = new Set<number>();
     const gToProb = new Map<number, number>();

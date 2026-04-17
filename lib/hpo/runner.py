@@ -67,6 +67,7 @@ def run_single(config: Dict[str, Any],
         unanimity_required=setup['unanimity_required'],
         verbose=False,
         random_seed=random_seed,
+        geo_levels=setup.get('geoengineering'),
         logger=None
     )
 

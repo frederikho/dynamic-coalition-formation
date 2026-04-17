@@ -709,7 +709,14 @@ def write_strategy_table_excel(df: pd.DataFrame, excel_file_path: str, players: 
         row = 2
         for key, value in metadata.items():
             ws_meta.cell(row=row, column=1, value=str(key))
-            ws_meta.cell(row=row, column=2, value=str(value))
+            # Try to write numerical values as floats to preserve precision
+            try:
+                if isinstance(value, (int, float, np.number)):
+                    ws_meta.cell(row=row, column=2, value=float(value))
+                else:
+                    ws_meta.cell(row=row, column=2, value=str(value))
+            except (ValueError, TypeError):
+                ws_meta.cell(row=row, column=2, value=str(value))
             ws_meta.cell(row=row, column=1).font = Font(name='Calibri', size=10)
             ws_meta.cell(row=row, column=2).font = Font(name='Calibri', size=10)
             row += 1
@@ -832,7 +839,14 @@ def write_payoff_table_excel(
         meta_row = 2
         for key, value in metadata.items():
             ws_meta.cell(row=meta_row, column=1, value=str(key))
-            ws_meta.cell(row=meta_row, column=2, value=str(value))
+            # Try to write numerical values as floats to preserve precision
+            try:
+                if isinstance(value, (int, float, np.number)):
+                    ws_meta.cell(row=meta_row, column=2, value=float(value))
+                else:
+                    ws_meta.cell(row=meta_row, column=2, value=str(value))
+            except (ValueError, TypeError):
+                ws_meta.cell(row=meta_row, column=2, value=str(value))
             meta_row += 1
         for r in range(1, meta_row):
             for c in range(1, 3):

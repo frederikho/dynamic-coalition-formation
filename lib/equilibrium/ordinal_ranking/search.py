@@ -45,6 +45,7 @@ def _init_worker_ctx(
     power_rule: str = "power_threshold",
     use_newton: bool = True,
     use_broyden: bool = False,
+    geo_levels: pd.DataFrame | None = None,
 ) -> None:
     global _WORKER_CTX
     n_players = len(players)
@@ -88,6 +89,7 @@ def _init_worker_ctx(
         "power_rule": power_rule,
         "use_newton": use_newton,
         "use_broyden": use_broyden,
+        "geo_levels": geo_levels,
     }
 
     # Workers ignore SIGINT so only the main process handles Ctrl+C.
@@ -317,6 +319,7 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                             _precomputed_protocol_arr=protocol_arr,
                             _exit_stats_counts=_call_exit_stats,
                             _flow_stats=_call_flow_stats,
+                            geo_levels=ctx.get("geo_levels"),
                         )
                         exit_stats_counts += _call_exit_stats
                         for _k, _v in _call_flow_stats.items():
