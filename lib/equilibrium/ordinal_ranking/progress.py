@@ -14,9 +14,11 @@ def _print_progress(
     hits: int = 0,
     breakdown: str = "",
     recent_rate: float | None = None,
+    offset: int = 0,
 ) -> None:
     elapsed = max(1e-9, time.perf_counter() - start_time)
-    rate = done / elapsed
+    # Global rate calculation: only count what we did in THIS run
+    rate = (done - offset) / elapsed
     frac = done / total if total else 0.0
     width = 30
     filled = int(width * frac)

@@ -280,8 +280,8 @@ class TransitionProbabilitiesOptimized:
                     else:
                         # Majority approval logic (generalized for n >= 3)
                         # For n=3, typically 2 approvers; for n=4, can be 2-4 approvers
-                        current_members = list_members(current_state)
-                        next_members = list_members(next_state)
+                        current_members = list_members(current_state, self.players)
+                        next_members = list_members(next_state, self.players)
 
                         new_members = [c for c in next_members if c not in current_members]
                         current_non_proposer_members = [

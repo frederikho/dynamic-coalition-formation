@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from lib.equilibrium.ordinal_ranking.induced_strategies import (
     _build_induced_arrays,
     _build_induced_arrays_weak,
@@ -66,6 +67,8 @@ def _init_worker_ctx(
                 for k, ai in enumerate(comm):
                     comm_arr[pi, ci, ni, k] = ai
 
+    # Ensure arrays are read-only to prevent accidental modification in workers
+    # (Note: Some Numba versions might conflict with frozen flags, so we skip it)
     _WORKER_CTX = {
         "players": players,
         "states": states,
@@ -372,7 +375,7 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
             n_hits += 1
             success = {
                 "perms": order_ids,
-                "rankings": tuple(ctx["state_perms"][idx].copy() for idx in order_ids),
+                "rankings": tuple(ctx["pos"][idx].copy() for idx in order_ids),
                 "n_free": n_free if weak_equality_solve else 0,
             }
             if solved_payload is not None and solved_payload.get("verification_success"):
@@ -499,30 +502,52 @@ def _iter_tuples(
     shuffle: bool = False, random_seed: int = 0,
     perm_orders: list[np.ndarray] | None = None,
     valid_idx_per_player: list[np.ndarray] | None = None,
+    continue_at: int = 0,
 ):
     count = 0
     if shuffle:
         rng = np.random.default_rng(random_seed)
+        # Fast-forward RNG if continue_at is set.
+        # integers() and choice() consume one RNG draw per player per count.
+        if continue_at > 0:
+            rng.advance(continue_at * n_players)
+
         if valid_idx_per_player is not None:
             # Sample uniformly from each player's valid index set
             while total is None or count < total:
-                yield np.array([
+                val = np.array([
                     int(rng.choice(valid_idx_per_player[pi]))
                     for pi in range(n_players)
                 ])
+                if count >= continue_at:
+                    yield val
                 count += 1
         else:
             while total is None or count < total:
-                yield rng.integers(0, n_perms, size=n_players)
+                val = rng.integers(0, n_perms, size=n_players)
+                if count >= continue_at:
+                    yield val
                 count += 1
     elif perm_orders:
-        for pt in itertools.product(*perm_orders):
+        it = itertools.product(*perm_orders)
+        if continue_at > 0:
+            # Efficiently skip first continue_at items
+            it = itertools.islice(it, continue_at, None)
+            count = continue_at
+
+        for pt in it:
             if total is not None and count >= total:
                 return
             yield np.array(pt)
             count += 1
     else:
-        for pt in itertools.product(range(n_perms), repeat=n_players):
+        it = itertools.product(range(n_perms), repeat=n_players)
+        if continue_at > 0:
+            # Efficiently skip first continue_at items
+            it = itertools.islice(it, continue_at, None)
+            count = continue_at
+
+        for pt in it:
             if total is not None and count >= total:
                 return
             yield np.array(pt)
@@ -530,10 +555,25 @@ def _iter_tuples(
 
 
 def _iter_rank_combos_large(
-    n_players: int, n_states: int, total: int | None = None, random_seed: int = 0
+    n_players: int, n_states: int, total: int | None = None, random_seed: int = 0,
+    continue_at: int = 0,
 ):
     rng = np.random.default_rng(random_seed)
     count = 0
+    
+    if continue_at > 0:
+        # Each count performs n_players * permutation(n_states).
+        # We need to jump the RNG state forward.
+        # Note: BitGenerator.advance() depends on the generator; 
+        # PCG64 (default) supports it.
+        # Each permutation(n) consumes roughly n calls to the bit generator.
+        # However, exact jump size is implementation-dependent.
+        # Safe fallback: iterate.
+        while count < continue_at:
+            for _ in range(n_players):
+                rng.permutation(n_states)
+            count += 1
+
     while total is None or count < total:
         ranks_batch = np.zeros((n_players, n_states), dtype=np.int8)
         for pi in range(n_players):

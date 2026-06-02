@@ -209,32 +209,56 @@ def setup_experiment(config):
 
     allow_non_canonical = config.get("allow_non_canonical_states", False)
 
+    # Generate coalition maps for all possible partitions
+    gen_min_power = config.get("min_power")
+    if config.get("scenario_name") == "power_threshold_RICE_by_GDP":
+        gen_min_power = None
+    all_coalition_maps = generate_all_coalition_maps(
+        players, power=config.get("power"), min_power=gen_min_power
+    )
+
     # Generate state names if not provided. When a payoff table supplies coalition
-    # rows that form a subset of the scenario's canonical state set, use that
-    # subset directly. This also supports reduced tables that still contain extra
-    # helper rows such as singleton states.
+    # rows that form a subset of the scenario's canonical state set, we include
+    # all canonical states that can be resolved to a row in the table (either
+    # by direct name match or by their deploying coalition key).
     if "state_names" not in config or config["state_names"] is None:
         # In power_threshold scenarios, if a single player has more than 50% power,
-        # they can deploy unilaterally. Using the power-aware naming convention
-        # would merge several distinct partitions (e.g. () and (BC)) into a
-        # single state named (A). To preserve the full state space (e.g. 5 states
-        # for n=3), we ignore min_power during name generation for the GDP-based
-        # RICE scenario. The State objects will still correctly use the power
-        # threshold to determine the deployer.
-        gen_min_power = config.get("min_power")
-        if config.get("scenario_name") == "power_threshold_RICE_by_GDP":
-            gen_min_power = None
-
+        # they can deploy unilaterally. To preserve the full state space (e.g. 
+        # 15 states for n=4), we ignore min_power during name generation for 
+        # the GDP-based RICE scenario. 
         canonical_state_names = generate_coalition_structures(
             players, power=config.get("power"), min_power=gen_min_power
         )
         payoff_table_path = config.get("payoff_table", None)
         if payoff_table_path is not None:
             payoff_rows = _read_payoff_table_index(Path(payoff_table_path))
+            payoff_rows_set = set(payoff_rows)
             canonical_row_set = set(canonical_state_names)
-            payoff_state_subset = [
-                state_name for state_name in canonical_state_names if state_name in set(payoff_rows)
-            ]
+            
+            payoff_state_subset = []
+            for state_name in canonical_state_names:
+                # 1. Direct name match
+                if state_name in payoff_rows_set:
+                    payoff_state_subset.append(state_name)
+                    continue
+                
+                # 2. Deployer-key match (resolve redundant partitions)
+                cmap = all_coalition_maps.get(state_name)
+                if cmap:
+                    coalitions = [
+                        Coalition([country_dict[p_name] for p_name in p_list])
+                        for p_list in cmap
+                    ]
+                    temp_state = State(
+                        name=state_name,
+                        coalitions=coalitions,
+                        all_countries=all_countries,
+                        power_rule=config["power_rule"],
+                        min_power=config.get("min_power")
+                    )
+                    if _deployer_key(temp_state) in payoff_rows_set:
+                        payoff_state_subset.append(state_name)
+
             if allow_non_canonical:
                 # Use all table rows that are either canonical or parseable as
                 # custom coalition structures, preserving table order.
@@ -256,14 +280,6 @@ def setup_experiment(config):
         config["state_names"] = state_names
     else:
         state_names = config["state_names"]
-
-    # Generate coalition maps for all states
-    gen_min_power = config.get("min_power")
-    if config.get("scenario_name") == "power_threshold_RICE_by_GDP":
-        gen_min_power = None
-    all_coalition_maps = generate_all_coalition_maps(
-        players, power=config.get("power"), min_power=gen_min_power
-    )
 
     # Create State objects for each coalition structure
     states = []
@@ -982,9 +998,11 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         effectivity_rule=setup.get('effectivity_rule', 'heyen_lehtomaa_2021'),
         verbose=verbose,
         random_seed=random_seed,
-        initialization_mode=solver_params.get("initialization_mode", "uniform"),
+        initialization_mode=params.get('initialization_mode', 'uniform'),
+        geo_levels=setup.get('geoengineering'),
         logger=logger
     )
+
 
     if verbose:
         logger.info(f"Random seed for initialization: {solver.random_seed}")

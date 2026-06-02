@@ -120,6 +120,7 @@ def solve_with_ordinal_ranking_n3(
     extra_metadata: dict | None = None,
     lccs_absorbing_state: str | None = None,
     lcs_states: frozenset | None = None,
+    continue_at: int = 0,
     logger=None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     players = solver.players
@@ -221,7 +222,7 @@ def solve_with_ordinal_ranking_n3(
     total = min(flat_total, max_combinations) if max_combinations is not None else flat_total
     
     start_time = time.perf_counter()
-    tested = 0
+    tested = continue_at
     all_successes = []
     first_success = None
     interrupted = False
@@ -288,13 +289,14 @@ def solve_with_ordinal_ranking_n3(
             batch_size = 100
 
         if large_mode:
-            combos_iter = _iter_rank_combos_large(n_players, n_states, total, random_seed)
+            combos_iter = _iter_rank_combos_large(n_players, n_states, total, random_seed, continue_at=continue_at)
             batches = _iter_batches(combos_iter, batch_size)
             search_fn = _search_chunk_large
         else:
             triples_iter = _iter_tuples(
                 n_players, n_perms, total, shuffle, random_seed,
                 perm_orders, lccs_valid_idx,
+                continue_at=continue_at,
             )
             batches = _iter_batches(triples_iter, batch_size)
             search_fn = _search_chunk
@@ -428,6 +430,7 @@ def solve_with_ordinal_ranking_n3(
                     _print_progress(
                         tested, total, start_time,
                         breakdown=_breakdown, recent_rate=_recent_rate,
+                        offset=continue_at,
                     )
 
                 try:
@@ -449,9 +452,10 @@ def solve_with_ordinal_ranking_n3(
     else:
         # Single-threaded path
         if large_mode:
-            combos_iter = _iter_rank_combos_large(n_players, n_states, total, random_seed)
+            combos_iter = _iter_rank_combos_large(n_players, n_states, total, random_seed, continue_at=continue_at)
             for ranks in combos_iter:
                 tested += 1
+                # ... rest of loop ...
                 proposal_choice, approval_action, approval_pass, P_array = _build_induced_arrays(
                     players, ranks, committee_idxs, protocol_arr
                 )
@@ -469,6 +473,7 @@ def solve_with_ordinal_ranking_n3(
             triples_iter = _iter_tuples(
                 n_players, n_perms, total, shuffle, random_seed,
                 perm_orders, lccs_valid_idx,
+                continue_at=continue_at,
             )
             for order_ids in triples_iter:
                 tested += 1
@@ -477,7 +482,7 @@ def solve_with_ordinal_ranking_n3(
                 pass
 
     if progress_every > 0:
-        _print_progress(tested, total, start_time, hits=total_hits)
+        _print_progress(tested, total, start_time, hits=total_hits, offset=continue_at)
         print()  # newline after progress bar
 
     wall_time = time.perf_counter() - start_time
@@ -487,7 +492,7 @@ def solve_with_ordinal_ranking_n3(
         "all_successes": all_successes,
         "first_success": first_success or (all_successes[0] if all_successes else None),
         "wall_time": wall_time,
-        "rate": tested / max(wall_time, 1e-9),
+        "rate": (tested - continue_at) / max(wall_time, 1e-9),
         "interrupted": interrupted,
         "t_numba": t_numba,
         "t_tie_struct": t_tie_struct,
