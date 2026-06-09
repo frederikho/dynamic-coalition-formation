@@ -24,6 +24,7 @@ from lib.equilibrium.active_set_n3 import solve_with_active_set_n3
 from lib.equilibrium.ordinal_ranking import solve_with_ordinal_ranking_n3
 from lib.equilibrium.support_enumeration_n3 import solve_with_support_enumeration_n3
 from lib.equilibrium.scenarios import get_scenario, list_scenarios
+from lib.equilibrium.mip_vfi import solve_with_mip_vfi
 from lib.equilibrium.excel_writer import (
     write_strategy_table_excel,
     generate_filename,
@@ -179,6 +180,21 @@ def _synthetic_coalition_map(state_name: str, players: list) -> list | None:
     return [coalition] + singletons
 
 
+def _is_supermajority(state: State, min_power: float) -> bool:
+    """
+    Check if the state contains a supermajority coalition.
+    A supermajority is a coalition whose power is above min_power,
+    and it remains above min_power even if any one of its members is removed.
+    """
+    for coalition in state.coalitions:
+        if coalition.total_power >= min_power:
+            # Try removing each member
+            for country in coalition.members:
+                if (coalition.total_power - country.power) >= min_power:
+                    return True
+    return False
+
+
 def setup_experiment(config):
     """
     Setup experiment configuration.
@@ -229,6 +245,21 @@ def setup_experiment(config):
         canonical_state_names = generate_coalition_structures(
             players, power=config.get("power"), min_power=gen_min_power
         )
+
+        # --no-supermajorities: Filter the canonical set before proceeding
+        if config.get("no_supermajorities"):
+            _min_power = config.get("min_power", 0.501)
+            filtered_canonical = []
+            for sname in canonical_state_names:
+                cmap = all_coalition_maps.get(sname)
+                if cmap:
+                    # Temporary state to check supermajority status
+                    cols = [Coalition([country_dict[p] for p in p_list]) for p_list in cmap]
+                    t_state = State(sname, cols, all_countries, config["power_rule"], _min_power)
+                    if not _is_supermajority(t_state, _min_power):
+                        filtered_canonical.append(sname)
+            canonical_state_names = filtered_canonical
+
         payoff_table_path = config.get("payoff_table", None)
         if payoff_table_path is not None:
             payoff_rows = _read_payoff_table_index(Path(payoff_table_path))
@@ -998,7 +1029,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         effectivity_rule=setup.get('effectivity_rule', 'heyen_lehtomaa_2021'),
         verbose=verbose,
         random_seed=random_seed,
-        initialization_mode=params.get('initialization_mode', 'uniform'),
+        initialization_mode=solver_params.get('initialization_mode', 'uniform'),
         geo_levels=setup.get('geoengineering'),
         logger=logger
     )
@@ -1049,10 +1080,15 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
             config_hash=config_hash,
             logger=logger
         )
+    elif selected_solver_approach == "mip_vfi":
+        if verbose:
+            logger.info("Using MIP-VFI solver (Value Function Iteration + per-state MIP).")
+            logger.info("")
+        found_strategy_df, solver_result = solve_with_mip_vfi(solver, solver_params)
     else:
         raise ValueError(
             f"Unknown solver_approach='{selected_solver_approach}'. "
-            "Expected one of: annealing, support_enumeration, active_set, ordinal_ranking."
+            "Expected one of: annealing, support_enumeration, active_set, ordinal_ranking, mip_vfi."
         )
 
     # Fill NaN values for non-committee members
@@ -1074,6 +1110,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         'players': setup['players'],
         'state_names': setup['state_names'],
         'effectivity': setup['effectivity'],
+        'forbidden_proposals': setup.get('forbidden_proposals', frozenset()),
         'strategy_df': found_strategy_df_filled,
         'solver_result': solver_result,
         'stopping_reason': solver_result.get('stopping_reason'),
@@ -1641,13 +1678,14 @@ Available scenarios (use --list-scenarios to see all):
     parser.add_argument(
         '--solver-approach',
         type=str,
-        choices=['annealing', 'support_enumeration', 'active_set', 'ordinal_ranking'],
+        choices=['annealing', 'support_enumeration', 'active_set', 'ordinal_ranking', 'mip_vfi'],
         default='annealing',
         help=(
             "Solver approach to use: 'annealing' for the legacy smoothed solver, "
             "'support_enumeration' for the cycle-guided support search, "
             "'active_set' for the stricter cycle-guided active-set search, "
-            "'ordinal_ranking' for exhaustive search over ordinal value orders."
+            "'ordinal_ranking' for exhaustive search over ordinal value orders, "
+            "'mip_vfi' for Jere's VFI + per-state MIP solver."
         )
     )
     parser.add_argument(

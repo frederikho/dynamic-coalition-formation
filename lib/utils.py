@@ -396,13 +396,15 @@ def is_unilateral_breakout(proposer: str, current_state: str,
 def verify_proposals(players: List[str], states: List[str],
                      P_proposals: Dict[tuple, float],
                      P_approvals: Dict[tuple, float],
-                     V: pd.DataFrame) -> Tuple[bool, str]:
+                     V: pd.DataFrame,
+                     forbidden_proposals: frozenset = frozenset()) -> Tuple[bool, str]:
     ok, msg, _detail = verify_proposals_detailed(
         players=players,
         states=states,
         P_proposals=P_proposals,
         P_approvals=P_approvals,
         V=V,
+        forbidden_proposals=forbidden_proposals,
     )
     return ok, msg
 
@@ -410,7 +412,8 @@ def verify_proposals(players: List[str], states: List[str],
 def verify_proposals_detailed(players: List[str], states: List[str],
                               P_proposals: Dict[tuple, float],
                               P_approvals: Dict[tuple, float],
-                              V: pd.DataFrame) -> Tuple[bool, str, Dict[str, Any] | None]:
+                              V: pd.DataFrame,
+                              forbidden_proposals: frozenset = frozenset()) -> Tuple[bool, str, Dict[str, Any] | None]:
     """Checks that the proposal strategies of all players constitute a
     valid equilibrium, as specified in Condition 1 in section A.5.
 
@@ -460,9 +463,13 @@ def verify_proposals_detailed(players: List[str], states: List[str],
                     p_approved * V_next + p_rejected * V_current
 
             # Next state(s) that give the highest possible expected
-            # long-run payoff.
-            argmaxes = [key for key, val in expected_values.items()
-                        if np.isclose(val, max(expected_values.values()),
+            # long-run payoff, excluding forbidden proposals.
+            feasible_values = {
+                ns: ev for ns, ev in expected_values.items()
+                if (proposer, current_state, ns) not in forbidden_proposals
+            }
+            argmaxes = [key for key, val in feasible_values.items()
+                        if np.isclose(val, max(feasible_values.values()),
                         rtol=0.0, atol=1e-9)]
 
             try:
@@ -580,7 +587,8 @@ def verify_equilibrium_detailed(result: Dict[str, Any]):
                                              states=result["state_names"],
                                              P_proposals=result["P_proposals"],
                                              P_approvals=result["P_approvals"],
-                                             V=result["V"])
+                                             V=result["V"],
+                                             forbidden_proposals=result.get("forbidden_proposals", frozenset()))
 
     approvals_ok = verify_approvals_detailed(players=result["players"],
                                              states=result["state_names"],

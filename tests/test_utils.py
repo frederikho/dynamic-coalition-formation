@@ -1,6 +1,7 @@
 from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
+from lib.effectivity import check_effectivity, heyen_lehtomaa_2021
 from lib.utils import get_payoff_matrix, get_geoengineering_levels
 
 
@@ -48,3 +49,22 @@ def test_get_payoff_matrix_all_zeros():
 def test_get_geoengineering_levels_all_zeros():
     df = get_geoengineering_levels(states)
     assert bool((df == 0.).all().all())
+
+
+def test_check_effectivity_flags_fully_blank_required_committee():
+    players = ["CHN", "NDE", "USA"]
+    state_names = ["( )", "(CHNNDE)", "(CHNUSA)", "(NDEUSA)", "(CHNNDEUSA)"]
+
+    expected = heyen_lehtomaa_2021(players, state_names)
+    file_effectivity = expected.copy()
+
+    # Simulate a fully blank off-path committee in the spreadsheet:
+    # CHN proposing ( ) -> (CHNUSA) should require USA's approval.
+    file_effectivity[("CHN", "( )", "(CHNUSA)", "USA")] = 0
+
+    violations = check_effectivity(file_effectivity, players, state_names)
+
+    assert any(
+        "MISSING: USA not in committee for CHN: ( ) → (CHNUSA)" in violation
+        for violation in violations
+    )
