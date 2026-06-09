@@ -82,8 +82,7 @@ PYTHONPATH=. python3 scripts/search_ordinal_rankings.py     simple_cycle_usachnn
 
 
 
-PYTHONPATH=. python3 scripts/search_ordinal_rankings.py     simple_cycle_usachnnde-100.xlsx     --scenario power_threshold_RICE_n3        --effectivity-rule free_exit     --ranking-order payoff         --write-all     --dedup-by strategy --weak-orders --weak-equality-solve   --workers 8  --weak-equality-max-vars 4  --progress-every 100
-
+PYTHONPATH=. python3 scripts/search_ordinal_rankings.py     simple_cycle_usachnnde-100.xlsx     --scenario power_threshold_RICE_n3        --effectivity-rule free_exit     --ranking-order payoff         --write-all     --dedup-by transition --weak-orders --weak-equality-solve   --workers 8  --weak-equality-max-vars 4  --progress-every 100
 
 
 
