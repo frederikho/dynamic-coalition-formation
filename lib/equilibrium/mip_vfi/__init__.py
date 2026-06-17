@@ -191,6 +191,7 @@ def solve_with_mip_vfi(
     cycle_window  = int(params.get("mip_vfi_cycle_window", 16))
     mip_eps       = float(params.get("mip_eps", 1e-8))
     mip_time_limit= float(params.get("mip_time_limit", 30.0))
+    damping_alpha = float(params.get("mip_vfi_damping_alpha", 0.0))
     multi_start   = bool(params.get("mip_vfi_multi_start", False))
     n_restarts    = int(params.get("mip_vfi_n_restarts", 40))
     seed          = int(params.get("mip_vfi_seed", 0))
@@ -279,6 +280,7 @@ def solve_with_mip_vfi(
             cycle_window=cycle_window,
             mip_eps=mip_eps,
             mip_time_limit=mip_time_limit,
+            damping_alpha=damping_alpha,
             logger=logger,
         )
         all_sigmas = result["all_sigmas"]

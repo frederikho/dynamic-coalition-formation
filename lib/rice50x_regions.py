@@ -86,6 +86,16 @@ RICE50X_BLOC_GAMS_COALITION: dict[str, str] = {
     "eur": "eu27",
 }
 
+# Constituent GAMS region codes (lowercase) that make up each bloc.
+# Used by compute_welfare_sums to aggregate welfare across individual regions
+# when the bloc has no single matching GDX row (e.g. 'eur' is eu27 members).
+# Source: coalitions/coal_sai_farsighted.gms, set eu27(n).
+RICE50X_BLOC_MEMBERS: dict[str, list[str]] = {
+    "eur": ["aut", "bel", "bgr", "cro", "rcz", "dnk", "esp", "fin",
+            "fra", "rfa", "grc", "hun", "irl", "ita", "blt", "nld",
+            "pol", "prt", "rom", "rsl", "slo", "swe"],
+}
+
 # Player name (uppercase code) → full country/region name
 RICE50X_PLAYER_NAMES = {code.upper(): name for code, name in RICE50X_REGIONS.items()}
 

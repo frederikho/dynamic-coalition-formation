@@ -240,6 +240,19 @@ def refine_mixing_probabilities(
         sigma_refined[s_j, i_j, sp_j] = p
         sigma_refined[s_j, i_j, s_j] -= p
 
+    # Oscillating transitions added via Source 2 had sigma=0 originally, so
+    # sigma_base moved 0 mass to the diagonal — subtracting p above can make
+    # the status-quo entry negative.  Clip and renormalize to restore [0,1].
+    for s in range(n_states):
+        for i in range(n_players):
+            row = np.clip(sigma_refined[s, i, :], 0.0, None)
+            total = row.sum()
+            if total > 1e-12:
+                sigma_refined[s, i, :] = row / total
+            else:
+                sigma_refined[s, i, :] = 0.0
+                sigma_refined[s, i, s] = 1.0
+
     T_refined = _T_from_probs(probs_star)
     V_refined = _solve_values_local(T_refined, payoffs, delta)
 
