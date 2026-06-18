@@ -47,6 +47,7 @@ def _init_worker_ctx(
     use_newton: bool = True,
     use_broyden: bool = False,
     geo_levels: pd.DataFrame | None = None,
+    forbidden_proposals: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> None:
     global _WORKER_CTX
     n_players = len(players)
@@ -66,6 +67,14 @@ def _init_worker_ctx(
                 comm_size[pi, ci, ni] = len(comm)
                 for k, ai in enumerate(comm):
                     comm_arr[pi, ci, ni, k] = ai
+
+    # Build forbidden_mask for Numba
+    forbidden_mask = np.zeros((n_players, n_states, n_states), dtype=np.bool_)
+    for pi, proposer in enumerate(players):
+        for ci, current in enumerate(states):
+            for ni, next_s in enumerate(states):
+                if (proposer, current, next_s) in forbidden_proposals:
+                    forbidden_mask[pi, ci, ni] = True
 
     # Ensure arrays are read-only to prevent accidental modification in workers
     # (Note: Some Numba versions might conflict with frozen flags, so we skip it)
@@ -93,6 +102,8 @@ def _init_worker_ctx(
         "use_newton": use_newton,
         "use_broyden": use_broyden,
         "geo_levels": geo_levels,
+        "forbidden_proposals": forbidden_proposals,
+        "forbidden_mask": forbidden_mask,
     }
 
     # Workers ignore SIGINT so only the main process handles Ctrl+C.
@@ -102,14 +113,14 @@ def _init_worker_ctx(
     # Warm up Numba JIT functions so the first real batch isn't delayed by compilation.
     if _NUMBA_AVAILABLE and weak_orders:
         _tiers_buf = np.zeros((n_players, n_states), dtype=np.int8)
-        _build_arrays_weak_nb(_tiers_buf, comm_arr, comm_size, protocol_arr)
+        _build_arrays_weak_nb(_tiers_buf, comm_arr, comm_size, protocol_arr, forbidden_mask)
         _dummy_P = np.eye(n_states, dtype=np.float64)
         _solve_V_nb(_dummy_P, payoff_array, discounting)
         _dummy_pp = np.zeros((n_players, n_states, n_states))
         _dummy_aa = np.zeros((n_players, n_players, n_states, n_states))
         _dummy_ap = np.ones((n_players, n_states, n_states))
         _dummy_V = np.zeros((n_states, n_players))
-        _verify_fast_nb(_dummy_pp, _dummy_aa, _dummy_ap, _dummy_V, comm_arr, comm_size)
+        _verify_fast_nb(_dummy_pp, _dummy_aa, _dummy_ap, _dummy_V, comm_arr, comm_size, forbidden_mask)
         if weak_equality_solve:
             from lib.equilibrium.ordinal_ranking.numba_loops import (
                 _solve_broyden_nb as _broyden_warmup,
@@ -252,20 +263,20 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                     for _pi, _perm_idx in enumerate(order_ids):
                         _tiers_buf[_pi] = ctx["pos"][_perm_idx]
                     proposal_probs, approval_action, approval_pass, P_array = _build_arrays_weak_nb(
-                        _tiers_buf, comm_arr, comm_size, protocol_arr
+                        _tiers_buf, comm_arr, comm_size, protocol_arr, ctx["forbidden_mask"]
                     )
                 else:
                     proposal_probs, approval_action, approval_pass, P_array = _build_arrays_weak_nb(
-                        tiers_arr, comm_arr, comm_size, protocol_arr
+                        tiers_arr, comm_arr, comm_size, protocol_arr, ctx["forbidden_mask"]
                     )
                 V_array = _solve_V_nb(P_array, payoff_array, discounting)
                 verified = _verify_fast_nb(
                     proposal_probs, approval_action, approval_pass, V_array,
-                    comm_arr, comm_size,
+                    comm_arr, comm_size, ctx["forbidden_mask"]
                 )
             else:
                 proposal_probs, approval_action, approval_pass, P_array = _build_induced_arrays_weak(
-                    players, tiers_tuple, ctx["committee_idxs"], protocol_arr
+                    players, tiers_tuple, ctx["committee_idxs"], protocol_arr, ctx["forbidden_proposals"]
                 )
                 V_array = _solve_values(P_array, payoff_array, discounting)
                 verified, _ = _verify_fast(
@@ -273,6 +284,7 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
                     proposal_choice=None,
                     approval_action=approval_action, approval_pass=approval_pass,
                     committee_idxs=ctx["committee_idxs"], proposal_probs=proposal_probs,
+                    forbidden_proposals=ctx["forbidden_proposals"],
                 )
             t_numba += time.perf_counter() - _t0
 
@@ -362,13 +374,14 @@ def _search_chunk(batch_tuples: np.ndarray, stop_on_success: bool = True) -> dic
         else:
             ranks = tuple(ctx["pos"][idx] for idx in order_ids)
             proposal_choice, approval_action, approval_pass, P_array = _build_induced_arrays(
-                players, ranks, ctx["committee_idxs"], protocol_arr
+                players, ranks, ctx["committee_idxs"], protocol_arr, ctx["forbidden_proposals"]
             )
             V_array = _solve_values(P_array, payoff_array, discounting)
             verified, _ = _verify_fast(
                 players=players, states=states, V_array=V_array,
                 proposal_choice=proposal_choice, approval_action=approval_action,
                 approval_pass=approval_pass, committee_idxs=ctx["committee_idxs"],
+                forbidden_proposals=ctx["forbidden_proposals"],
             )
 
         if verified:
@@ -479,13 +492,14 @@ def _search_chunk_large(batch_ranks: np.ndarray, stop_on_success: bool = True) -
         ranks = tuple(ranks_arr[i] for i in range(n_players))
 
         proposal_choice, approval_action, approval_pass, P_array = _build_induced_arrays(
-            players, ranks, ctx["committee_idxs"], protocol_arr
+            players, ranks, ctx["committee_idxs"], protocol_arr, ctx["forbidden_proposals"]
         )
         V_array = _solve_values(P_array, payoff_array, discounting)
         verified, _ = _verify_fast(
             players=players, states=states, V_array=V_array,
             proposal_choice=proposal_choice, approval_action=approval_action,
             approval_pass=approval_pass, committee_idxs=ctx["committee_idxs"],
+            forbidden_proposals=ctx["forbidden_proposals"],
         )
 
         if verified:

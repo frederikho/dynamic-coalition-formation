@@ -315,6 +315,7 @@ def solve_with_ordinal_ranking_n3(
                 getattr(solver, "power_rule", "power_threshold"),
                 use_newton, use_broyden,
                 solver.geo_levels,
+                solver.forbidden_proposals,
                 ),
                 )
 

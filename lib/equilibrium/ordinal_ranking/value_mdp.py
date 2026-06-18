@@ -20,6 +20,7 @@ def _verify_fast(
     approval_pass: np.ndarray | None,
     committee_idxs: list[list[list[tuple[int, ...]]]],
     proposal_probs: np.ndarray | None = None,
+    forbidden_proposals: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> tuple[bool, str]:
     player_idx = {player: idx for idx, player in enumerate(players)}
     state_idx = {state: idx for idx, state in enumerate(states)}
@@ -34,21 +35,35 @@ def _verify_fast(
             v_current = float(V_array[current_i, proposer_col])
             for next_state in states:
                 next_i = state_idx[next_state]
+                
+                is_forbidden = (proposer, current_state, next_state) in forbidden_proposals
+
                 if proposal_probs is not None:
                     proposed = float(proposal_probs[proposer_col, current_i, next_i])
                 else:
                     assert proposal_choice is not None
                     proposed = 1.0 if int(proposal_choice[proposer_col, current_i]) == next_i else 0.0
+                
                 if proposed > 0.0:
+                    if is_forbidden:
+                        return False, f"Forbidden proposal {proposer}: {current_state} -> {next_state}"
                     chosen_states.append(next_state)
-                assert approval_pass is not None
-                p_approved = float(approval_pass[proposer_col, current_i, next_i])
-                expected = p_approved * float(V_array[next_i, proposer_col]) + (1.0 - p_approved) * v_current
+
+                if is_forbidden:
+                    # Expected value for a forbidden proposal (if it were somehow made) 
+                    # is status quo because it can't pass, but really it shouldn't be made.
+                    expected = v_current
+                else:
+                    assert approval_pass is not None
+                    p_approved = float(approval_pass[proposer_col, current_i, next_i])
+                    expected = p_approved * float(V_array[next_i, proposer_col]) + (1.0 - p_approved) * v_current
+                
                 if expected > best_value + 1e-9:
                     best_value = expected
                     argmaxes = [next_state]
                 elif abs(expected - best_value) <= 1e-9:
                     argmaxes.append(next_state)
+            
             if not set(chosen_states).issubset(argmaxes):
                 return False, (
                     f"Proposal strategy error with player {proposer}! In state {current_state}, "
@@ -60,6 +75,9 @@ def _verify_fast(
         for current_state in states:
             current_i = state_idx[current_state]
             for next_state in states:
+                if (proposer, current_state, next_state) in forbidden_proposals:
+                    continue
+                
                 next_i = state_idx[next_state]
                 committee = [players[i] for i in committee_idxs[proposer_idx][current_i][next_i]]
                 for approver in committee:

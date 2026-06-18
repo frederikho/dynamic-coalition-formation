@@ -18,6 +18,18 @@ from lib.equilibrium.ordinal_ranking.induced_strategies import (
 from lib.equilibrium.solver import EquilibriumSolver
 
 
+def _format_ranking(states: list[str], perm: np.ndarray) -> str:
+    return " > ".join(states[int(idx)] for idx in perm)
+
+
+def _format_weak_order(states: list[str], tiers: np.ndarray) -> str:
+    groups: dict[int, list[str]] = {}
+    for state_idx, tier in enumerate(tiers):
+        groups.setdefault(int(tier), []).append(states[int(state_idx)])
+    ordered = [" = ".join(groups[t]) for t in sorted(groups)]
+    return " > ".join(ordered)
+
+
 def _build_committee_idxs(solver: EquilibriumSolver) -> list[list[list[tuple[int, ...]]]]:
     from lib.utils import get_approval_committee
     players = solver.players
@@ -68,6 +80,19 @@ class StreamingWriter:
         self.manifest_path = self.output_dir / "manifest.csv"
         self._total_seen: int = 0  # counts every success handed to write()
 
+        # If manifest exists, load seen keys to avoid duplicates when resuming
+        if self.manifest_path.exists():
+            try:
+                with open(self.manifest_path, "r", newline="") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if "key" in row:
+                            self.seen_keys.add(row["key"])
+                        self.manifest_rows.append(row)
+                self._total_seen = len(self.manifest_rows)
+            except Exception:
+                pass # Fallback to empty if corrupt
+
         self.committee_idxs = committee_idxs if committee_idxs is not None else _build_committee_idxs(solver)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -94,7 +119,7 @@ class StreamingWriter:
         elif self.dedup_by == "strategy":
             key = hashlib.md5(strategy_df.to_numpy().tobytes()).hexdigest()
         else:
-            key = f"idx_{self._total_seen:05d}"
+            key = f"{self._total_seen + 1:04d}"
 
         self._total_seen += 1
 
@@ -103,8 +128,18 @@ class StreamingWriter:
             return False
         self.seen_keys.add(key)
 
-        filename = f"eq_{key}.xlsx"
+        # Generate descriptive filename: <payoff_stem>_<index>_<p1><rank1>_<p2><rank2>...
+        # Example: simple_cycle_usachnnde-65-reduced_0001_a68_b20_c9.xlsx
+        p_codes = [p[0].lower() for p in players]
+        ranks = success["rankings"]
+        rank_parts = [f"{p_codes[i]}{ranks[i]}" for i in range(len(players))]
+        
+        index_str = f"{self._total_seen:04d}"
+        filename = f"{self.payoff_path.stem}_{index_str}_{'_'.join(rank_parts)}.xlsx"
         file_path = self.output_dir / filename
+
+        if file_path.exists():
+            return False
 
         metadata: dict[str, Any] = {
             "payoff_source": "precomputed_table",
@@ -137,10 +172,18 @@ class StreamingWriter:
         )
 
         row: dict[str, Any] = {
-            "filename": filename,
+            "index": self._total_seen,
+            "output_file": str(file_path),
             "key": key,
-            **{f"ranking_{p}": list(success["rankings"][p_idx]) for p_idx, p in enumerate(players)},
         }
+        for p_idx, p in enumerate(players):
+            row[f"perm_{p_codes[p_idx]}"] = ranks[p_idx]
+            # Formatted ranking string for readability in CSV
+            if self.weak_orders:
+                row[f"ranking_{p}"] = _format_weak_order(list(states), ranks[p_idx])
+            else:
+                row[f"ranking_{p}"] = _format_ranking(list(states), ranks[p_idx])
+
         self.manifest_rows.append(row)
         self._flush_manifest()
         return True

@@ -10,6 +10,7 @@ def _build_induced_arrays(
     ranks: tuple[np.ndarray, ...],
     committee_idxs: list[list[list[tuple[int, ...]]]],
     protocol_arr: np.ndarray,
+    forbidden_proposals: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Build pure strategy profile and transition matrix from strict rankings."""
     n_players = len(players)
@@ -19,14 +20,23 @@ def _build_induced_arrays(
     approval_pass = np.zeros((n_players, n_states, n_states), dtype=np.float64)
     P = np.zeros((n_states, n_states), dtype=np.float64)
 
+    states = [str(i) for i in range(n_states)] # Placeholder names for key lookup
+
     for proposer_idx in range(n_players):
+        proposer = players[proposer_idx]
         rank_prop = ranks[proposer_idx]
         for current_idx in range(n_states):
+            current_state = states[current_idx]
             committees_row = committee_idxs[proposer_idx][current_idx]
             best_target = current_idx
             best_rank = int(rank_prop[current_idx])
 
             for next_idx in range(n_states):
+                next_state = states[next_idx]
+                if (proposer, current_state, next_state) in forbidden_proposals:
+                    approval_pass[proposer_idx, current_idx, next_idx] = 0.0
+                    continue
+
                 committee = committees_row[next_idx]
                 if next_idx == current_idx:
                     approved = True
@@ -54,6 +64,7 @@ def _build_induced_arrays_weak(
     tiers: tuple[np.ndarray, ...],
     committee_idxs: list[list[list[tuple[int, ...]]]],
     protocol_arr: np.ndarray,
+    forbidden_proposals: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Build canonical (uniform) strategy profile and transition matrix from weak rankings."""
     n_players = len(players)
@@ -63,14 +74,23 @@ def _build_induced_arrays_weak(
     approval_pass = np.zeros((n_players, n_states, n_states), dtype=np.float64)
     P = np.zeros((n_states, n_states), dtype=np.float64)
 
+    states = [str(i) for i in range(n_states)]
+
     for proposer_idx in range(n_players):
+        proposer = players[proposer_idx]
         tier_prop = tiers[proposer_idx]
         for current_idx in range(n_states):
+            current_state = states[current_idx]
             committees_row = committee_idxs[proposer_idx][current_idx]
             approved_targets: list[int] = []
             best_tier = int(tier_prop[current_idx])
 
             for next_idx in range(n_states):
+                next_state = states[next_idx]
+                if (proposer, current_state, next_state) in forbidden_proposals:
+                    approval_pass[proposer_idx, current_idx, next_idx] = 0.0
+                    continue
+
                 committee = committees_row[next_idx]
                 approved = True
                 for approver_idx in committee:
@@ -84,6 +104,10 @@ def _build_induced_arrays_weak(
                     best_tier = min(best_tier, int(tier_prop[next_idx]))
 
             winners = [next_idx for next_idx in approved_targets if int(tier_prop[next_idx]) == best_tier]
+            if not winners:
+                # Fallback to status quo if nothing else approved
+                winners = [current_idx]
+
             mass = 1.0 / len(winners)
             for next_idx in winners:
                 proposal_probs[proposer_idx, current_idx, next_idx] = mass
@@ -108,6 +132,13 @@ def _induce_profile_from_rankings(
             best_target = current_state
             best_rank = int(rank_prop[current_idx])
             for next_idx, next_state in enumerate(states):
+                # Respect forbidden_proposals if present on solver
+                if (proposer, current_state, next_state) in solver.forbidden_proposals:
+                    # No one approves a forbidden transition
+                    for approver in players:
+                         solver.r_acceptances[(proposer, current_state, next_state, approver)] = 0.0
+                    continue
+
                 committee = committees_row[next_idx]
                 approved = True
                 for approver_idx in committee:
@@ -139,6 +170,12 @@ def _induce_profile_from_weak_orders(
             approved_targets: list[str] = []
             best_tier = int(tier_prop[current_idx])
             for next_idx, next_state in enumerate(states):
+                # Respect forbidden_proposals if present on solver
+                if (proposer, current_state, next_state) in solver.forbidden_proposals:
+                    for approver in players:
+                         solver.r_acceptances[(proposer, current_state, next_state, approver)] = 0.0
+                    continue
+
                 committee = committees_row[next_idx]
                 approved = True
                 for approver_idx in committee:
@@ -150,7 +187,11 @@ def _induce_profile_from_weak_orders(
                 if approved:
                     approved_targets.append(next_state)
                     best_tier = min(best_tier, int(tier_prop[next_idx]))
+            
             winners = [s for s in approved_targets if int(tiers[proposer_idx][states.index(s)]) == best_tier]
+            if not winners:
+                winners = [current_state]
+
             mass = 1.0 / len(winners)
             for next_state in states:
                 solver.p_proposals[(proposer, current_state, next_state)] = mass if next_state in winners else 0.0

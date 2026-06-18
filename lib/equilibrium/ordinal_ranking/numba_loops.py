@@ -17,7 +17,7 @@ _NEWTON_MAX_ITERS = 20
 
 if _NUMBA_AVAILABLE:
     @_numba.njit(cache=True)
-    def _build_arrays_weak_nb(tiers_arr, comm_arr, comm_size, protocol_arr):
+    def _build_arrays_weak_nb(tiers_arr, comm_arr, comm_size, protocol_arr, forbidden_mask):
         """Numba JIT version of _build_induced_arrays_weak."""
         n_players = tiers_arr.shape[0]
         n_states = tiers_arr.shape[1]
@@ -33,6 +33,9 @@ if _NUMBA_AVAILABLE:
                 approved_mask = np.zeros(n_states, dtype=np.bool_)
 
                 for ni in range(n_states):
+                    if forbidden_mask[pi, ci, ni]:
+                        continue
+
                     all_approve = True
                     for k in range(comm_size[pi, ci, ni]):
                         ai = comm_arr[pi, ci, ni, k]
@@ -58,11 +61,15 @@ if _NUMBA_AVAILABLE:
                         if approved_mask[ni] and tiers_arr[pi, ni] == best_tier:
                             proposal_probs[pi, ci, ni] = mass
                             P[ci, ni] += protocol_arr[pi] * mass
+                else:
+                    # If no move is approved, player stays put (stays in current state)
+                    proposal_probs[pi, ci, ci] = 1.0
+                    P[ci, ci] += protocol_arr[pi]
 
         return proposal_probs, approval_action, approval_pass, P
 
     @_numba.njit(cache=True)
-    def _verify_fast_nb(proposal_probs, approval_action, approval_pass, V, comm_arr, comm_size):
+    def _verify_fast_nb(proposal_probs, approval_action, approval_pass, V, comm_arr, comm_size, forbidden_mask):
         """Numba JIT equilibrium verifier."""
         n_players = V.shape[1]
         n_states = V.shape[0]
@@ -74,6 +81,9 @@ if _NUMBA_AVAILABLE:
                 best_ev = -1e18
 
                 for ni in range(n_states):
+                    if forbidden_mask[pi, ci, ni]:
+                        continue
+
                     p_pass = approval_pass[pi, ci, ni]
                     ev = p_pass * V[ni, pi] + (1.0 - p_pass) * v_current
                     if ev > best_ev + tol:
@@ -81,6 +91,9 @@ if _NUMBA_AVAILABLE:
 
                 for ni in range(n_states):
                     if proposal_probs[pi, ci, ni] > 0.0:
+                        if forbidden_mask[pi, ci, ni]:
+                            return False
+
                         p_pass = approval_pass[pi, ci, ni]
                         ev = p_pass * V[ni, pi] + (1.0 - p_pass) * v_current
                         if abs(ev - best_ev) > tol:
@@ -89,6 +102,9 @@ if _NUMBA_AVAILABLE:
         for pi in range(n_players):
             for ci in range(n_states):
                 for ni in range(n_states):
+                    if forbidden_mask[pi, ci, ni]:
+                        continue
+
                     for k in range(comm_size[pi, ci, ni]):
                         ai = comm_arr[pi, ci, ni, k]
                         v_c = V[ci, ai]
