@@ -46,6 +46,12 @@ Then open http://127.0.0.1:8765.
 
 python lib/ingest_payoffs.py --input-dir "/home/frederik/Code/RICE50x/results/Burke" --output "burke_2060" --cutoff-year 2060
 
+python3 -m lib.ingest_payoffs \
+    --input-dir /home/frederik/Code/RICE50x/results/kalkuhl_chneurndeusa_2035-2100 \
+    --output kalkuhl_chneurndeusa_2035-2100 \
+    --year-range 2035-2100 --average \
+    --stem-prefix results_ssp2_bau_impact_kalkuhl
+    
 # Only get payoffs
 
 python3 multimodel_orchestrator.py --max-workers 8 --periods 2035-2100 --impact kalkuhl --countries usa chn nde bra rus --policy bau_impact --gamma_ineq=0.5 --max_gain=10 --max_damage=0.9 --t_ada_temp=5 --sai_damage_coef=0.1 --average-payoffs --fresh --payoffs-only
@@ -151,6 +157,8 @@ python3 multimodel_orchestrator.py \
     --average-payoffs \
     --fresh
 
+
+
 ## Questions: 
 
 Did I implement the generate_effectivity_heyen_lehtomaa(players, states) correctly? It has the following conditions:
@@ -191,3 +199,4 @@ An alternative to the current modelling would be that certain types of more comp
 
 - optional: we could define a github action for the npm run build command
 - fix the issue occuring for missing files 
+

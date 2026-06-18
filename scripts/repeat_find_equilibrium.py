@@ -133,6 +133,7 @@ def _probe_once(
         verbose=False,
         random_seed=seed,
         initialization_mode=solver_params.get("initialization_mode", "uniform"),
+        geo_levels=setup.get("geoengineering"),
         logger=NullLogger(),
     )
     t0 = time.perf_counter()
@@ -172,6 +173,7 @@ def _probe_basin_signature(
         verbose=False,
         random_seed=seed,
         initialization_mode=solver_params.get("initialization_mode", "uniform"),
+        geo_levels=setup.get("geoengineering"),
         logger=NullLogger(),
     )
     return _build_basin_signature(_capture_exact_cycle(solver))

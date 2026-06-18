@@ -234,8 +234,12 @@ def read_metadata_from_xlsx(xlsx_path: str) -> Dict[str, Any]:
                 
             # Clean parameter name and store value
             param_clean = str(param).strip()
-            metadata[param_clean] = value
-        
+            # Convert boolean-like integer fields to actual booleans
+            if param_clean == 'verification_success':
+                metadata[param_clean] = bool(int(value)) if not pd.isna(value) else False
+            else:
+                metadata[param_clean] = value
+
         return metadata
     except Exception as e:
         print(f"Warning: Could not read metadata from {xlsx_path}: {e}")
@@ -561,6 +565,9 @@ def compute_transition_graph(
             config['power_rule'] = str(file_metadata['power_rule'])
         if 'min_power' in file_metadata and not pd.isna(file_metadata['min_power']):
             config['min_power'] = float(file_metadata['min_power'])
+        elif config.get('power_rule') == 'power_threshold':
+            logger.warning("min_power missing from metadata for power_threshold file; defaulting to 0.501")
+            config['min_power'] = 0.501
         else:
             config['min_power'] = None
         if 'unanimity_required' in file_metadata:
