@@ -397,7 +397,8 @@ def verify_proposals(players: List[str], states: List[str],
                      P_proposals: Dict[tuple, float],
                      P_approvals: Dict[tuple, float],
                      V: pd.DataFrame,
-                     forbidden_proposals: frozenset = frozenset()) -> Tuple[bool, str]:
+                     forbidden_proposals: frozenset = frozenset(),
+                     atol: float = 1e-9) -> Tuple[bool, str]:
     ok, msg, _detail = verify_proposals_detailed(
         players=players,
         states=states,
@@ -405,6 +406,7 @@ def verify_proposals(players: List[str], states: List[str],
         P_approvals=P_approvals,
         V=V,
         forbidden_proposals=forbidden_proposals,
+        atol=atol,
     )
     return ok, msg
 
@@ -413,7 +415,8 @@ def verify_proposals_detailed(players: List[str], states: List[str],
                               P_proposals: Dict[tuple, float],
                               P_approvals: Dict[tuple, float],
                               V: pd.DataFrame,
-                              forbidden_proposals: frozenset = frozenset()) -> Tuple[bool, str, Dict[str, Any] | None]:
+                              forbidden_proposals: frozenset = frozenset(),
+                              atol: float = 1e-9) -> Tuple[bool, str, Dict[str, Any] | None]:
     """Checks that the proposal strategies of all players constitute a
     valid equilibrium, as specified in Condition 1 in section A.5.
 
@@ -470,7 +473,7 @@ def verify_proposals_detailed(players: List[str], states: List[str],
             }
             argmaxes = [key for key, val in feasible_values.items()
                         if np.isclose(val, max(feasible_values.values()),
-                        rtol=0.0, atol=1e-9)]
+                        rtol=0.0, atol=atol)]
 
             try:
                 # Any state with a positive proposal probability must be one
@@ -496,20 +499,26 @@ def verify_proposals_detailed(players: List[str], states: List[str],
 
 def verify_approvals(players: List[str], states: List[str],
                      effectivity: Dict[tuple, int], V: pd.DataFrame,
-                     strategy_df: pd.DataFrame) -> Tuple[bool, str]:
+                     strategy_df: pd.DataFrame,
+                     forbidden_proposals: frozenset = frozenset(),
+                     atol: float = 1e-9) -> Tuple[bool, str]:
     ok, msg, _detail = verify_approvals_detailed(
         players=players,
         states=states,
         effectivity=effectivity,
         V=V,
         strategy_df=strategy_df,
+        forbidden_proposals=forbidden_proposals,
+        atol=atol,
     )
     return ok, msg
 
 
 def verify_approvals_detailed(players: List[str], states: List[str],
                               effectivity: Dict[tuple, int], V: pd.DataFrame,
-                              strategy_df: pd.DataFrame) -> Tuple[bool, str, Dict[str, Any] | None]:
+                              strategy_df: pd.DataFrame,
+                              forbidden_proposals: frozenset = frozenset(),
+                              atol: float = 1e-9) -> Tuple[bool, str, Dict[str, Any] | None]:
     """Checks that the approval strategies of all players constitute a
     valid equilibrium, as specified in Condition 2 in section A.5.
 
@@ -526,6 +535,13 @@ def verify_approvals_detailed(players: List[str], states: List[str],
         for current_state in states:
             for next_state in states:
 
+                # Forbidden proposals can never be made, so the approval
+                # response to them is off-path and unconstrained. Skip them,
+                # mirroring verify_proposals_detailed (which also excludes
+                # forbidden proposals from the proposer's optimisation).
+                if (proposer, current_state, next_state) in forbidden_proposals:
+                    continue
+
                 # Approval committee for this transition.
                 approvers = get_approval_committee(
                     effectivity, players, proposer, current_state, next_state)
@@ -537,7 +553,7 @@ def verify_approvals_detailed(players: List[str], states: List[str],
                                     (current_state, 'Acceptance', approver),
                                     (f'Proposer {proposer}', next_state)]
 
-                    if np.isclose(V_next, V_current, rtol=0, atol=1e-9):
+                    if np.isclose(V_next, V_current, rtol=0, atol=atol):
                         passed = (0. <= p_approve <= 1.)
                     elif V_next > V_current:
                         passed = (p_approve == 1.)
@@ -570,17 +586,20 @@ def verify_approvals_detailed(players: List[str], states: List[str],
     return True, "Test passed.", None
 
 
-def verify_equilibrium(result: Dict[str, Any]):
-    ok, msg, _detail = verify_equilibrium_detailed(result)
+def verify_equilibrium(result: Dict[str, Any], atol: float = 1e-9):
+    ok, msg, _detail = verify_equilibrium_detailed(result, atol=atol)
     return ok, msg
 
 
-def verify_equilibrium_detailed(result: Dict[str, Any]):
+def verify_equilibrium_detailed(result: Dict[str, Any], atol: float = 1e-9):
     """Checks that the experiment results and strategy profiles are a
     valid equilibrium.
 
     Arguments:
         results: A dictionary from main.run_experiment().
+        atol: Absolute tolerance for V-value comparisons. Defaults to 1e-9.
+              Use a looser value (e.g. 1e-5) when V was computed to lower precision
+              (e.g. MIP-VFI with tol=1e-6 on near-flat RICE payoffs).
     """
 
     proposals_ok = verify_proposals_detailed(players=result["players"],
@@ -588,13 +607,16 @@ def verify_equilibrium_detailed(result: Dict[str, Any]):
                                              P_proposals=result["P_proposals"],
                                              P_approvals=result["P_approvals"],
                                              V=result["V"],
-                                             forbidden_proposals=result.get("forbidden_proposals", frozenset()))
+                                             forbidden_proposals=result.get("forbidden_proposals", frozenset()),
+                                             atol=atol)
 
     approvals_ok = verify_approvals_detailed(players=result["players"],
                                              states=result["state_names"],
                                              effectivity=result["effectivity"],
                                              V=result["V"],
-                                             strategy_df=result["strategy_df"])
+                                             strategy_df=result["strategy_df"],
+                                             forbidden_proposals=result.get("forbidden_proposals", frozenset()),
+                                             atol=atol)
 
     if proposals_ok[0] and approvals_ok[0]:
         return True, "All tests passed.", None

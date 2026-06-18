@@ -15,7 +15,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List
 
-from lib.logging import get_logger
+from lib.rich_logger import get_logger
 from lib.country import Country
 from lib.coalition import Coalition
 from lib.state import State
@@ -25,6 +25,7 @@ from lib.equilibrium.ordinal_ranking import solve_with_ordinal_ranking_n3
 from lib.equilibrium.support_enumeration_n3 import solve_with_support_enumeration_n3
 from lib.equilibrium.scenarios import get_scenario, list_scenarios
 from lib.equilibrium.mip_vfi import solve_with_mip_vfi
+from lib.equilibrium.merit_descent import solve_with_merit_descent
 from lib.equilibrium.excel_writer import (
     write_strategy_table_excel,
     generate_filename,
@@ -906,7 +907,8 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
                      load_from_checkpoint=False, random_seed=None, logger=None, save_payoffs=False,
                      save_unverified=False, diagnostics=False,
                      approval_margin_threshold: float = 1e-3,
-                     solver_approach: str = "annealing"):
+                     solver_approach: str = "annealing",
+                     verify_atol: float = 1e-9):
     """
     Find equilibrium for a given configuration.
 
@@ -1085,11 +1087,54 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
             logger.info("Using MIP-VFI solver (Value Function Iteration + per-state MIP).")
             logger.info("")
         found_strategy_df, solver_result = solve_with_mip_vfi(solver, solver_params)
+    elif selected_solver_approach == "merit_descent":
+        if verbose:
+            logger.info("Using merit-descent solver (continuous merit + plateau-aware search).")
+            logger.info("")
+        found_strategy_df, solver_result = solve_with_merit_descent(solver, solver_params)
     else:
         raise ValueError(
             f"Unknown solver_approach='{selected_solver_approach}'. "
-            "Expected one of: annealing, support_enumeration, active_set, ordinal_ranking, mip_vfi."
+            "Expected one of: annealing, support_enumeration, active_set, ordinal_ranking, mip_vfi, merit_descent."
         )
+
+    # Guard: a solver may return an empty DataFrame when it finds no equilibrium
+    # (e.g. ordinal_ranking exhausts its search with zero successes). Verification
+    # expects a fully-formed strategy table, so short-circuit with a clean failure
+    # result instead of crashing on a missing-column KeyError.
+    if found_strategy_df is None or found_strategy_df.empty:
+        runtime_seconds = time.time() - start_time
+        if verbose:
+            logger.warning("Solver returned no strategy profile (no equilibrium found).")
+        result = {
+            'scenario_name': config.get('scenario_name', 'equilibrium'),
+            'players': setup['players'],
+            'state_names': setup['state_names'],
+            'effectivity': setup['effectivity'],
+            'forbidden_proposals': setup.get('forbidden_proposals', frozenset()),
+            'strategy_df': found_strategy_df,
+            'solver_result': solver_result,
+            'stopping_reason': solver_result.get('stopping_reason', 'no_solution'),
+            'random_seed': solver.random_seed,
+            'solver_approach': selected_solver_approach,
+            'verification_success': False,
+            'verification_message': 'No equilibrium found (solver returned empty strategy profile).',
+            'verification_detail': None,
+            'output_written': False,
+            'output_file': None,
+            'runtime_seconds': runtime_seconds,
+        }
+        if diagnostics:
+            result["diagnostics"] = build_result_diagnostics(
+                config=config,
+                solver_params=solver_params,
+                result=result,
+                runtime_seconds=runtime_seconds,
+                output_file=None,
+                output_written=False,
+                approval_margin_threshold=approval_margin_threshold,
+            )
+        return result
 
     # Fill NaN values for non-committee members
     found_strategy_df_filled = found_strategy_df.copy()
@@ -1119,7 +1164,7 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     }
 
     # Verify equilibrium
-    success, message, verification_detail = verify_equilibrium_detailed(result)
+    success, message, verification_detail = verify_equilibrium_detailed(result, atol=verify_atol)
     result['verification_success'] = success
     result['verification_message'] = message
     result['verification_detail'] = verification_detail
@@ -1582,6 +1627,15 @@ Available scenarios (use --list-scenarios to see all):
         help='Suppress verbose output'
     )
     parser.add_argument(
+        '--oneline',
+        action='store_true',
+        help=(
+            'Minimal output: suppress all console progress logging (the full '
+            'log is still written to ./logs) and print a single result line per '
+            'scenario.'
+        )
+    )
+    parser.add_argument(
         '--seed',
         type=int,
         default=None,
@@ -1678,14 +1732,15 @@ Available scenarios (use --list-scenarios to see all):
     parser.add_argument(
         '--solver-approach',
         type=str,
-        choices=['annealing', 'support_enumeration', 'active_set', 'ordinal_ranking', 'mip_vfi'],
+        choices=['annealing', 'support_enumeration', 'active_set', 'ordinal_ranking', 'mip_vfi', 'merit_descent'],
         default='annealing',
         help=(
             "Solver approach to use: 'annealing' for the legacy smoothed solver, "
             "'support_enumeration' for the cycle-guided support search, "
             "'active_set' for the stricter cycle-guided active-set search, "
             "'ordinal_ranking' for exhaustive search over ordinal value orders, "
-            "'mip_vfi' for Jere's VFI + per-state MIP solver."
+            "'mip_vfi' for Jere's VFI + per-state MIP solver, "
+            "'merit_descent' for plateau-aware descent on the continuous merit M(sigma)."
         )
     )
     parser.add_argument(
@@ -1698,6 +1753,61 @@ Available scenarios (use --list-scenarios to see all):
             "'uniform' for dense random proposals and continuous approvals, "
             "'one_hot' for one-hot proposal rows and binary approvals, "
             "'payoff_structured' for static-payoff argmax proposals and sign-based binary approvals."
+        )
+    )
+    parser.add_argument(
+        '--verify-atol',
+        type=float,
+        default=None,
+        help=(
+            "Absolute tolerance for V-value comparisons in equilibrium verification "
+            "(default: 1e-9, or mip_vfi_tol when solver_approach=mip_vfi). "
+            "Use 1e-5 for MIP-VFI solutions on near-flat RICE payoffs."
+        )
+    )
+    parser.add_argument(
+        '--mip-damping-alpha',
+        type=float,
+        default=None,
+        help=(
+            "Damping factor for solver_approach=mip_vfi. "
+            "σ_new = (1-α)·σ_old + α·σ_MIP. "
+            "0.0 = no damping (default), 0.02 recommended for n≥4."
+        )
+    )
+    parser.add_argument(
+        '--mip-max-iter',
+        type=int,
+        default=None,
+        help='Max VFI outer iterations for solver_approach=mip_vfi (default: 300).'
+    )
+    parser.add_argument(
+        '--mip-tol',
+        type=float,
+        default=None,
+        help='VFI convergence tolerance for solver_approach=mip_vfi (default: 1e-6).'
+    )
+    parser.add_argument(
+        '--merit-restarts',
+        type=int,
+        default=None,
+        help='Random restarts for solver_approach=merit_descent (default: 400).'
+    )
+    parser.add_argument(
+        '--merit-walk',
+        type=int,
+        default=None,
+        help='Max moves per restart for solver_approach=merit_descent (default: 4000).'
+    )
+    parser.add_argument(
+        '--merit-mode',
+        type=str,
+        choices=['pure', 'mixed'],
+        default=None,
+        help=(
+            "merit_descent mode: 'pure' (default) for plateau-aware discrete search "
+            "over pure strategies; 'mixed' for block-coordinate continuous-acceptance "
+            "search that finds mixed-strategy equilibria (e.g. manifold games)."
         )
     )
     parser.add_argument(
@@ -1861,6 +1971,27 @@ Available scenarios (use --list-scenarios to see all):
         solver_params['ordinal_ranking_batch_size'] = args.ordinal_ranking_batch_size
     if args.ordinal_ranking_weak_orders:
         solver_params['ordinal_ranking_weak_orders'] = True
+    if args.mip_damping_alpha is not None:
+        solver_params['mip_vfi_damping_alpha'] = args.mip_damping_alpha
+    if args.mip_max_iter is not None:
+        solver_params['mip_vfi_max_iter'] = args.mip_max_iter
+    if args.mip_tol is not None:
+        solver_params['mip_vfi_tol'] = args.mip_tol
+    if args.merit_restarts is not None:
+        solver_params['merit_restarts'] = args.merit_restarts
+    if args.merit_walk is not None:
+        solver_params['merit_walk'] = args.merit_walk
+    if args.merit_mode is not None:
+        solver_params['merit_mode'] = args.merit_mode
+
+    # Determine verify_atol: explicit flag wins; mip_vfi defaults to 10x its convergence tol
+    # (VFI tol bounds ||ΔV|| per iteration; individual V values need extra headroom)
+    if args.verify_atol is not None:
+        verify_atol = args.verify_atol
+    elif args.solver_approach == "mip_vfi":
+        verify_atol = solver_params.get('mip_vfi_tol', 1e-6) * 10
+    else:
+        verify_atol = 1e-9
 
     results_summary = []
 
@@ -1900,7 +2031,10 @@ Available scenarios (use --list-scenarios to see all):
 
         # Setup logger with scenario-specific log file
         log_file = Path('./logs') / f"{config['scenario_name']}.log"
-        logger = get_logger(log_file=log_file)
+        logger = get_logger(
+            log_file=log_file,
+            log_level="ERROR" if args.oneline else "INFO",
+        )
 
         logger.info("=" * 80)
         logger.info(f"FINDING EQUILIBRIUM FOR: {scenario_name}")
@@ -1942,7 +2076,7 @@ Available scenarios (use --list-scenarios to see all):
             config,
             output_file=args.output,
             solver_params=solver_params,
-            verbose=not args.quiet,
+            verbose=not (args.quiet or args.oneline),
             description=args.description,
             load_from_checkpoint=load_from_checkpoint,
             random_seed=args.seed,
@@ -1952,6 +2086,7 @@ Available scenarios (use --list-scenarios to see all):
             diagnostics=args.diagnostics_json,
             approval_margin_threshold=args.approval_margin_threshold,
             solver_approach=args.solver_approach,
+            verify_atol=verify_atol,
         )
 
         results_summary.append((scenario_name, result['verification_success'],
@@ -1960,7 +2095,20 @@ Available scenarios (use --list-scenarios to see all):
         if args.diagnostics_json and 'diagnostics' in result:
             print(json.dumps(result['diagnostics'], default=str))
 
-        if result['verification_success']:
+        if args.oneline:
+            status = "VERIFIED" if result['verification_success'] else "FAILED"
+            parts = [scenario_name, args.solver_approach]
+            if args.effectivity_rule:
+                parts.append(args.effectivity_rule)
+            parts.append(status)
+            parts.append(f"{result['runtime_seconds']:.2f}s")
+            stopping_reason = result.get('stopping_reason')
+            if stopping_reason:
+                parts.append(str(stopping_reason))
+            if result.get('output_written') and result.get('output_file'):
+                parts.append(f"-> {result['output_file']}")
+            print(" | ".join(parts))
+        elif result['verification_success']:
             logger.info("\n" + "=" * 80)
             logger.info(f"Scenario: {scenario_name}")
             logger.info(f"Runtime: {result['runtime_seconds']:.2f}s")
