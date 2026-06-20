@@ -1,0 +1,2 @@
+geometric time model: t(m) = exp(-5.987 + 1.700 m)  (per-step factor e^B = 5.47)
+measured medians: m0:0.001s, m1:0.027s, m2:0.104s, m3:0.265s, m4:0.614s, m5:6.819s, m6:12.000s, m7:12.000s
