@@ -11,13 +11,13 @@ import sys, time, numpy as np
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]   # full_search/analysis/ -> repo root
 sys.path.insert(0, str(ROOT))
-from lib.equilibrium.full_search.full_mixing_sweep import FullMixingSolver, c_model
+from lib.equilibrium.full_search.full_mixing_sweep import FullMixingSolver, c_model, DATA
 
 PAYOFF = sys.argv[1] if len(sys.argv) > 1 else "burke_usaruschn_2035-2060"
 WORKERS = 14
 s = FullMixingSolver(PAYOFF); s.max_nv = 8
 NO = s.NO
-order = np.load(ROOT / "strategy_tables" / f"fullmix_{PAYOFF}_order.npy")
+order = np.load(DATA / f"fullmix_{PAYOFF}_order.npy")
 N = len(order)
 
 def unpack(packed):
@@ -51,7 +51,7 @@ for frac, n in plan:
 # Forecast the remaining run by integrating measured t_label over remaining labels.
 # Map every label's predicted cost -> measured t via the (frac->t) samples, but it's
 # cleaner to integrate per position-segment using the sampled mean t in each segment.
-ckpt = ROOT / "strategy_tables" / f"fullmix_{PAYOFF}_find_progress.txt"
+ckpt = DATA / f"fullmix_{PAYOFF}_find_progress.txt"
 cur = int(ckpt.read_text().split()[0]) if ckpt.exists() else 0
 fr = np.array([r[0] for r in rows]); mt = np.array([r[2] for r in rows])
 # piecewise-constant t_label across order fractions: integrate from cur/N to 1.0

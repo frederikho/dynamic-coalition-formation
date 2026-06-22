@@ -25,9 +25,9 @@ ROOT = Path(__file__).resolve().parents[4]   # full_search/analysis/ -> repo roo
 sys.path.insert(0, str(ROOT))
 import lib.equilibrium.full_search.full_mixing_sweep as fm
 from lib.equilibrium.full_search.full_mixing_sweep import (
-    FullMixingSolver, c_model, PROF, MSTAT)
+    FullMixingSolver, c_model, PROF, MSTAT, DATA)
 
-BENCH = ROOT / "strategy_tables"          # corpus cache lives next to the order.npy
+BENCH = DATA          # order.npy + bench corpora live in full_search/data/ (gitignored)
 REPORTS = ROOT / "reports" / "fullmix_bench"
 
 
@@ -112,6 +112,15 @@ def _make_solver(which, payoff):
     if which == "flint":
         from lib.equilibrium.full_search.routes.flint_spike.flint_solver import FlintMixingSolver
         return FlintMixingSolver(payoff)
+    if which == "julia":
+        from lib.equilibrium.full_search.routes.julia_spike.julia_solver import FlintJuliaSolver
+        s = FlintJuliaSolver(payoff)
+        # warm up the Julia JIT (build+solve a tiny degree-2 system) so it doesn't pollute timing
+        import flint
+        ctx = flint.fmpq_mpoly_ctx.get(["x0", "x1"], flint.Ordering.lex)
+        g = ctx.gens()
+        s._msolve_flint(2, [g[0] * g[0] - 1, g[1] - g[0]], ["a_0_0_0", "w_0_0_0"])
+        return s
     return FullMixingSolver(payoff)
 
 
@@ -197,7 +206,7 @@ if __name__ == "__main__":
     mp = sub.add_parser("bench")
     mp.add_argument("--payoff", default="burke_usaruschn_2035-2060")
     mp.add_argument("--tag", default="baseline")
-    mp.add_argument("--solver", choices=["baseline", "flint"], default="baseline")
+    mp.add_argument("--solver", choices=["baseline", "flint", "julia"], default="baseline")
     mp.add_argument("--repeats", type=int, default=3)
     mp.add_argument("--max-nv", type=int, default=8)
     mp.add_argument("--msolve-timeout", type=float, default=10.0)

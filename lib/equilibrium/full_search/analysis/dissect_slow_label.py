@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]   # full_search/analysis/ -> repo root
 sys.path.insert(0, str(ROOT))
 import lib.equilibrium.full_search.full_mixing_sweep as fm
-from lib.equilibrium.full_search.full_mixing_sweep import FullMixingSolver, c_model, PROF, prof_report
+from lib.equilibrium.full_search.full_mixing_sweep import FullMixingSolver, c_model, PROF, prof_report, DATA
 
 PAYOFF = sys.argv[1] if len(sys.argv) > 1 else "burke_usaruschn_2035-2060"
 START_FRAC = float(sys.argv[2]) if len(sys.argv) > 2 else 0.88
@@ -20,7 +20,7 @@ THRESH = float(sys.argv[3]) if len(sys.argv) > 3 else 10.0
 
 s = FullMixingSolver(PAYOFF); s.max_nv = 8; s.msolve_timeout = 10.0
 NO = s.NO
-order = np.load(ROOT / "strategy_tables" / f"fullmix_{PAYOFF}_order.npy")
+order = np.load(DATA / f"fullmix_{PAYOFF}_order.npy")
 N = len(order)
 
 def unpack(packed):

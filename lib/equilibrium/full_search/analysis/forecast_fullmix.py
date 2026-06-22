@@ -14,14 +14,14 @@ import sys, re, numpy as np
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]   # full_search/analysis/ -> repo root
 sys.path.insert(0, str(ROOT))
-from lib.equilibrium.full_search.full_mixing_sweep import FullMixingSolver, c_model
+from lib.equilibrium.full_search.full_mixing_sweep import FullMixingSolver, c_model, DATA
 
 PAYOFF = sys.argv[1] if len(sys.argv) > 1 else "burke_usaruschn_2035-2060"
 M = int(sys.argv[2]) if len(sys.argv) > 2 else 60000   # cost-sample positions
 
 s = FullMixingSolver(PAYOFF)
 NO = s.NO
-order = np.load(ROOT / "strategy_tables" / f"fullmix_{PAYOFF}_order.npy")
+order = np.load(DATA / f"fullmix_{PAYOFF}_order.npy")
 N = len(order)
 
 def cost_of(packed):
@@ -69,7 +69,7 @@ print(f"fit R^2={r2:.3f}\n")
 
 # current position = last logged k (or checkpoint)
 cur = int(obs_k.max())
-ckpt = ROOT / "strategy_tables" / f"fullmix_{PAYOFF}_find_progress.txt"
+ckpt = DATA / f"fullmix_{PAYOFF}_find_progress.txt"
 if ckpt.exists():
     cur = max(cur, int(ckpt.read_text().split()[0]))
 

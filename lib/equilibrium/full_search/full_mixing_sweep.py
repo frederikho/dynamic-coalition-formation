@@ -37,6 +37,11 @@ from scripts.residual_metric_probe import build_setup          # shared helper, 
 from scripts._reduced_helpers import _generate_weak_orders     # shared helper, stays in scripts/
 from lib.equilibrium.full_search.certified_label_solver import CertifiedLabelSolver
 
+# Generated artifacts (cheapest-first order, bench corpora, checkpoints). Large/derived ->
+# kept inside the package under data/ and gitignored (see .gitignore).
+DATA = Path(__file__).resolve().parent / "data"
+DATA.mkdir(exist_ok=True)
+
 # acceptance per-label solve-cost model c(m) (measured, Section 7); used only for the
 # cheapest-first PREDICTED cost r*c(m); the actual run measures real time.
 CM = {0:0.0001,1:0.0009,2:0.0017,3:0.0111,4:0.0436,5:0.6312,6:0.6482,
@@ -546,7 +551,7 @@ def run(args):
     print(f"[run] {args.payoff}: target cheapest {args.fraction*100:.0f}% of {TOTAL:,} labels; "
           f"predicted-cost threshold={thr:.4g}; workers={args.workers}", flush=True)
 
-    order_cache = ROOT / "strategy_tables" / f"fullmix_{args.payoff}_order.npy"
+    order_cache = DATA / f"fullmix_{args.payoff}_order.npy"
     if order_cache.exists():
         order = np.load(order_cache)
         print(f"[run] Phase A: loaded {len(order):,} cheapest labels (sorted) from cache", flush=True)
@@ -565,11 +570,11 @@ def run(args):
 
     if args.max_labels:
         order = order[:args.max_labels]
-    ckpt = ROOT / "strategy_tables" / f"fullmix_{args.payoff}_progress.txt"
+    ckpt = DATA / f"fullmix_{args.payoff}_progress.txt"
     start = 0
     if ckpt.exists():
         start = int(ckpt.read_text().split()[0]); print(f"[run] resuming from label {start:,}")
-    found = ROOT / "strategy_tables" / f"fullmix_{args.payoff}_found.txt"
+    found = DATA / f"fullmix_{args.payoff}_found.txt"
     fh = open(found, "a")
     print(f"[run] Phase B: solving {len(order)-start:,} labels cheapest-first...", flush=True)
     t0 = time.time(); done = 0; eqs = 0; defs = 0
@@ -636,7 +641,7 @@ def find(args):
     s = FullMixingSolver(args.payoff)
     NO = s.NO; TOTAL = NO ** 3
     thr = _threshold_for(s, args.fraction)
-    order_cache = ROOT / "strategy_tables" / f"fullmix_{args.payoff}_order.npy"
+    order_cache = DATA / f"fullmix_{args.payoff}_order.npy"
     if order_cache.exists():
         order = np.load(order_cache)
     else:
@@ -656,7 +661,7 @@ def find(args):
     # Phase-B checkpoint: position in the (fixed) cheapest-first order + deferred tally.
     # Lets a crash/power-loss resume without redoing solved labels. The FOUND short-circuit
     # means a hit is terminal, so resuming only ever re-enters a not-yet-found scan.
-    ckpt = ROOT / "strategy_tables" / f"fullmix_{args.payoff}_find_progress.txt"
+    ckpt = DATA / f"fullmix_{args.payoff}_find_progress.txt"
     start = 0; defs = 0
     if ckpt.exists():
         parts = ckpt.read_text().split()
@@ -694,7 +699,7 @@ def find(args):
                 log(f"  proposal support: {payload['profile']}")
                 log(f"  mixing witness:   {payload['witness']}")
                 log("=" * 70)
-                out = ROOT / "strategy_tables" / f"fullmix_{args.payoff}_FOUND.txt"
+                out = DATA / f"fullmix_{args.payoff}_FOUND.txt"
                 out.write_text(repr(payload) + "\n")
                 pool.terminate(); logf.close()
                 return

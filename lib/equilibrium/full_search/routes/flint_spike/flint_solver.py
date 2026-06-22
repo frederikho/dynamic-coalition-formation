@@ -18,6 +18,7 @@ unchanged baseline machinery, so a stage-by-stage A/B and the parity fingerprint
 """
 import os, tempfile, subprocess
 import flint
+import sympy as sp
 from lib.equilibrium.full_search.full_mixing_sweep import FullMixingSolver, MSTAT, _T
 
 
@@ -125,9 +126,37 @@ class FlintMixingSolver(FullMixingSolver):
                     return ("feasible", cand)
         return ("deferred", 0) if sols else ("infeasible", None)
 
+    def _solve_linear(self, nv, eqs, names):
+        """Exact in-process solve when ALL eqs are degree<=1. fmpq_mat rank analysis gives
+        the SAME empty/posdim/zerodim classification msolve would on a linear system, so this
+        is parity-preserving and avoids the subprocess. eqs are nonzero fmpq_mpoly."""
+        rows = []; bs = []
+        for e in eqs:
+            coef = [0] * nv; const = flint.fmpq(0)
+            for mono, c in zip(e.monoms(), e.coeffs()):
+                nz = [j for j, ev in enumerate(mono) if ev]
+                if not nz:
+                    const = c
+                else:                                   # degree<=1 -> exactly one var, exp 1
+                    coef[nz[0]] = c
+            rows.append(coef); bs.append(-const)
+        A = flint.fmpq_mat(rows)
+        aug = flint.fmpq_mat([rows[i] + [bs[i]] for i in range(len(rows))])
+        rA = A.rank(); rAug = aug.rank()
+        if rAug > rA:
+            return ("empty", [])
+        if rA < nv:
+            return ("posdim", [])
+        R, _ = aug.rref()                               # rank==nv: pivots in all nv columns
+        cand = {names[j]: sp.Rational(int(R[j, nv].p), int(R[j, nv].q)) for j in range(nv)}
+        return ("zerodim", [cand])
+
     def _msolve_flint(self, nv, eqs, names):
         """Serialize fmpq_mpoly equations to msolve directly (no sympy), then reuse the
-        baseline subprocess call + _parse_msolve. msolve vars are x0..x{nv-1}."""
+        baseline subprocess call + _parse_msolve. msolve vars are x0..x{nv-1}.
+        Fast path: degree<=1 systems are solved in-process (no subprocess)."""
+        if all(e.total_degree() <= 1 for e in eqs):
+            return self._solve_linear(nv, eqs, names)
         lines = []
         for e in eqs:
             monoms = e.monoms(); coeffs = e.coeffs()
