@@ -19,3 +19,5 @@ scripts/combined*
 results/hpo/
 reports/rice_hardness*.csv
 # Note: /docs is committed (GitHub Pages deploys from this folder)
+# full_search generated artifacts (order/corpora/checkpoints, large+derived)
+lib/equilibrium/full_search/data/

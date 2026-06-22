@@ -83,6 +83,9 @@ class FullMixingSolver:
         self.U = [[flint.fmpq(int(sp.fraction(self.cls.u[s, j])[0]), int(sp.fraction(self.cls.u[s, j])[1]))
                    for j in range(self.n)] for s in range(self.S)]
         self.ONE = ONE
+        # RHS b = (1-delta)*U is constant across every vertex/support/label -> build once
+        self._b_const = flint.fmpq_mat([[(ONE - self.DELTA) * self.U[i][j]
+                                          for j in range(self.n)] for i in range(self.S)])
         self.max_nv = None      # if set, profiles with > max_nv variables are deferred
         self.msolve_timeout = 10.0  # seconds; on timeout the variety solve is deferred
 
@@ -171,8 +174,7 @@ class FullMixingSolver:
                 P[xi][xi] += pr * wj * (ONE - pa)
         A = flint.fmpq_mat([[(ONE if i == j else flint.fmpq(0)) - self.DELTA * P[i][j]
                              for j in range(S)] for i in range(S)])
-        b = flint.fmpq_mat([[(ONE - self.DELTA) * self.U[i][j] for j in range(n)] for i in range(S)])
-        return A.solve(b), A.det()
+        return A.solve(self._b_const), A.det()    # b=(1-delta)*U hoisted to __init__
 
     def _mobius_poly(self, F, nv, syms):
         """Exact multilinear interpolant of a function given at the 2^nv cube vertices
@@ -594,8 +596,15 @@ def run(args):
           f"{(time.time()-t0)/3600:.2f}h")
 
 _W = {}
-def _winit(payoff, thr, max_nv=None):
-    s = FullMixingSolver(payoff); s.max_nv = max_nv
+def _winit(payoff, thr, max_nv=None, solver="baseline"):
+    if solver == "julia":
+        # in-process Julia Groebner; build per worker (spawn) + warm the JIT once
+        from lib.equilibrium.full_search.routes.julia_spike.julia_solver import FlintJuliaSolver
+        s = FlintJuliaSolver(payoff); s.max_nv = max_nv
+        ctx = flint.fmpq_mpoly_ctx.get(["x0", "x1"], flint.Ordering.lex); g = ctx.gens()
+        s._msolve_flint(2, [g[0] * g[0] - 1, g[1] - g[0]], ["a_0_0_0", "w_0_0_0"])
+    else:
+        s = FullMixingSolver(payoff); s.max_nv = max_nv
     _W["s"] = s; _W["thr"] = thr
 def _wphaseA(a):
     """Predicted cost for all labels with first index == a; return cheapest (idx,cost)."""
@@ -658,6 +667,8 @@ def find(args):
         idx = np.concatenate(idxs); cost = np.concatenate(costs)
         order = idx[np.argsort(cost, kind="stable")]; np.save(order_cache, order)
         print(f"[find] Phase A done: {len(order):,} cheap labels in {time.time()-tA:.0f}s", flush=True)
+    if getattr(args, "max_labels", 0):
+        order = order[:args.max_labels]          # cap (validation / partial runs)
     # Phase-B checkpoint: position in the (fixed) cheapest-first order + deferred tally.
     # Lets a crash/power-loss resume without redoing solved labels. The FOUND short-circuit
     # means a hit is terminal, so resuming only ever re-enters a not-yet-found scan.
@@ -673,6 +684,11 @@ def find(args):
         print(msg, flush=True)
         logf.write(msg + "\n"); logf.flush()
 
+    # Persist the packed id of every DEFERRED label so deferral causes can be re-checked
+    # surgically (e.g. after a solver fix) without redoing the decided labels. Truncated on a
+    # fresh start (start==0), appended on resume so the running list survives power-offs.
+    defids = open(DATA / f"fullmix_{args.payoff}_deferred_ids.txt", "w" if start == 0 else "a")
+
     if start:
         log(f"[find] resuming from label {start:,} ({defs} deferred so far)")
     log(f"[find] {args.payoff}: {len(order):,} cheap labels (solving {len(order)-start:,}); "
@@ -681,17 +697,21 @@ def find(args):
     # Trailing-window rate so ETA reflects the CURRENT speed (cheapest-first slows over time)
     # and is immune to wall-clock gaps from power-offs across restarts (t0 resets per run).
     from collections import deque
+    import multiprocessing as mp
     WINDOW = 120.0           # seconds; "speed over the last ~2 minutes"
-    LOG_EVERY = 60.0         # seconds between progress lines (checkpoint stays more frequent)
+    LOG_EVERY = 30.0         # seconds between progress lines (checkpoint stays more frequent)
     samples = deque()        # (timestamp, labels-done-this-run)
     t0 = time.time(); done = 0; last_log = t0
-    with Pool(args.workers, initializer=_winit,
-              initargs=(args.payoff, thr, args.max_nv)) as pool:
-        it = pool.imap(_wfind, order[start:].tolist(), chunksize=32)
+    # Julia isn't fork-safe -> spawn fresh worker processes for the julia solver
+    ctx = mp.get_context("spawn" if args.solver == "julia" else "fork")
+    with ctx.Pool(args.workers, initializer=_winit,
+                  initargs=(args.payoff, thr, args.max_nv, args.solver)) as pool:
+        it = pool.imap(_wfind, order[start:], chunksize=32)   # iterate np array (no 2.8GB list)
         for k, (packed, kind, payload) in enumerate(it, start=start + 1):
             done += 1
             if kind == "deferred":
                 defs += payload
+                defids.write(f"{packed}\n")     # flushed at checkpoint (every 2000 labels)
             elif kind == "FOUND":
                 log("\n" + "=" * 70)
                 log(f"[find] EQUILIBRIUM FOUND (exactly verified) at label index {packed}")
@@ -701,10 +721,11 @@ def find(args):
                 log("=" * 70)
                 out = DATA / f"fullmix_{args.payoff}_FOUND.txt"
                 out.write_text(repr(payload) + "\n")
-                pool.terminate(); logf.close()
+                defids.close(); pool.terminate(); logf.close()
                 return
             if done % 2000 == 0:
                 now = time.time()
+                defids.flush()
                 ckpt.write_text(f"{k} {defs}\n")
                 samples.append((now, done))
                 while len(samples) > 1 and now - samples[0][0] > WINDOW:
@@ -718,6 +739,7 @@ def find(args):
                     eta_h = (len(order) - k) / rate / 3600 if rate > 0 else float("inf")
                     log(f"[find] {k:,}/{len(order):,} ({100*k/len(order):.1f}%), {defs} deferred, "
                         f"recent {rate:.1f} lab/s, ETA {eta_h:.1f}h")
+    defids.close()
     ckpt.write_text(f"{len(order)} {defs}\n")
     log(f"[find] NO easy equilibrium in cheapest {args.fraction*100:.0f}% "
         f"({done:,} labels, {defs} deferred branches skipped). "
@@ -742,6 +764,8 @@ if __name__ == "__main__":
     rp.add_argument("--max-labels", type=int, default=0)
     fp = sub.add_parser("find"); fp.add_argument("--payoff", default="burke_usaruschn_2035-2060")
     fp.add_argument("--fraction", type=float, default=0.50); fp.add_argument("--workers", type=int, default=14)
-    fp.add_argument("--max-nv", type=int, default=4)
+    fp.add_argument("--max-nv", type=int, default=8)
+    fp.add_argument("--solver", choices=["baseline", "julia"], default="julia")
+    fp.add_argument("--max-labels", type=int, default=0)
     a = ap.parse_args()
     {"trial": trial, "run": run, "find": find}[a.cmd](a)

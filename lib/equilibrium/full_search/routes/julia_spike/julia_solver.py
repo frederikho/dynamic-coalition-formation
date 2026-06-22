@@ -40,20 +40,29 @@ function solve(nv::Int, varnames, coeffs, exps)
         push!(gens, p)
     end
     I = Ideal(gens)
-    # ONE solver pass: real_solutions throws iff dim>=1 (posdim). Otherwise it returns the
-    # real rational points (possibly empty). empty-ideal and zerodim-with-no-real-point both
-    # come back as [] and both map to "infeasible" downstream, so we don't need dimension().
-    local sols
+    # real_solutions throws iff dim>=1 (posdim). For zerodim it returns the real points (as
+    # rational APPROXIMATIONS -- not exact, so they must not be used as witnesses). We use it
+    # only to (a) detect posdim and (b) count the real roots. Exact witnesses come from
+    # rational_solutions(I), which returns the EXACT rational points (Stern-Brocot recovery is
+    # not needed and the old numerator/denominator-of-approximation path was a recovery bug).
+    local reals
     try
-        sols = real_solutions(I)
+        reals = real_solutions(I)
     catch e
         if occursin("Dimension", string(e))
             return (1, Vector{Vector{Vector{BigInt}}}())     # posdim -> deferred
         end
         rethrow(e)
     end
-    out = [[[BigInt(numerator(x)), BigInt(denominator(x))] for x in sol] for sol in sols]
-    return (length(out) == 0 ? -1 : 0, out)                  # [] -> infeasible
+    if length(reals) == 0
+        return (-1, Vector{Vector{Vector{BigInt}}}())        # no real roots -> infeasible
+    end
+    rats = rational_solutions(I)                             # EXACT rational real points
+    out = [[[BigInt(numerator(x)), BigInt(denominator(x))] for x in sol] for sol in rats]
+    # complete (code 0): every real root is rational, so failing to verify any => infeasible.
+    # incomplete (code 2): some real roots are irrational (not in `out`) => caller must defer
+    # rather than declare infeasible until the exact-algebraic verifier (Fix #2) handles them.
+    return (length(rats) == length(reals) ? 0 : 2, out)
 end
 end
 """
@@ -96,10 +105,13 @@ class FlintJuliaSolver(FlintMixingSolver):
         d = int(d)
         if d == -1:
             return ("empty", [])
-        if d >= 1:
+        if d == 1:
             return ("posdim", [])
         cands = []
         for sol in sols:                                   # each sol: nv [num,den] pairs
             cands.append({names[j]: sp.Rational(int(sol[j][0]), int(sol[j][1]))
                           for j in range(nv)})
-        return ("zerodim", cands)
+        # d==0: every real root is rational (cands complete) -> none verifying => infeasible.
+        # d==2: irrational real roots remain (not in cands) -> caller must defer, not declare
+        # infeasible, until the exact-algebraic verifier handles them.
+        return ("zerodim" if d == 0 else "zerodim_incomplete", cands)

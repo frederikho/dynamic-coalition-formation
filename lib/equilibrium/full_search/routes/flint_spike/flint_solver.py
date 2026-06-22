@@ -121,10 +121,13 @@ class FlintMixingSolver(FullMixingSolver):
         if status in ("posdim", "timeout"):
             return ("deferred", nv)
         with _T("decide"):
-            for cand in sols:
+            for cand in sols:                              # exact rational candidates
                 if self.verify_witness(tiers, profile, cand):
                     return ("feasible", cand)
-        return ("deferred", 0) if sols else ("infeasible", None)
+        # zerodim (complete): all real roots are rational and none is an equilibrium -> no real
+        # solution is an equilibrium -> infeasible. zerodim_incomplete: irrational real roots
+        # remain unchecked -> defer until the exact-algebraic verifier handles them.
+        return ("deferred", 0) if status == "zerodim_incomplete" else ("infeasible", None)
 
     def _solve_linear(self, nv, eqs, names):
         """Exact in-process solve when ALL eqs are degree<=1. fmpq_mat rank analysis gives
