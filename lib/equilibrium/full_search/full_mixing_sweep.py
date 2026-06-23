@@ -213,6 +213,80 @@ class FullMixingSolver:
             p *= sym_acc[(ki, xi, yi)] if supported else sp.Integer(0)
         return p
 
+    def _build_conditions_sympy(self, tiers, profile):
+        """Build the exact equilibrium-feasibility system for one support profile, as SYMPY
+        polynomials over the mixing variables: the variety equalities `eqs`=0, the `strict`>0
+        conditions, the `nonneg`>=0 conditions, and the `box` expressions (each in [0,1]). This
+        is the SAME system the base solve_profile assembles; it is factored out so the posdim
+        branch can reason about the variety + inequalities directly (the fast flint/julia path
+        only needs `eqs`, but the algebraic posdim decider needs every sign condition too).
+        Returns dict(nv, syms, eqs, strict, nonneg, box) or None when nv==0 / nv>max_nv."""
+        n, S, fg = self.n, self.S, self.fg
+        acc, wk = self._vars_for_profile(tiers, profile)
+        nv = len(acc) + len(wk)
+        if nv == 0 or (self.max_nv is not None and nv > self.max_nv):
+            return None
+        sym_acc = {k: sp.Symbol(f"a_{k[0]}_{k[1]}_{k[2]}", real=True) for k in acc}
+        sym_w = {k: sp.Symbol(f"w_{k[0]}_{k[1]}_{k[2]}", real=True) for k in wk}
+        syms = [sym_acc[k] for k in acc] + [sym_w[k] for k in wk]
+        M = 1 << nv
+        Fnum = [[{} for _ in range(n)] for _ in range(S)]
+        Fdet = {}
+        for mask in range(M):
+            bits = [(mask >> j) & 1 for j in range(nv)]
+            V, det = self._eval_vertex(tiers, profile, acc, wk, bits)
+            Fdet[mask] = det
+            for s in range(S):
+                for k in range(n):
+                    Fnum[s][k][mask] = V[s, k] * det
+        NUM = [[self._mobius_poly(Fnum[s][k], nv, syms) for k in range(n)] for s in range(S)]
+        DET = self._mobius_poly(Fdet, nv, syms)
+
+        def EVdet(ii, xi, yi, supported):
+            if yi == xi:
+                return NUM[xi][ii]
+            pa = self._pass_sym(tiers, ii, xi, yi, sym_acc, supported)
+            return sp.expand(pa * (NUM[yi][ii] - NUM[xi][ii]) + NUM[xi][ii])
+
+        eqs = []
+        for ki in range(n):                                  # acceptance ties (multilinear)
+            by = {}
+            for si in range(S):
+                by.setdefault(int(tiers[ki][si]), []).append(si)
+            for grp in by.values():
+                for si in grp[1:]:
+                    eqs.append(NUM[si][ki] - NUM[grp[0]][ki])
+        for (ii, xi), supp in profile.items():               # proposal indifference on support
+            if len(supp) >= 2:
+                e0 = EVdet(ii, xi, supp[0], True)
+                for yj in supp[1:]:
+                    eqs.append(sp.expand(e0 - EVdet(ii, xi, yj, True)))
+        eqs = [e for e in (sp.expand(e) for e in eqs) if e != 0]
+
+        strict = []      # > 0
+        nonneg = []      # >= 0
+        for ki in range(n):                                  # strict orders: V_x[k] > V_y[k]
+            for x in range(S):
+                for y in range(S):
+                    if int(tiers[ki][x]) < int(tiers[ki][y]):
+                        strict.append(NUM[x][ki] - NUM[y][ki])
+        for (ii, xi), supp in profile.items():               # proposal optimality
+            ev_s = EVdet(ii, xi, supp[0], True)
+            for yi in fg.feasible[(ii, xi)]:
+                if yi in supp:
+                    continue
+                nonneg.append(sp.expand(ev_s - EVdet(ii, xi, yi, False)))
+        strict.append(DET)                                   # det > 0
+        box = list(syms)                                     # each var in [0,1]
+        for (ii, xi), supp in profile.items():
+            if len(supp) >= 2:
+                last = sp.Integer(1) - sum(sym_w[(ii, xi, j)] for j in range(len(supp) - 1))
+                box.append(last)                             # dependent weight in [0,1]
+        strict = [sp.expand(e) for e in strict if e != 0]
+        nonneg = [sp.expand(e) for e in nonneg if e != 0]
+        return {"nv": nv, "syms": syms, "eqs": eqs, "strict": strict,
+                "nonneg": nonneg, "box": box}
+
     def solve_profile(self, tiers, profile):
         """Exact feasibility of one support profile.
         Returns ('feasible', witness) | ('infeasible', None) | ('deferred', k)
