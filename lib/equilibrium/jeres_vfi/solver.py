@@ -265,8 +265,9 @@ def _vfi_step(game: Game, V: np.ndarray, proposer_probs):
 
 
 def _resolve_cycle(game: Game, V_cycle: np.ndarray, sigmas_cycle: list,
-                   qs_cycle: list, delta: float, proposer_probs,
-                   tol: float, verbose: bool):
+                   alphas_cycle: list, qs_cycle: list, delta: float,
+                   proposer_probs, tol: float, verbose: bool,
+                   verify_atol: float = EPS_IND):
     """
     Bisect on the interpolated value function to find a mixed-strategy equilibrium
     at the boundary between two pure-strategy phases of the VFI cycle.
@@ -336,7 +337,81 @@ def _resolve_cycle(game: Game, V_cycle: np.ndarray, sigmas_cycle: list,
         alphas_star[si] = alpha
         qs_star[si] = q
 
+    # Primary result from bisection: return V_star along with the derived strategy.
+    # The caller will verify against the true V (compute_values from T_star).
     return V_star, sigmas_star, alphas_star, qs_star
+
+
+def _mean_strategy_fallback(
+    game: Game, sigmas_cycle: list, alphas_cycle: list, qs_cycle: list,
+    delta: float, proposer_probs, verify_atol: float, verbose: bool,
+):
+    """
+    Mean-strategy cycle resolution for games with multiple coupled cycling transitions.
+
+    When a single bisection can't resolve all cycling transitions simultaneously,
+    we average the strategies across the VFI cycle.  The mean sigmas/alphas/qs
+    represent the time-averaged mixed strategy, which is the correct equilibrium
+    when all cycling transitions are near-indifferent.
+
+    Returns (V_mean, sigmas_mean, alphas_mean, qs_mean) if the mean strategy
+    passes verify_responses at the given verify_atol, else (None, None, None, None).
+    """
+    p = len(sigmas_cycle)
+    if p == 0:
+        return None, None, None, None
+
+    # Average proposal (sigma) probabilities across cycle iterations
+    sigmas_mean = [{} for _ in range(game.n_states)]
+    for si in range(game.n_states):
+        keys = set()
+        for k in range(p):
+            keys |= sigmas_cycle[k][si].keys()
+        for key in keys:
+            sigmas_mean[si][key] = sum(
+                sigmas_cycle[k][si].get(key, 0.0) for k in range(p)
+            ) / p
+
+    # Average approval (alpha) probabilities across cycle iterations
+    alphas_mean = [{} for _ in range(game.n_states)]
+    for si in range(game.n_states):
+        keys = set()
+        for k in range(p):
+            keys |= alphas_cycle[k][si].keys()
+        for key in keys:
+            alphas_mean[si][key] = sum(
+                alphas_cycle[k][si].get(key, 0.0) for k in range(p)
+            ) / p
+
+    # Recompute qs from mean alphas to maintain q = product(alpha_j for j in committee)
+    qs_mean = [{} for _ in range(game.n_states)]
+    for si in range(game.n_states):
+        for (i, ns_idx) in sigmas_mean[si]:
+            if game.approval_committees is not None:
+                v_set = game.approval_committees.get((i, si, ns_idx), frozenset())
+            else:
+                from lib.equilibrium.jeres_vfi.game import voters
+                v_set = voters(game, game.states[si], game.states[ns_idx], i)
+            q_val = 1.0
+            for j in sorted(v_set):
+                q_val *= alphas_mean[si].get((j, ns_idx), 0.0)
+            qs_mean[si][(i, ns_idx)] = q_val
+
+    T_mean = full_transition_matrix(game, sigmas_mean, qs_mean, proposer_probs)
+    V_mean = compute_values(game, T_mean, delta)
+
+    r_ok, _ = verify_responses(game, sigmas_mean, alphas_mean, qs_mean, V_mean,
+                                atol=verify_atol)
+    p_ok, _ = verify_proposals(game, sigmas_mean, alphas_mean, qs_mean, V_mean,
+                                atol=verify_atol)
+    if r_ok and p_ok:
+        if verbose:
+            print("  Mean-strategy fallback: verified.")
+        return V_mean, sigmas_mean, alphas_mean, qs_mean
+
+    if verbose:
+        print("  Mean-strategy fallback: failed verification.")
+    return None, None, None, None
 
 
 # ---------------------------------------------------------------------------
@@ -345,7 +420,7 @@ def _resolve_cycle(game: Game, V_cycle: np.ndarray, sigmas_cycle: list,
 
 def vfi(game: Game, delta: float = 0.95, max_iter: int = 200, tol: float = 1e-8,
         cycle_window: int = 8, proposer_probs=None, verbose: bool = True,
-        V_init: np.ndarray | None = None):
+        V_init: np.ndarray | None = None, verify_atol: float = EPS_IND):
     """
     Value Function Iteration with cycle-breaking bisection.
 
@@ -368,6 +443,7 @@ def vfi(game: Game, delta: float = 0.95, max_iter: int = 200, tol: float = 1e-8,
     sigmas = alphas = qs = None
     V_history: list = []
     sigma_history: list = []
+    alpha_history: list = []
     qs_history: list = []
 
     for iteration in range(max_iter):
@@ -377,6 +453,7 @@ def vfi(game: Game, delta: float = 0.95, max_iter: int = 200, tol: float = 1e-8,
         diff = np.max(np.abs(V - V_old))
         V_history.append(V.copy())
         sigma_history.append([dict(s) for s in sigmas])
+        alpha_history.append([dict(a) for a in alphas])
         qs_history.append([dict(q) for q in qs])
 
         if verbose:
@@ -395,30 +472,69 @@ def vfi(game: Game, delta: float = 0.95, max_iter: int = 200, tol: float = 1e-8,
                               f" Attempting bisection. ***")
                     V_cycle = np.array(V_history[-period:])
                     V_star, sigmas_star, alphas_star, qs_star = _resolve_cycle(
-                        game, V_cycle, sigma_history[-period:], qs_history[-period:],
+                        game, V_cycle,
+                        sigma_history[-period:],
+                        alpha_history[-period:],
+                        qs_history[-period:],
                         delta, proposer_probs, tol, verbose,
+                        verify_atol=verify_atol,
                     )
                     if V_star is not None:
                         T_star = full_transition_matrix(game, sigmas_star, qs_star, proposer_probs)
                         V_check = compute_values(game, T_star, delta)
                         final_diff = np.max(np.abs(V_check - V_star))
-                        r_ok, _ = verify_responses(game, sigmas_star, alphas_star, qs_star, V_star)
-                        p_ok, _ = verify_proposals(game, sigmas_star, alphas_star, qs_star, V_star)
+                        # Verify against V_check (the true V from T_star) using verify_atol
+                        # so that near-indifferent transitions (|ΔV| ≤ verify_atol) don't
+                        # cause spurious failures.  This must match the framework verifier's
+                        # tolerance to avoid false positives.
+                        r_ok, _ = verify_responses(game, sigmas_star, alphas_star, qs_star,
+                                                    V_check, atol=verify_atol)
+                        p_ok, _ = verify_proposals(game, sigmas_star, alphas_star, qs_star,
+                                                    V_check, atol=verify_atol)
                         if r_ok and p_ok:
                             if verbose:
                                 print(f"  Mixed-strategy equilibrium resolved"
                                       f" (|ΔV|={final_diff:.2e}).\n")
-                            return V_star, sigmas_star, alphas_star, qs_star
+                            return V_check, sigmas_star, alphas_star, qs_star
+
+                        # Bisection fixed the dominant cycle but left coupled transitions
+                        # inconsistent.  Try the mean-strategy fallback: average all
+                        # strategies over the cycle to represent the time-averaged mixing.
                         if verbose:
-                            print(f"  Resolution failed; continuing from V*.")
-                        V = V_star
+                            print(f"  Bisection left residual inconsistency; "
+                                  f"trying mean-strategy fallback.")
+                        V_ms, s_ms, a_ms, q_ms = _mean_strategy_fallback(
+                            game, sigma_history[-period:], alpha_history[-period:],
+                            qs_history[-period:], delta, proposer_probs, verify_atol, verbose,
+                        )
+                        if V_ms is not None:
+                            if verbose:
+                                print(f"  Mean-strategy equilibrium accepted.\n")
+                            return V_ms, s_ms, a_ms, q_ms
+
+                        if verbose:
+                            print(f"  All resolutions failed; continuing from V_check.")
+                        V = V_check
                     else:
+                        # No sign changes found; try mean strategy directly.
+                        V_ms, s_ms, a_ms, q_ms = _mean_strategy_fallback(
+                            game, sigma_history[-period:], alpha_history[-period:],
+                            qs_history[-period:], delta, proposer_probs, verify_atol, verbose,
+                        )
+                        if V_ms is not None:
+                            if verbose:
+                                print(f"  Mean-strategy equilibrium accepted (no sign changes).\n")
+                            return V_ms, s_ms, a_ms, q_ms
                         V = np.mean(np.array(V_history[-period:]), axis=0)
 
-                    V_history.clear(); sigma_history.clear(); qs_history.clear()
+                    V_history.clear()
+                    sigma_history.clear()
+                    alpha_history.clear()
+                    qs_history.clear()
                     V_history.append(V.copy())
                     if V_star is not None:
                         sigma_history.append([dict(s) for s in sigmas_star])
+                        alpha_history.append([dict(a) for a in alphas_star])
                         qs_history.append([dict(q) for q in qs_star])
                     break
 
@@ -430,18 +546,25 @@ def vfi(game: Game, delta: float = 0.95, max_iter: int = 200, tol: float = 1e-8,
 # Equilibrium verification
 # ---------------------------------------------------------------------------
 
-def verify_responses(game: Game, sigmas, alphas, qs, V):
-    """Check that acceptance strategies are best responses given V."""
+def verify_responses(game: Game, sigmas, alphas, qs, V, atol: float = EPS_IND):
+    """Check that acceptance strategies are best responses given V.
+
+    atol : absolute tolerance for treating a voter as indifferent (default EPS_IND).
+           Pass a looser value (e.g. 1e-4) when verifying near-flat payoffs where V
+           was computed to limited precision; matches the framework's verify_atol.
+    """
     violations = []
     for si in range(game.n_states):
         for (j, ns_idx), a in alphas[si].items():
             dv = V[ns_idx, j] - V[si, j]
-            if dv > EPS_IND and not np.isclose(a, 1.0):
+            if abs(dv) <= atol:
+                continue  # indifferent: any alpha is consistent
+            if dv > atol and not np.isclose(a, 1.0, atol=atol):
                 violations.append(
                     f"  RESP: {game.players[j]} should ACCEPT "
                     f"state {si}→{ns_idx} (ΔV={dv:+.6f}) but alpha={a:.4f}"
                 )
-            elif dv < -EPS_IND and not np.isclose(a, 0.0):
+            elif dv < -atol and not np.isclose(a, 0.0, atol=atol):
                 violations.append(
                     f"  RESP: {game.players[j]} should REJECT "
                     f"state {si}→{ns_idx} (ΔV={dv:+.6f}) but alpha={a:.4f}"
@@ -449,7 +572,7 @@ def verify_responses(game: Game, sigmas, alphas, qs, V):
     return len(violations) == 0, violations
 
 
-def verify_proposals(game: Game, sigmas, alphas, qs, V):
+def verify_proposals(game: Game, sigmas, alphas, qs, V, atol: float = EPS_IND):
     """Check that proposal strategies are best responses given V and q."""
     violations = []
     for si in range(game.n_states):
@@ -463,7 +586,7 @@ def verify_proposals(game: Game, sigmas, alphas, qs, V):
             for (i2, ns), p in sigma.items():
                 if i2 != i:
                     continue
-                if p > EPS_IND and not np.isclose(exp_val[ns], best, atol=EPS_IND):
+                if p > EPS_IND and not np.isclose(exp_val[ns], best, atol=atol):
                     violations.append(
                         f"  PROP: {game.players[i]} at state {si} proposes"
                         f" suboptimal state {ns}"
@@ -510,6 +633,7 @@ def find_equilibria(
     verbose: bool = True,
     verbose_each: bool = False,
     dedup_atol: float = 1e-2,
+    verify_atol: float = EPS_IND,
 ) -> list:
     """
     Search for multiple SMPE via multi-start VFI from randomised initialisations.
@@ -549,10 +673,10 @@ def find_equilibria(
             V, sigmas, alphas, qs = vfi(
                 game, delta=delta, max_iter=max_iter, tol=tol,
                 cycle_window=cycle_window, proposer_probs=proposer_probs,
-                V_init=V0, verbose=verbose_each,
+                V_init=V0, verbose=verbose_each, verify_atol=verify_atol,
             )
-            r_ok, _ = verify_responses(game, sigmas, alphas, qs, V)
-            p_ok, _ = verify_proposals(game, sigmas, alphas, qs, V)
+            r_ok, _ = verify_responses(game, sigmas, alphas, qs, V, atol=verify_atol)
+            p_ok, _ = verify_proposals(game, sigmas, alphas, qs, V, atol=verify_atol)
             verified = r_ok and p_ok
         except Exception as exc:
             if verbose and not verbose_each:

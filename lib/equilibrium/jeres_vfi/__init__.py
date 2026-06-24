@@ -70,6 +70,7 @@ def solve_with_jeres_vfi(solver, params=None):
     seed         = int(params.get("jeres_vfi_seed", 42))
     single       = bool(params.get("jeres_vfi_single", False))
     cycle_window = int(params.get("jeres_vfi_cycle_window", 8))
+    verify_atol  = float(params.get("jeres_vfi_verify_atol", tol * 100))
 
     players     = solver.players
     state_names = solver.states
@@ -137,9 +138,10 @@ def solve_with_jeres_vfi(solver, params=None):
         V, sigmas, alphas, qs = vfi(
             game, delta=delta, max_iter=max_iter, tol=tol,
             cycle_window=cycle_window, proposer_probs=rho, verbose=False,
+            verify_atol=verify_atol,
         )
-        r_ok, _ = verify_responses(game, sigmas, alphas, qs, V)
-        p_ok, _ = verify_proposals(game, sigmas, alphas, qs, V)
+        r_ok, _ = verify_responses(game, sigmas, alphas, qs, V, atol=verify_atol)
+        p_ok, _ = verify_proposals(game, sigmas, alphas, qs, V, atol=verify_atol)
         equilibria = [dict(V=V, sigmas=sigmas, alphas=alphas, qs=qs,
                            V_init_tag="payoffs", verified=r_ok and p_ok)]
         stopping = "jeres_vfi_single"
@@ -149,6 +151,7 @@ def solve_with_jeres_vfi(solver, params=None):
             game, delta=delta, proposer_probs=rho,
             n_restarts=n_restarts, tol=tol, max_iter=max_iter,
             cycle_window=cycle_window, seed=seed, verbose=False,
+            verify_atol=verify_atol,
         )
         stopping = "jeres_vfi_multistart"
         n_found  = len(equilibria)
