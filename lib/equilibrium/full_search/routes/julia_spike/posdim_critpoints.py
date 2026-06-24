@@ -227,7 +227,7 @@ def find_witness(cond):
     return {"none": ("no_witness_critpts", None), "degen": ("degenerate", None)}.get(r[0], r)
 
 
-def decide_complete(cond):
+def decide_complete(cond, posdim_nv_cap=None):
     """COMPLETE posdim decision (increment 2c): return an exact witness, or PROVE no equilibrium
     exists on this support. For every subset (up to codim dim V) of the inequality-boundary family
     that actually vanishes on V, sample all components of V intersected with that boundary set
@@ -237,6 +237,12 @@ def decide_complete(cond):
     ctx = _Ctx(cond)
     eqs = cond["eqs"]
     d = ctx.dim(eqs)
+    _M = {"none": ("infeasible", None), "degen": ("degenerate", None)}
+    if posdim_nv_cap is not None and d >= 1 and ctx.nv > posdim_nv_cap:
+        return ("deferred", None)                          # slow positive-dim tail -> offline pass
+    if d <= 0:                                             # empty or zero-dim: one direct decision
+        r = _crit_feasible(eqs, ctx)
+        return _M.get(r[0], r)
     # boundary family: dedup identical polynomials (strict orderings repeat), then keep only those
     # that actually vanish somewhere on V (others never cross 0 on V, so contribute no boundary).
     seen = {}

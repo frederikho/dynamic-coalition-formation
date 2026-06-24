@@ -772,52 +772,107 @@ def find(args):
     # and is immune to wall-clock gaps from power-offs across restarts (t0 resets per run).
     from collections import deque
     import multiprocessing as mp
+    import threading
     WINDOW = 120.0           # seconds; "speed over the last ~2 minutes"
     LOG_EVERY = 30.0         # seconds between progress lines (checkpoint stays more frequent)
     samples = deque()        # (timestamp, labels-done-this-run)
-    t0 = time.time(); done = 0; last_log = t0
+    t0 = time.time(); done = 0
+
+    def fmt_dur(sec):        # human-readable "Xh Ym" / "Mm Ss" / "Ss"
+        if sec != sec or sec == float("inf"):
+            return "?"
+        sec = int(sec); h, rem = divmod(sec, 3600); m, s = divmod(rem, 60)
+        return f"{h}h {m}m" if h else (f"{m}m {s}s" if m else f"{s}s")
+    # shared state for the heartbeat thread; llock serialises log writes from both threads and
+    # guards last_log so a progress line and a heartbeat can't be emitted back-to-back.
+    S = {"k": start, "defs": defs, "last_result": t0, "stop": False}
+    llock = threading.Lock()
+
+    def emit(msg):
+        with llock:
+            log(msg)
+
+    def heartbeat():
+        # Speak up ONLY during a genuine stall: no label has returned for LOG_EVERY (a worker is
+        # busy a long time in one label -- a heavy decide or first-call JIT warmup -- so imap's
+        # in-ORDER stream stalls). Gated on last_result (not the progress-log clock) so it never
+        # competes with / suppresses the normal progress line.
+        last_hb = t0
+        while not S["stop"]:
+            time.sleep(5)
+            now = time.time()
+            if S["stop"]:
+                break
+            if now - S["last_result"] >= LOG_EVERY and now - last_hb >= LOG_EVERY:
+                last_hb = now
+                emit(f"[find {time.strftime('%H:%M:%S')}] HEARTBEAT {S['k']:,}/{len(order):,} "
+                     f"({100*S['k']/len(order):.1f}%), {S['defs']} deferred, "
+                     f"{now - S['last_result']:.0f}s since last label returned "
+                     f"(a worker is busy in a long decide / JIT warmup), elapsed {fmt_dur(now-t0)}")
+    hb = threading.Thread(target=heartbeat, daemon=True); hb.start()
+    last_log = t0
     # Julia isn't fork-safe -> spawn fresh worker processes for the julia solver
     ctx = mp.get_context("spawn" if args.solver == "julia" else "fork")
-    with ctx.Pool(args.workers, initializer=_winit,
+    # maxtasksperchild recycles each worker after this many labels, releasing the Julia/msolve
+    # memory it accumulates (Julia's GC doesn't return memory to the OS, so a long-lived worker
+    # bloats); kept high so the ~60s re-warm is rare. None for non-julia (no bloat, no warm cost).
+    maxtasks = 100000 if args.solver == "julia" else None
+    with ctx.Pool(args.workers, initializer=_winit, maxtasksperchild=maxtasks,
                   initargs=(args.payoff, thr, args.max_nv, args.solver)) as pool:
-        it = pool.imap(_wfind, order[start:], chunksize=32)   # iterate np array (no 2.8GB list)
-        for k, (packed, kind, payload) in enumerate(it, start=start + 1):
-            done += 1
-            if kind == "deferred":
-                defs += payload
-                defids.write(f"{packed}\n")     # flushed at checkpoint (every 2000 labels)
-            elif kind == "FOUND":
-                log("\n" + "=" * 70)
-                log(f"[find] EQUILIBRIUM FOUND (exactly verified) at label index {packed}")
-                log(f"  label tiers (W/per-player weak orders): {payload['label']}")
-                log(f"  proposal support: {payload['profile']}")
-                log(f"  mixing witness:   {payload['witness']}")
-                log("=" * 70)
-                out = DATA / f"fullmix_{args.payoff}_FOUND.txt"
-                out.write_text(repr(payload) + "\n")
-                defids.close(); pool.terminate(); logf.close()
-                return
-            if done % 2000 == 0:
+        # Feed the pool in bounded BATCHES, not one 47M-element stream. imap delivers results IN
+        # ORDER, so one slow label makes every later completed result pile up in the parent's
+        # internal _unsorted buffer -> the PARENT process grows to many GB over a long run (this,
+        # not Julia, was the gradual RAM fill). Batching caps that buffer to one batch while keeping
+        # order, contiguous resume, and warm workers (the pool persists across imap calls).
+        BATCH = 100000
+        pos = start
+        while pos < len(order) and not S["stop"]:
+            batch = order[pos:pos + BATCH]
+            for j, (packed, kind, payload) in enumerate(pool.imap(_wfind, batch, chunksize=32)):
+                k = pos + j + 1
+                done += 1
                 now = time.time()
-                defids.flush()
-                ckpt.write_text(f"{k} {defs}\n")
-                samples.append((now, done))
-                while len(samples) > 1 and now - samples[0][0] > WINDOW:
-                    samples.popleft()
+                S["k"] = k; S["last_result"] = now
+                if kind == "deferred":
+                    defs += payload; S["defs"] = defs
+                    defids.write(f"{packed}\n")     # flushed at checkpoint (every 2000 labels)
+                elif kind == "FOUND":
+                    S["stop"] = True
+                    emit("\n" + "=" * 70)
+                    emit(f"[find] EQUILIBRIUM FOUND (exactly verified) at label index {packed}")
+                    emit(f"  label tiers (W/per-player weak orders): {payload['label']}")
+                    emit(f"  proposal support: {payload['profile']}")
+                    emit(f"  mixing witness:   {payload['witness']}")
+                    emit("=" * 70)
+                    out = DATA / f"fullmix_{args.payoff}_FOUND.txt"
+                    out.write_text(repr(payload) + "\n")
+                    defids.close(); pool.terminate(); logf.close()
+                    return
+                if done % 2000 == 0:
+                    defids.flush()
+                    ckpt.write_text(f"{k} {defs}\n")
+                # time-based progress log (checked every result, NOT gated on label count -- still
+                # prints every ~LOG_EVERY even when the rate drops into the expensive region).
                 if now - last_log >= LOG_EVERY:
                     last_log = now
+                    samples.append((now, done))
+                    while len(samples) > 1 and now - samples[0][0] > WINDOW:
+                        samples.popleft()
                     if len(samples) >= 2 and now > samples[0][0]:
                         rate = (done - samples[0][1]) / (now - samples[0][0])   # recent (windowed)
                     else:
                         rate = done / (now - t0) if now > t0 else 0.0           # fallback at startup
-                    eta_h = (len(order) - k) / rate / 3600 if rate > 0 else float("inf")
-                    log(f"[find] {k:,}/{len(order):,} ({100*k/len(order):.1f}%), {defs} deferred, "
-                        f"recent {rate:.1f} lab/s, ETA {eta_h:.1f}h")
+                    eta_s = (len(order) - k) / rate if rate > 0 else float("inf")
+                    emit(f"[find {time.strftime('%H:%M:%S')}] {k:,}/{len(order):,} "
+                         f"({100*k/len(order):.1f}%), {defs} deferred, recent {rate:.1f} lab/s, "
+                         f"ETA {fmt_dur(eta_s)}, elapsed {fmt_dur(now-t0)}")
+            pos += BATCH
+    S["stop"] = True
     defids.close()
     ckpt.write_text(f"{len(order)} {defs}\n")
-    log(f"[find] NO easy equilibrium in cheapest {args.fraction*100:.0f}% "
-        f"({done:,} labels, {defs} deferred branches skipped). "
-        f"INCONCLUSIVE: deferred (k>=2) branches not checked.")
+    emit(f"[find] NO easy equilibrium in cheapest {args.fraction*100:.0f}% "
+         f"({done:,} labels, {defs} deferred branches skipped). "
+         f"INCONCLUSIVE: deferred (k>=2) branches not checked.")
     logf.close()
 
 def _threshold_for(s, frac, n=40000, seed=0):

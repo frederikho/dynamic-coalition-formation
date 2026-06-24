@@ -119,14 +119,14 @@ class FlintMixingSolver(FullMixingSolver):
         if status == "empty":
             return ("infeasible", None)
         if status in ("posdim", "timeout"):
-            return ("deferred", nv)
+            return ("deferred", nv)                        # logged id -> OFFLINE posdim decider
         with _T("decide"):
             for cand in sols:                              # exact rational candidates
                 if self.verify_witness(tiers, profile, cand):
                     return ("feasible", cand)
-        # zerodim (complete): all real roots are rational and none is an equilibrium -> no real
-        # solution is an equilibrium -> infeasible. zerodim_incomplete: irrational real roots
-        # remain unchecked -> defer until the exact-algebraic verifier handles them.
+        # zerodim (complete): all real roots are rational and none is an equilibrium -> infeasible.
+        # zerodim_incomplete: irrational real roots remain -> defer to the OFFLINE exact-algebraic
+        # decider (running it inline collapses scan throughput ~300x; see Fix #2 notes).
         return ("deferred", 0) if status == "zerodim_incomplete" else ("infeasible", None)
 
     def _solve_linear(self, nv, eqs, names):
