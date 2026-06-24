@@ -59,6 +59,7 @@ def solve_with_jeres_vfi(solver, params=None):
     """
     import numpy as np
     from lib.equilibrium.mip_vfi import _arrays_to_strategy_df
+    from lib.utils import get_approval_committee
 
     if params is None:
         params = {}
@@ -95,7 +96,41 @@ def solve_with_jeres_vfi(solver, params=None):
     for fw_idx, name in enumerate(state_names):
         payoffs_np[fw_to_jere[fw_idx]] = payoffs_df.loc[name, players].values
 
+    # Build approval committees from the framework's effectivity so the MIP
+    # uses the same committee structure as the framework verifier.
+    player_idx = {p: i for i, p in enumerate(players)}
+    approval_committees = {}
+    for fw_s, s_name in enumerate(state_names):
+        for i, proposer in enumerate(players):
+            for fw_sp, sp_name in enumerate(state_names):
+                committee_names = get_approval_committee(
+                    solver.effectivity, players, proposer, s_name, sp_name
+                )
+                j_s  = fw_to_jere[fw_s]
+                j_sp = fw_to_jere[fw_sp]
+                approval_committees[(i, j_s, j_sp)] = frozenset(
+                    player_idx[name] for name in committee_names
+                )
+
+    # Identify structurally impossible transitions: empty committee for non-self transitions.
+    # The framework treats these as p_approved=0 (impossible), but Jere's default q=1
+    # for empty voter sets would make them auto-approve.  Mark them forbidden so the MIP
+    # forces sigma=0 for such transitions, keeping Jere's T consistent with the framework's T.
+    forbidden_transitions: set = set()
+    for fw_s, s_name in enumerate(state_names):
+        for i, proposer in enumerate(players):
+            for fw_sp, sp_name in enumerate(state_names):
+                if s_name == sp_name:
+                    continue  # self-transitions: constant_1 in both models
+                j_s  = fw_to_jere[fw_s]
+                j_sp = fw_to_jere[fw_sp]
+                committee = approval_committees.get((i, j_s, j_sp), frozenset())
+                if len(committee) == 0:
+                    forbidden_transitions.add((i, j_s, j_sp))
+
     game = Game.from_payoffs(players, payoffs_np)
+    game.approval_committees = approval_committees
+    game.forbidden_transitions = forbidden_transitions
 
     # Run solver
     if single:

@@ -36,10 +36,17 @@ def solve_state_mip(game: Game, state_idx: int, V: np.ndarray):
     big_M = max(float(np.abs(V).max()) * 2, 1.0)
 
     # Build (proposer_i, next_state_idx) → voter frozenset
+    # Use framework approval_committees when provided so the MIP matches the
+    # framework's effectivity rule instead of Jere's default changed_players rule.
     trans = {}
     for i in range(game.n_players):
         for ns_idx in range(game.n_states):
-            trans[(i, ns_idx)] = voters(game, state, game.states[ns_idx], i)
+            if game.approval_committees is not None:
+                trans[(i, ns_idx)] = game.approval_committees.get(
+                    (i, state_idx, ns_idx), frozenset()
+                )
+            else:
+                trans[(i, ns_idx)] = voters(game, state, game.states[ns_idx], i)
 
     # Pre-compute acceptance cutoffs: 1.0 / 0.0 / None (free)
     alpha_fixed = {}
@@ -98,6 +105,15 @@ def solve_state_mip(game: Game, state_idx: int, V: np.ndarray):
         for k, v in row_dict.items():
             row[k] = v
         eq_A.append(row); eq_b.append(rhs)
+
+    # C0. Force sigma=0 for structurally impossible transitions (framework constant_0).
+    # These have an empty approval committee for a non-self-transition, meaning the
+    # framework treats them as impossible (p_approved=0).  Jere's default would set
+    # q=1 for empty voter sets, so we must explicitly forbid positive sigma here.
+    if game.forbidden_transitions is not None:
+        for (fi, fns_idx) in [(i, ns) for (i, ns) in trans
+                               if (i, state_idx, ns) in game.forbidden_transitions]:
+            add_eq({sigma_vars[(fi, fns_idx)]: 1.0}, 0.0)
 
     # C1. Proposals sum to 1 per proposer
     for i in range(game.n_players):

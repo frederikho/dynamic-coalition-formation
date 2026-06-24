@@ -55,12 +55,15 @@ class Game:
 
     Attributes
     ----------
-    players   : list of player names (strings)
-    payoffs   : ndarray of shape (n_states, n_players), Jere state order
-    states    : list of canonical partitions (tuples of frozensets)
-    state_idx : {partition: index} lookup dict
-    n_players : int
-    n_states  : int
+    players              : list of player names (strings)
+    payoffs              : ndarray of shape (n_states, n_players), Jere state order
+    states               : list of canonical partitions (tuples of frozensets)
+    state_idx            : {partition: index} lookup dict
+    n_players            : int
+    n_states             : int
+    approval_committees  : optional dict (proposer_i, from_idx, to_idx) → frozenset of
+                           voter player-indices. When provided, replaces the default
+                           voters() function so the MIP uses the framework's effectivity.
     """
     players: list
     payoffs: np.ndarray
@@ -68,6 +71,11 @@ class Game:
     state_idx: dict
     n_players: int
     n_states: int
+    approval_committees: dict | None = None
+    # (proposer_i, from_idx, to_idx) triples where sigma must be forced to 0.
+    # Populated when using framework effectivity to mark structurally impossible
+    # transitions (empty committee, non-self) that the framework treats as p=0.
+    forbidden_transitions: set | None = None
 
     @classmethod
     def from_payoffs(cls, players: list, payoffs_np: np.ndarray) -> "Game":

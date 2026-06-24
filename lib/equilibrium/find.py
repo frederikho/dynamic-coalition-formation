@@ -26,6 +26,7 @@ from lib.equilibrium.support_enumeration_n3 import solve_with_support_enumeratio
 from lib.equilibrium.scenarios import get_scenario, list_scenarios
 from lib.equilibrium.mip_vfi import solve_with_mip_vfi
 from lib.equilibrium.merit_descent import solve_with_merit_descent
+from lib.equilibrium.jeres_vfi import solve_with_jeres_vfi
 from lib.equilibrium.excel_writer import (
     write_strategy_table_excel,
     generate_filename,
@@ -130,7 +131,9 @@ def _load_payoff_table(path: Path, states: list, players: list) -> tuple:
             raise ValueError(
                 f"Payoff table {path.name} has no row for framework state '{state.name}' "
                 f"or deployer key '{needed_key}'.\n"
-                f"Available keys: {df.index.tolist()}"
+                f"Available keys: {df.index.tolist()}\n"
+                f"If this table defines a custom/reduced state space, did you forget "
+                f"--allow-non-canonical-states?"
             )
         payoffs.loc[state.name] = df.loc[row_key, players].values
         if sai_col is not None:
@@ -814,6 +817,7 @@ def _build_metadata(config, setup, solver_params, solver_result,
     # Add solver info
     metadata['   '] = ''
     metadata['--- SOLVER INFO ---'] = ''
+    metadata['solver_approach'] = solver_result.get('solver_approach', 'N/A')
     metadata['converged'] = solver_result.get('converged', 'N/A')
     metadata['outer_iterations'] = solver_result.get('outer_iterations', 'N/A')
     metadata['final_tau_p'] = f"{solver_result.get('final_tau_p', 'N/A'):.6f}" if 'final_tau_p' in solver_result else 'N/A'
@@ -1087,6 +1091,11 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
             logger.info("Using MIP-VFI solver (Value Function Iteration + per-state MIP).")
             logger.info("")
         found_strategy_df, solver_result = solve_with_mip_vfi(solver, solver_params)
+    elif selected_solver_approach == "jeres_vfi":
+        if verbose:
+            logger.info("Using Jere's MIP-VFI solver (ported, no module-level globals).")
+            logger.info("")
+        found_strategy_df, solver_result = solve_with_jeres_vfi(solver, solver_params)
     elif selected_solver_approach == "merit_descent":
         if verbose:
             logger.info("Using merit-descent solver (continuous merit + plateau-aware search).")
@@ -1095,8 +1104,12 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     else:
         raise ValueError(
             f"Unknown solver_approach='{selected_solver_approach}'. "
-            "Expected one of: annealing, support_enumeration, active_set, ordinal_ranking, mip_vfi, merit_descent."
+            "Expected one of: annealing, support_enumeration, active_set, ordinal_ranking, mip_vfi, jeres_vfi, merit_descent."
         )
+
+    # Stamp the solver approach into solver_result so _build_metadata can record it.
+    if solver_result is not None:
+        solver_result['solver_approach'] = selected_solver_approach
 
     # Guard: a solver may return an empty DataFrame when it finds no equilibrium
     # (e.g. ordinal_ranking exhausts its search with zero successes). Verification
@@ -1732,14 +1745,15 @@ Available scenarios (use --list-scenarios to see all):
     parser.add_argument(
         '--solver-approach',
         type=str,
-        choices=['annealing', 'support_enumeration', 'active_set', 'ordinal_ranking', 'mip_vfi', 'merit_descent'],
+        choices=['annealing', 'support_enumeration', 'active_set', 'ordinal_ranking', 'mip_vfi', 'jeres_vfi', 'merit_descent'],
         default='annealing',
         help=(
             "Solver approach to use: 'annealing' for the legacy smoothed solver, "
             "'support_enumeration' for the cycle-guided support search, "
             "'active_set' for the stricter cycle-guided active-set search, "
             "'ordinal_ranking' for exhaustive search over ordinal value orders, "
-            "'mip_vfi' for Jere's VFI + per-state MIP solver, "
+            "'mip_vfi' for the framework's VFI + per-state MIP solver, "
+            "'jeres_vfi' for Jere's original MIP-VFI (ported, multi-start), "
             "'merit_descent' for plateau-aware descent on the continuous merit M(sigma)."
         )
     )
@@ -1786,6 +1800,35 @@ Available scenarios (use --list-scenarios to see all):
         type=float,
         default=None,
         help='VFI convergence tolerance for solver_approach=mip_vfi (default: 1e-6).'
+    )
+    parser.add_argument(
+        '--jeres-n-restarts',
+        type=int,
+        default=None,
+        help='Random V_init restarts for solver_approach=jeres_vfi (default: 40).'
+    )
+    parser.add_argument(
+        '--jeres-max-iter',
+        type=int,
+        default=None,
+        help='Max VFI iterations per run for solver_approach=jeres_vfi (default: 300).'
+    )
+    parser.add_argument(
+        '--jeres-tol',
+        type=float,
+        default=None,
+        help='VFI convergence tolerance for solver_approach=jeres_vfi (default: 1e-6).'
+    )
+    parser.add_argument(
+        '--jeres-seed',
+        type=int,
+        default=None,
+        help='Random seed for solver_approach=jeres_vfi multi-start search (default: 42).'
+    )
+    parser.add_argument(
+        '--jeres-single',
+        action='store_true',
+        help='Single VFI run from payoff init instead of multi-start (jeres_vfi only).'
     )
     parser.add_argument(
         '--merit-restarts',
@@ -1977,6 +2020,16 @@ Available scenarios (use --list-scenarios to see all):
         solver_params['mip_vfi_max_iter'] = args.mip_max_iter
     if args.mip_tol is not None:
         solver_params['mip_vfi_tol'] = args.mip_tol
+    if args.jeres_n_restarts is not None:
+        solver_params['jeres_vfi_n_restarts'] = args.jeres_n_restarts
+    if args.jeres_max_iter is not None:
+        solver_params['jeres_vfi_max_iter'] = args.jeres_max_iter
+    if args.jeres_tol is not None:
+        solver_params['jeres_vfi_tol'] = args.jeres_tol
+    if args.jeres_seed is not None:
+        solver_params['jeres_vfi_seed'] = args.jeres_seed
+    if args.jeres_single:
+        solver_params['jeres_vfi_single'] = True
     if args.merit_restarts is not None:
         solver_params['merit_restarts'] = args.merit_restarts
     if args.merit_walk is not None:
@@ -1990,6 +2043,8 @@ Available scenarios (use --list-scenarios to see all):
         verify_atol = args.verify_atol
     elif args.solver_approach == "mip_vfi":
         verify_atol = solver_params.get('mip_vfi_tol', 1e-6) * 10
+    elif args.solver_approach == "jeres_vfi":
+        verify_atol = solver_params.get('jeres_vfi_tol', 1e-6) * 100
     else:
         verify_atol = 1e-9
 
@@ -2023,7 +2078,7 @@ Available scenarios (use --list-scenarios to see all):
                     "(e.g. burke_usachnnde_2060.xlsx → CHN, NDE, USA)."
                 )
             try:
-                players = _parse_players_from_payoff_table(Path(args.payoff_table))
+                players = _infer_or_parse_players_from_payoff_table(Path(args.payoff_table))
             except ValueError as e:
                 parser.error(str(e))
             from lib.equilibrium.scenarios import fill_players
