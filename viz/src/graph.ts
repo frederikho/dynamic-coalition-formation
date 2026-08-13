@@ -684,6 +684,11 @@ export class GraphRenderer {
         this.cy.fit(undefined, 50); // Fit all elements with 50px padding
       }
     }
+
+    // Notify external tooling (e.g. the headless screenshot CLI in
+    // viz/render_graph.py) that the graph finished rendering.
+    (window as any).__graphRenderCount = ((window as any).__graphRenderCount || 0) + 1;
+    window.dispatchEvent(new CustomEvent('graph-rendered'));
   }
 
   private formatProbability(p: number): string {

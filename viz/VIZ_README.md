@@ -99,11 +99,46 @@ Your browser should automatically open to `http://localhost:3000` showing the vi
 ### Absorbing States
 States with only self-loops (probability 1.0 of staying) are **absorbing states** - once reached, the system stays there in equilibrium.
 
+## Command-Line Graph Rendering
+
+You can render the transition graph (the right-hand panel of the web app) to an image directly from the command line, without opening a browser manually:
+
+```bash
+# Activate the environment (required)
+source .venv/bin/activate
+
+# Render a profile by URL-hash key (= filename stem)
+python viz/render_graph.py eq_n3_power_threshold_RICE_by_GDP_fbbdac
+
+# By filename or path, with a custom output
+python viz/render_graph.py strategy_tables/weak_governance.xlsx -o weak.png
+
+# Control the view (mirrors the "Visualisation Options" panel)
+python viz/render_graph.py eq_n3_power_threshold_RICE_by_GDP_fbbdac \
+    --coloring absorbing --threshold 0.05 --out absorbing.png
+```
+
+This drives the actual web app in a headless Chromium (Playwright) and screenshots the graph panel, so the image matches what you see in the browser. The backend (`python viz/service_viz.py`) and frontend (`npm run dev`) are reused if already running and auto-started otherwise.
+
+Key options:
+
+- `--coloring none|absorbing|geoengineering|deployer`
+- `--layout default|connections|deployer|geo-level`
+- `--threshold <0-1>` and `--filter-mode absolute|cumulative`
+- `--no-self-loops`, `--no-edge-labels`, `--no-node-labels`, `--no-geo-level`
+- `--width/--height` (viewport, default 1600×1000), `--with-overlay` (capture the full visible graph panel), `--with-result-indicator` (keep the floating result box in the top-right corner; hidden by default), `--json` (also print full graph data)
+- `--no-start-servers` to fail instead of auto-starting services
+
+It prints a summary (states, transitions, E_π[G], absorption/mixing time) after writing the image. See `python viz/render_graph.py --help` for the full reference.
+
+Requirements: `pip install playwright` with a Chromium browser (Playwright's bundled Chromium or a system Chrome/Chromium).
+
 ## Files and Directories
 
 ```
 .
 ├── service_viz.py          # Python backend API (new)
+├── render_graph.py         # Headless-screenshot CLI for transition-graph images
 ├── viz/                    # Frontend visualizer (new)
 │   ├── src/               # TypeScript source
 │   ├── index.html         # UI

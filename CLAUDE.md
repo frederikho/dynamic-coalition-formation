@@ -101,6 +101,17 @@ npm install  # first time only
 npm run dev
 ```
 
+### Rendering transition-graph images (for AI agents)
+
+To produce an image of the transition graph (the right-hand panel of the visualizer) from the command line:
+
+```bash
+source .venv/bin/activate
+python viz/render_graph.py eq_n3_power_threshold_RICE_by_GDP_fbbdac -o graph.png
+```
+
+Requires Playwright (`pip install playwright`). Auto-starts the backend/frontend if not running; reuses them if they are. See `VIZ_README.md` → "Command-Line Graph Rendering" for options.
+
 See `VIZ_README.md` for complete documentation.
 
 ### Equilibrium Solver (NEW)
