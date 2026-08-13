@@ -1,3 +1,12 @@
+export type NodeColoringMode =
+  | 'none'
+  | 'absorbing'
+  | 'geoengineering'
+  | 'deployer'
+  | 'internal'
+  | 'external'
+  | 'internal-external';
+
 export interface GraphNode {
   id: string;
   label: string;

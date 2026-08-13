@@ -1,7 +1,7 @@
 import cytoscape, { Core, NodeSingular } from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import cola from 'cytoscape-cola';
-import type { GraphData } from './types';
+import type { GraphData, NodeColoringMode } from './types';
 import { computeAbsorbingSets } from './absorbing';
 
 // Register layout algorithms
@@ -303,7 +303,7 @@ export class GraphRenderer {
   }
 
   render(graphData: GraphData, probThreshold: number = 0.001, options?: {
-    coloringMode?: 'none' | 'absorbing' | 'geoengineering' | 'deployer';
+    coloringMode?: NodeColoringMode;
     filterMode?: 'absolute' | 'cumulative';
     layoutMode?: 'default' | 'connections' | 'deployer' | 'geo-level';
     // UI toggles
@@ -492,7 +492,30 @@ export class GraphRenderer {
         // Assign color based on coloring mode
         let color = '#cbd5e1'; // Default gray
 
-        if (coloringMode === 'absorbing') {
+        if (coloringMode === 'internal') {
+          const stability = node.meta?.stability as { internal?: boolean } | undefined;
+          if (stability && typeof stability.internal === 'boolean') {
+            color = stability.internal ? '#16a34a' : '#dc2626';
+          }
+        } else if (coloringMode === 'external') {
+          const stability = node.meta?.stability as { external_consent?: boolean } | undefined;
+          if (stability && typeof stability.external_consent === 'boolean') {
+            color = stability.external_consent ? '#16a34a' : '#dc2626';
+          }
+        } else if (coloringMode === 'internal-external') {
+          const stability = node.meta?.stability as { internal?: boolean; external_consent?: boolean } | undefined;
+          if (stability && typeof stability.internal === 'boolean' && typeof stability.external_consent === 'boolean') {
+            if (stability.internal && stability.external_consent) {
+              color = '#16a34a'; // both stable
+            } else if (stability.internal) {
+              color = '#f59e0b'; // internal only
+            } else if (stability.external_consent) {
+              color = '#0284c7'; // external only
+            } else {
+              color = '#dc2626'; // neither
+            }
+          }
+        } else if (coloringMode === 'absorbing') {
           const setId = nodeToAbsorbing.get(node.id) ?? null;
           if (setId !== null) {
             // Sort set IDs to get consistent coloring

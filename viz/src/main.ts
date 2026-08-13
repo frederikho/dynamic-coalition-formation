@@ -1,6 +1,6 @@
 import { GraphRenderer } from './graph';
 import { fetchProfiles, fetchGraph } from './api';
-import type { GraphData } from './types';
+import type { GraphData, NodeColoringMode } from './types';
 import { computeAbsorbingSets } from './absorbing';
 
 // UI Elements
@@ -62,9 +62,9 @@ function getFilterMode(): 'absolute' | 'cumulative' {
 }
 
 // Get selected node coloring mode
-function getNodeColoringMode(): 'none' | 'absorbing' | 'geoengineering' | 'deployer' {
+function getNodeColoringMode(): NodeColoringMode {
   const selected = Array.from(nodeColoringRadios).find(radio => radio.checked);
-  return (selected?.value as 'none' | 'absorbing' | 'geoengineering' | 'deployer') || 'none';
+  return (selected?.value as NodeColoringMode) || 'none';
 }
 
 // Get selected layout mode
@@ -253,7 +253,7 @@ async function loadGraph() {
   }
 }
 
-function updateLegend(data: GraphData, coloringMode: 'none' | 'absorbing' | 'geoengineering' | 'deployer') {
+function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
   if (!absorbingLegendDiv) return;
 
   if (coloringMode === 'none') {
@@ -261,7 +261,74 @@ function updateLegend(data: GraphData, coloringMode: 'none' | 'absorbing' | 'geo
     return;
   }
 
-  if (coloringMode === 'deployer') {
+  if (coloringMode === 'internal' || coloringMode === 'external') {
+    // Binary stability legend
+    const field = coloringMode === 'internal' ? 'internal' : 'external_consent';
+    const title = coloringMode === 'internal' ? 'Internal Stability' : 'External Stability';
+    const stableColor = '#16a34a';
+    const unstableColor = '#dc2626';
+    const stableCount = data.nodes.filter(n => n.meta?.stability?.[field] === true).length;
+    const unstableCount = data.nodes.filter(n => n.meta?.stability?.[field] === false).length;
+
+    const items = [];
+    if (stableCount > 0) {
+      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:${stableColor};display:inline-block;border-radius:2px"></span><span>Stable (${stableCount} state${stableCount !== 1 ? 's' : ''})</span></div>`);
+    }
+    if (unstableCount > 0) {
+      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:${unstableColor};display:inline-block;border-radius:2px"></span><span>Unstable (${unstableCount} state${unstableCount !== 1 ? 's' : ''})</span></div>`);
+    }
+    if (items.length === 0) {
+      items.push('<div style="color:#999">No stability data for this profile</div>');
+    }
+
+    absorbingLegendDiv.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">${title}</div>
+      ${items.join('')}
+      <div style="font-size:11px;color:#999;margin-top:8px">Based on static one-period payoffs</div>
+    `;
+  } else if (coloringMode === 'internal-external') {
+    // Combined 4-way legend
+    const categorize = (node: typeof data.nodes[number]): 'both' | 'internal' | 'external' | 'neither' | 'unknown' => {
+      const st = node.meta?.stability;
+      if (!st || typeof st.internal !== 'boolean' || typeof st.external_consent !== 'boolean') return 'unknown';
+      const internal = st.internal;
+      const external = st.external_consent;
+      if (internal && external) return 'both';
+      if (internal) return 'internal';
+      if (external) return 'external';
+      return 'neither';
+    };
+
+    const categories: Array<{ key: 'both' | 'internal' | 'external' | 'neither'; label: string; color: string }> = [
+      { key: 'both', label: 'Internally + externally stable', color: '#16a34a' },
+      { key: 'internal', label: 'Internally stable only', color: '#f59e0b' },
+      { key: 'external', label: 'Externally stable only', color: '#0284c7' },
+      { key: 'neither', label: 'Neither', color: '#dc2626' },
+    ];
+
+    const counts: Record<string, number> = {};
+    data.nodes.forEach(node => {
+      const c = categorize(node);
+      counts[c] = (counts[c] || 0) + 1;
+    });
+
+    const items = categories
+      .filter(cat => (counts[cat.key] || 0) > 0)
+      .map(cat => {
+        const count = counts[cat.key] || 0;
+        return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:${cat.color};display:inline-block;border-radius:2px"></span><span>${cat.label} (${count} state${count !== 1 ? 's' : ''})</span></div>`;
+      });
+
+    if (counts['unknown']) {
+      items.push(`<div style="color:#999">No stability data: ${counts['unknown']} state${counts['unknown'] !== 1 ? 's' : ''}</div>`);
+    }
+
+    absorbingLegendDiv.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Internal + External Stability</div>
+      ${items.join('')}
+      <div style="font-size:11px;color:#999;margin-top:8px">External = consent-based (approval committees)</div>
+    `;
+  } else if (coloringMode === 'deployer') {
     // Get unique deploying coalitions
     const deployerSet = new Set<string>();
     data.nodes.forEach(node => {

@@ -406,7 +406,7 @@ def main():
         help="How the probability threshold filters edges.",
     )
     parser.add_argument(
-        "--coloring", choices=["none", "absorbing", "geoengineering", "deployer"], default="none",
+        "--coloring", choices=["none", "absorbing", "geoengineering", "deployer", "internal", "external", "internal-external"], default="none",
         help="Node coloring mode.",
     )
     parser.add_argument(

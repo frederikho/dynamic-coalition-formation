@@ -33,7 +33,7 @@ from lib.coalition import Coalition
 from lib.state import State
 from lib.probabilities_optimized import TransitionProbabilitiesOptimized
 from lib.utils import derive_effectivity, list_members
-from lib.mdp import MDP
+from lib.mdp import MDP, absorbing_sets, limiting_distribution
 
 
 def generate_all_partitions(elements):
@@ -280,239 +280,6 @@ def compute_mixing_time(P: pd.DataFrame, pi: np.ndarray, epsilon: float = 0.01) 
     return -1  # Did not converge
 
 
-def find_strongly_connected_components(adjacency_matrix: np.ndarray) -> list:
-    """Find strongly connected components using Tarjan's algorithm."""
-    n = adjacency_matrix.shape[0]
-    index_counter = [0]
-    stack = []
-    lowlink = [0] * n
-    index = [0] * n
-    on_stack = [False] * n
-    index_initialized = [False] * n
-    sccs = []
-    
-    def strongconnect(v):
-        index[v] = index_counter[0]
-        lowlink[v] = index_counter[0]
-        index_counter[0] += 1
-        index_initialized[v] = True
-        stack.append(v)
-        on_stack[v] = True
-        
-        # Consider successors
-        for w in range(n):
-            if adjacency_matrix[v, w] > 0:  # There's an edge from v to w
-                if not index_initialized[w]:
-                    strongconnect(w)
-                    lowlink[v] = min(lowlink[v], lowlink[w])
-                elif on_stack[w]:
-                    lowlink[v] = min(lowlink[v], index[w])
-        
-        # If v is a root node, pop the stack and generate an SCC
-        if lowlink[v] == index[v]:
-            scc = []
-            while True:
-                w = stack.pop()
-                on_stack[w] = False
-                scc.append(w)
-                if w == v:
-                    break
-            sccs.append(scc)
-    
-    for v in range(n):
-        if not index_initialized[v]:
-            strongconnect(v)
-    
-    return sccs
-
-
-def compute_stationary_distribution(P: pd.DataFrame) -> np.ndarray:
-    """
-    Compute the limiting distribution of a Markov chain.
-    
-    For chains with absorbing sets, computes the absorption probabilities
-    assuming a uniform initial distribution over all states.
-
-    Args:
-        P: Transition probability matrix (DataFrame)
-
-    Returns:
-        Stationary distribution as numpy array
-    """
-    n = len(P)
-    P_array = P.values
-    
-    # Find strongly connected components
-    sccs = find_strongly_connected_components(P_array)
-    
-    # Identify absorbing sets (SCCs with no outgoing edges)
-    absorbing_sets = []
-    for scc in sccs:
-        is_absorbing = True
-        for i in scc:
-            for j in range(n):
-                if j not in scc and P_array[i, j] > 1e-10:
-                    is_absorbing = False
-                    break
-            if not is_absorbing:
-                break
-        if is_absorbing:
-            absorbing_sets.append(scc)
-    
-    # If there are absorbing sets, compute absorption probabilities
-    if len(absorbing_sets) > 0:
-        # Flatten absorbing sets to get all absorbing states
-        absorbing_states = []
-        for abs_set in absorbing_sets:
-            absorbing_states.extend(abs_set)
-        
-        logger.info(f"Found {len(absorbing_sets)} absorbing sets with {len(absorbing_states)} total absorbing states")
-        for i, abs_set in enumerate(absorbing_sets):
-            set_states = [P.index[idx] for idx in abs_set]
-            logger.info(f"  Absorbing set {i+1}: {set_states}")
-        
-        # Partition states into transient (T) and absorbing (A)
-        transient_states = [i for i in range(n) if i not in absorbing_states]
-        logger.info(f"Found {len(transient_states)} transient states")
-        
-        if len(transient_states) == 0:
-            # All states are in absorbing sets
-            # Assume uniform initial distribution
-            pi = np.zeros(n)
-            initial_uniform = np.ones(n) / n
-            
-            for abs_set in absorbing_sets:
-                # Compute stationary distribution within this absorbing set
-                P_sub = P_array[np.ix_(abs_set, abs_set)]
-                try:
-                    n_sub = len(abs_set)
-                    A_sub = P_sub.T - np.eye(n_sub)
-                    A_sub[-1, :] = np.ones(n_sub)
-                    b_sub = np.zeros(n_sub)
-                    b_sub[-1] = 1.0
-                    pi_sub = np.linalg.solve(A_sub, b_sub)
-                    pi_sub = np.maximum(pi_sub, 0)
-                    pi_sub = pi_sub / pi_sub.sum()
-                    
-                    # Weight by initial probability mass in this set
-                    initial_mass = sum(initial_uniform[i] for i in abs_set)
-                    for i, state_idx in enumerate(abs_set):
-                        pi[state_idx] = pi_sub[i] * initial_mass
-                except:
-                    # Fallback: uniform within set
-                    for state_idx in abs_set:
-                        pi[state_idx] = initial_uniform[state_idx]
-            
-            pi = pi / pi.sum()
-            return pi
-        
-        # Extract Q (transient-to-transient) submatrix
-        Q = P_array[np.ix_(transient_states, transient_states)]
-        
-        # Compute fundamental matrix N = (I - Q)^(-1)
-        try:
-            I = np.eye(len(transient_states))
-            N = np.linalg.inv(I - Q)
-            
-            # For each absorbing set, compute absorption probability
-            pi = np.zeros(n)
-            initial_uniform = np.ones(n) / n
-            
-            for abs_set in absorbing_sets:
-                # R matrix: transient -> this absorbing set
-                R_set = P_array[np.ix_(transient_states, abs_set)]
-                
-                # Absorption probabilities: B_set = N * R_set
-                B_set = N @ R_set
-                
-                # From transient states
-                for i, t_idx in enumerate(transient_states):
-                    # Total probability of absorbing into this set
-                    total_abs_prob = B_set[i, :].sum()
-                    
-                    if total_abs_prob > 1e-10:
-                        # Compute stationary distribution within the absorbing set
-                        P_sub = P_array[np.ix_(abs_set, abs_set)]
-                        try:
-                            n_sub = len(abs_set)
-                            A_sub = P_sub.T - np.eye(n_sub)
-                            A_sub[-1, :] = np.ones(n_sub)
-                            b_sub = np.zeros(n_sub)
-                            b_sub[-1] = 1.0
-                            pi_sub = np.linalg.solve(A_sub, b_sub)
-                            pi_sub = np.maximum(pi_sub, 0)
-                            pi_sub = pi_sub / pi_sub.sum()
-                            
-                            # Distribute probability according to stationary distribution within set
-                            for j, a_idx in enumerate(abs_set):
-                                pi[a_idx] += initial_uniform[t_idx] * total_abs_prob * pi_sub[j]
-                        except:
-                            # Fallback: uniform within set
-                            for a_idx in abs_set:
-                                pi[a_idx] += initial_uniform[t_idx] * total_abs_prob / len(abs_set)
-            
-            # States already in absorbing sets
-            for abs_set in absorbing_sets:
-                P_sub = P_array[np.ix_(abs_set, abs_set)]
-                try:
-                    n_sub = len(abs_set)
-                    A_sub = P_sub.T - np.eye(n_sub)
-                    A_sub[-1, :] = np.ones(n_sub)
-                    b_sub = np.zeros(n_sub)
-                    b_sub[-1] = 1.0
-                    pi_sub = np.linalg.solve(A_sub, b_sub)
-                    pi_sub = np.maximum(pi_sub, 0)
-                    pi_sub = pi_sub / pi_sub.sum()
-                    
-                    initial_mass = sum(initial_uniform[i] for i in abs_set)
-                    for i, state_idx in enumerate(abs_set):
-                        pi[state_idx] += pi_sub[i] * initial_mass
-                except:
-                    for state_idx in abs_set:
-                        pi[state_idx] += initial_uniform[state_idx]
-            
-            # Normalize
-            pi = pi / pi.sum()
-            
-            # Log final distribution by absorbing set
-            logger.info("Final stationary distribution by absorbing set:")
-            for i, abs_set in enumerate(absorbing_sets):
-                set_prob = sum(pi[idx] for idx in abs_set)
-                set_states = [P.index[idx] for idx in abs_set]
-                logger.info(f"  Set {i+1} ({set_states}): {set_prob*100:.2f}%")
-            
-            return pi
-            
-        except np.linalg.LinAlgError:
-            # Fall back to standard method if fundamental matrix computation fails
-            pass
-    
-    # Standard method for ergodic chains (no absorbing states, or fallback)
-    # Solve (P^T - I)π = 0 with constraint Σπ = 1
-    A = P_array.T - np.eye(n)
-
-    # Replace last equation with normalization constraint Σπ = 1
-    A[-1, :] = np.ones(n)
-    b = np.zeros(n)
-    b[-1] = 1.0
-
-    try:
-        pi = np.linalg.solve(A, b)
-        # Ensure non-negative and normalized (numerical errors)
-        pi = np.maximum(pi, 0)
-        pi = pi / pi.sum()
-        return pi
-    except np.linalg.LinAlgError:
-        # If singular, use eigenvalue method
-        eigenvalues, eigenvectors = np.linalg.eig(P_array.T)
-        # Find eigenvector for eigenvalue closest to 1
-        idx = np.argmin(np.abs(eigenvalues - 1.0))
-        pi = np.real(eigenvectors[:, idx])
-        pi = np.abs(pi)  # Ensure non-negative
-        pi = pi / pi.sum()  # Normalize
-        return pi
-
-
 def _players_from_strategy_df(df: pd.DataFrame) -> List[str]:
     """Infer player list from acceptance rows in the strategy DataFrame."""
     players = []
@@ -521,6 +288,125 @@ def _players_from_strategy_df(df: pd.DataFrame) -> List[str]:
         if kind == 'Acceptance' and pd.notna(player) and player not in players:
             players.append(str(player))
     return players
+
+
+def compute_stability(
+    players: List[str],
+    state_names: List[str],
+    static_payoffs: Dict[str, Dict[str, float]],
+) -> Dict[str, Dict[str, bool]]:
+    """Internal / external stability of every state in the game.
+
+    Each state is a partition of the players into coalitions (the non-singleton
+    groups written in the state name, plus the implied singletons). Stability is
+    evaluated on the static one-period payoffs ``u``, mirroring the classical
+    d'Aspremont et al. (1983) benchmark used in ``lib/results_analysis``.
+
+    Internal stability: no member of any coalition strictly prefers to leave,
+    going it alone while the remaining members stay together (the same exit rule
+    the framework's dynamics use).
+
+    External stability: no outsider strictly prefers to join a coalition. Two
+    readings are reported:
+
+    ``external_open``
+        d'Aspremont's open membership: incumbents cannot refuse, so a structure
+        is stable only if no outsider would gain from accession.
+
+    ``external_consent``
+        Accession also requires all incumbents to (weakly) gain, matching the
+        approval committees used in this framework. Consent can only rescue
+        structures that open membership already accepts.
+
+    Returns a dict mapping each state name to
+    ``{"internal", "external_open", "external_consent"}``.
+    """
+    from lib.utils import get_player_coalition
+
+    def partition_of(state_name: str) -> List[List[str]]:
+        coalitions = []
+        seen = set()
+        for p in players:
+            coal = get_player_coalition(p, state_name, players)
+            key = tuple(sorted(coal))
+            if key not in seen:
+                seen.add(key)
+                coalitions.append(sorted(coal))
+        return coalitions
+
+    def canonical_name(partition: List[List[str]]) -> str:
+        non_singletons = sorted(
+            [sorted(c) for c in partition if len(c) > 1],
+            key=lambda x: (len(x), x),
+        )
+        if not non_singletons:
+            return '( )'
+        return ''.join(f'({"".join(c)})' for c in non_singletons)
+
+    canon_to_state = {
+        canonical_name(partition_of(sn)): sn for sn in state_names
+    }
+
+    results = {}
+    for state_name in state_names:
+        partition = partition_of(state_name)
+        u_state = static_payoffs[state_name]
+
+        internal = True
+        for coalition in partition:
+            if len(coalition) < 2:
+                continue
+            for member in coalition:
+                remainder = [m for m in coalition if m != member]
+                new_partition = [
+                    c for c in partition if sorted(c) != sorted(coalition)
+                ]
+                if len(remainder) >= 2:
+                    new_partition.append(remainder)
+                after = canon_to_state.get(canonical_name(new_partition))
+                if after is None or after not in static_payoffs:
+                    continue
+                if u_state[member] < static_payoffs[after][member]:
+                    internal = False
+
+        external_open = True
+        external_consent = True
+        for coalition in partition:
+            for joiner in players:
+                if joiner in coalition:
+                    continue
+                enlarged = sorted(coalition + [joiner])
+                # Build the partition after joiner leaves its current coalition
+                # (if any) and joins ``coalition``. A leftover singleton is
+                # implicit and dropped from the written state name.
+                new_partition = []
+                for c in partition:
+                    if sorted(c) == sorted(coalition):
+                        continue  # replaced by enlarged below
+                    if joiner in c:
+                        remainder = [m for m in c if m != joiner]
+                        if len(remainder) >= 2:
+                            new_partition.append(sorted(remainder))
+                    else:
+                        new_partition.append(c)
+                new_partition.append(sorted(enlarged))
+                after = canon_to_state.get(canonical_name(new_partition))
+                if after is None or after not in static_payoffs:
+                    continue
+                u_after = static_payoffs[after]
+                if u_after[joiner] <= u_state[joiner]:
+                    continue
+                external_open = False
+                if all(u_after[m] >= u_state[m] for m in coalition):
+                    external_consent = False
+
+        results[state_name] = {
+            "internal": internal,
+            "external_open": external_open,
+            "external_consent": external_consent,
+        }
+
+    return results
 
 
 def compute_transition_graph(
@@ -803,7 +689,14 @@ def compute_transition_graph(
                     # pandas reads "None" as NaN; treat NaN as no deployment
                     deploying_coalitions[sn] = "None" if pd.isna(val) else str(val)
 
-    # 8. Convert to graph format
+    # 8. Compute static internal/external stability of each state (used for node coloring)
+    stability = compute_stability(
+        players=config["players"],
+        state_names=config["state_names"],
+        static_payoffs=static_payoffs,
+    )
+
+    # 9. Convert to graph format
     nodes = []
     for i, state_name in enumerate(config["state_names"]):
         nodes.append({
@@ -815,10 +708,11 @@ def compute_transition_graph(
                 "deploying_coalition": deploying_coalitions[state_name],
                 "payoffs": static_payoffs[state_name],
                 "values": long_term_values[state_name],
+                "stability": stability.get(state_name, {}),
             }
         })
 
-    # 9. Build edges
+    # 10. Build edges
     edges = []
     edge_id = 0
     for i, source_state in enumerate(config["state_names"]):
@@ -934,9 +828,9 @@ def compute_transition_graph(
                 })
                 edge_id += 1
 
-    # 10. Compute stationary distribution, mixing time, and expected geoengineering level
+    # 11. Compute stationary distribution, mixing time, and expected geoengineering level
     try:
-        pi = compute_stationary_distribution(P)
+        pi = limiting_distribution(P)
         # E_π[G] = Σ π_i * G_i
         G_values = np.array([geo_levels[state_name] for state_name in config["state_names"]])
         expected_G = float(np.dot(pi, G_values))
@@ -945,33 +839,24 @@ def compute_transition_graph(
         pi_dict = {state_name: float(pi[i]) for i, state_name in enumerate(config["state_names"])}
 
         # Detect absorbing sets for diagnostics (must come before mixing/absorption time)
-        sccs = find_strongly_connected_components(P.values)
-        absorbing_sets = []
-        for scc in sccs:
-            is_absorbing = True
-            for i in scc:
-                for j in range(len(P)):
-                    if j not in scc and P.values[i, j] > 1e-10:
-                        is_absorbing = False
-                        break
-                if not is_absorbing:
-                    break
-            if is_absorbing:
-                absorbing_sets.append([config["state_names"][i] for i in scc])
+        closed_classes = absorbing_sets(P)
+        absorbing_state_sets = [
+            [config["state_names"][i] for i in members] for members in closed_classes
+        ]
 
-        # Check if chain is ergodic (single SCC containing all states)
-        is_ergodic = len(sccs) == 1 and len(sccs[0]) == len(config["state_names"])
+        # Ergodic iff the whole state space is one closed communicating class.
+        is_ergodic = (
+            len(closed_classes) == 1
+            and len(closed_classes[0]) == len(config["state_names"])
+        )
 
         # Compute mixing time (only meaningful for ergodic chains)
         mixing_time = compute_mixing_time(P, pi) if is_ergodic else None
 
         # For non-ergodic chains with absorbing sets, compute absorption time
         absorption_time = None
-        if not is_ergodic and len(absorbing_sets) > 0:
-            absorbing_indices = set()
-            for abs_set in absorbing_sets:
-                for s in abs_set:
-                    absorbing_indices.add(config["state_names"].index(s))
+        if not is_ergodic and len(absorbing_state_sets) > 0:
+            absorbing_indices = {i for members in closed_classes for i in members}
             transient_indices = [i for i in range(len(P)) if i not in absorbing_indices]
 
             if len(transient_indices) > 0:
@@ -996,7 +881,7 @@ def compute_transition_graph(
         mixing_time = None
         absorption_time = None
         pi_dict = None
-        absorbing_sets = []
+        absorbing_state_sets = []
         is_ergodic = None
 
     return {
@@ -1021,8 +906,8 @@ def compute_transition_graph(
             "absorption_time": absorption_time,
             "chain_diagnostics": {
                 "is_ergodic": is_ergodic,
-                "num_absorbing_sets": len(absorbing_sets),
-                "absorbing_sets": absorbing_sets if len(absorbing_sets) > 0 else None
+                "num_absorbing_sets": len(absorbing_state_sets),
+                "absorbing_sets": absorbing_state_sets if absorbing_state_sets else None
             }
         }
     }

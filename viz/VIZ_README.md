@@ -122,7 +122,7 @@ This drives the actual web app in a headless Chromium (Playwright) and screensho
 
 Key options:
 
-- `--coloring none|absorbing|geoengineering|deployer`
+- `--coloring none|absorbing|geoengineering|deployer|internal|external|internal-external`
 - `--layout default|connections|deployer|geo-level`
 - `--threshold <0-1>` and `--filter-mode absolute|cumulative`
 - `--no-self-loops`, `--no-edge-labels`, `--no-node-labels`, `--no-geo-level`

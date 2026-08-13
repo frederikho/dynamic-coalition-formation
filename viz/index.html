@@ -68,6 +68,36 @@
               </span>
             </span>
           </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="internal">
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              By internal stability
+              <span class="info-icon" style="position:relative;">
+                i
+                <span class="tooltip tooltip-stability">No coalition member would strictly prefer to leave, going it alone while the remaining members stay together. Based on static one-period payoffs.</span>
+              </span>
+            </span>
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="external">
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              By external stability
+              <span class="info-icon" style="position:relative;">
+                i
+                <span class="tooltip tooltip-stability">No outsider would strictly gain from joining a coalition while all its members (weakly) consent — matching the framework's approval committees. Based on static one-period payoffs.</span>
+              </span>
+            </span>
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="internal-external">
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              By internal + external stability
+              <span class="info-icon" style="position:relative;">
+                i
+                <span class="tooltip tooltip-stability">Combined verdict: green = internally AND externally stable, amber = internal only, blue = external only, red = neither.</span>
+              </span>
+            </span>
+          </label>
 
           <!-- Legend for absorbing sets and geoengineering -->
           <div id="absorbing-legend" style="font-size:12px; color:#666; margin-top:12px; padding:8px; background:#f8fafc; border-radius:4px;"></div>
