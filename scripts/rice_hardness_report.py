@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
@@ -117,6 +118,11 @@ def _write_csv(rows: List[Dict[str, Any]], output_path: Path) -> None:
         "stopping_reason",
         "outer_iterations",
         "converged",
+        "n_equilibria_found",
+        "found_at_restart",
+        "n_restarts_run",
+        "vfi_nonconverged_restarts",
+        "mip_infeasible_states",
         "final_tau_p",
         "final_tau_r",
         "min_nonzero_approval_margin",
@@ -126,6 +132,7 @@ def _write_csv(rows: List[Dict[str, Any]], output_path: Path) -> None:
         "output_written",
         "output_file",
         "random_seed",
+        "solver_warnings",
         "run_error",
     ]
     with output_path.open("w", newline="") as fh:
@@ -144,29 +151,49 @@ def _run_single_case(
     verbose: bool,
     solver_approach: str,
     solver_params: Dict[str, Any] | None,
+    effectivity_rule: str | None = None,
+    verify_atol: float = 1e-5,
 ) -> Dict[str, Any]:
     config = get_scenario(scenario_name)
     players = _parse_players_from_payoff_table(payoff_table)
     if config.get("players") is None:
         config = fill_players(config, players)
     config["payoff_table"] = str(payoff_table)
+    if effectivity_rule is not None:
+        config["effectivity_rule"] = effectivity_rule
 
-    result = find_equilibrium(
-        config,
-        output_file="auto",
-        solver_params=solver_params,
-        verbose=verbose,
-        description=None,
-        load_from_checkpoint=False,
-        random_seed=None,
-        logger=None,
-        save_payoffs=False,
-        save_unverified=False,
-        diagnostics=True,
-        approval_margin_threshold=approval_margin_threshold,
-        solver_approach=solver_approach,
-    )
+    def _solve():
+        return find_equilibrium(
+            config,
+            output_file="auto",
+            solver_params=solver_params,
+            verbose=verbose,
+            description=None,
+            load_from_checkpoint=False,
+            random_seed=None,
+            logger=None,
+            save_payoffs=False,
+            save_unverified=False,
+            diagnostics=True,
+            approval_margin_threshold=approval_margin_threshold,
+            solver_approach=solver_approach,
+            verify_atol=verify_atol,
+        )
+
+    # In quiet mode the solver's per-restart warnings (e.g. "VFI did not converge
+    # within max_iter", one per non-converging restart) would flood stderr.  Capture
+    # them instead of printing and keep the count as a hardness signal.
+    if verbose:
+        result = _solve()
+        n_warnings = None
+    else:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = _solve()
+        n_warnings = len(caught)
+
     diagnostics = result["diagnostics"].copy()
+    diagnostics["solver_warnings"] = n_warnings
     diagnostics.update(_parse_filename_metadata(payoff_table))
     diagnostics["payoff_table"] = payoff_table.name
     diagnostics["payoff_path"] = str(payoff_table.resolve())
@@ -210,9 +237,33 @@ def main() -> None:
     parser.add_argument(
         "--solver-approach",
         type=str,
-        choices=["annealing", "support_enumeration", "active_set", "ordinal_ranking"],
+        choices=["annealing", "support_enumeration", "active_set", "ordinal_ranking",
+                 "mip_vfi", "jeres_vfi", "merit_descent"],
         default="annealing",
         help="Solver approach to use for every attempted payoff table (default: annealing)",
+    )
+    parser.add_argument(
+        "--verify-atol",
+        type=float,
+        default=1e-5,
+        help=(
+            "Absolute tolerance for equilibrium verification (default: 1e-5, matching "
+            "find_equilibrium.py's CLI convention of 10x the solver tolerance). The "
+            "find_equilibrium() library default of 1e-9 demands more precision than VFI "
+            "produces on near-flat RICE payoffs and rejects valid equilibria."
+        ),
+    )
+    parser.add_argument(
+        "--n-players",
+        type=int,
+        default=None,
+        help="Only run payoff tables with exactly this many players (e.g. 3)",
+    )
+    parser.add_argument(
+        "--effectivity-rule",
+        type=str,
+        default=None,
+        help="Effectivity rule to use for every case (default: the scenario's own rule)",
     )
     parser.add_argument(
         "--ordinal-ranking-max-combinations",
@@ -254,6 +305,13 @@ def main() -> None:
     valid_set = {path.name for path in valid_files}
     invalid_files = [path for path in all_xlsx if path.name not in valid_set]
 
+    if args.n_players is not None:
+        valid_files = [
+            path for path in valid_files
+            if len(_parse_players_from_payoff_table(path)) == args.n_players
+        ]
+        print(f"restricted to n_players == {args.n_players}: {len(valid_files)} tables")
+
     results: List[Dict[str, Any]] = []
     solver_params: Dict[str, Any] = {}
     if args.ordinal_ranking_max_combinations is not None:
@@ -278,6 +336,8 @@ def main() -> None:
                 verbose=not args.quiet,
                 solver_approach=args.solver_approach,
                 solver_params=solver_params,
+                effectivity_rule=args.effectivity_rule,
+                verify_atol=args.verify_atol,
             )
         except Exception as exc:
             diagnostics = _parse_filename_metadata(payoff_table)
@@ -292,7 +352,8 @@ def main() -> None:
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if args.output_csv == "auto":
-        output_csv = Path("reports") / f"rice_hardness_{args.solver_approach}_{timestamp}.csv"
+        rule_tag = f"_{args.effectivity_rule}" if args.effectivity_rule else ""
+        output_csv = Path("reports") / f"rice_hardness_{args.solver_approach}{rule_tag}_{timestamp}.csv"
     else:
         output_csv = Path(args.output_csv)
 

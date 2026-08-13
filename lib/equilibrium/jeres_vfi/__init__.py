@@ -129,32 +129,70 @@ def solve_with_jeres_vfi(solver, params=None):
                 if len(committee) == 0:
                     forbidden_transitions.add((i, j_s, j_sp))
 
+    # Transitions the effectivity rule forbids outright (e.g. non-adjacent moves under
+    # 'adjacent_step').  These can still have a NON-empty committee, so the check above
+    # misses them; without this the MIP may propose them and the framework verifier then
+    # rejects the profile with a proposal-strategy error.
+    fw_state_pos = {name: idx for idx, name in enumerate(state_names)}
+    for proposer, s_name, sp_name in solver.forbidden_proposals:
+        i    = player_idx[proposer]
+        j_s  = fw_to_jere[fw_state_pos[s_name]]
+        j_sp = fw_to_jere[fw_state_pos[sp_name]]
+        if j_s == j_sp:
+            continue
+        forbidden_transitions.add((i, j_s, j_sp))
+
     game = Game.from_payoffs(players, payoffs_np)
     game.approval_committees = approval_committees
     game.forbidden_transitions = forbidden_transitions
 
-    # Run solver
-    if single:
-        V, sigmas, alphas, qs = vfi(
-            game, delta=delta, max_iter=max_iter, tol=tol,
-            cycle_window=cycle_window, proposer_probs=rho, verbose=False,
-            verify_atol=verify_atol,
-        )
-        r_ok, _ = verify_responses(game, sigmas, alphas, qs, V, atol=verify_atol)
-        p_ok, _ = verify_proposals(game, sigmas, alphas, qs, V, atol=verify_atol)
-        equilibria = [dict(V=V, sigmas=sigmas, alphas=alphas, qs=qs,
-                           V_init_tag="payoffs", verified=r_ok and p_ok)]
-        stopping = "jeres_vfi_single"
-        n_found  = 1
-    else:
-        equilibria = find_equilibria(
-            game, delta=delta, proposer_probs=rho,
-            n_restarts=n_restarts, tol=tol, max_iter=max_iter,
-            cycle_window=cycle_window, seed=seed, verbose=False,
-            verify_atol=verify_atol,
-        )
-        stopping = "jeres_vfi_multistart"
-        n_found  = len(equilibria)
+    # Run solver.  vfi() warns once per restart that fails to converge, and
+    # solve_state_mip once per infeasible state — per-restart diagnostics that would
+    # flood stderr across a multi-start run.  Count them here and report the totals
+    # in the result dict; anything else is re-emitted so unexpected warnings still
+    # reach the caller.
+    import warnings as _warnings
+
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+
+        if single:
+            V, sigmas, alphas, qs = vfi(
+                game, delta=delta, max_iter=max_iter, tol=tol,
+                cycle_window=cycle_window, proposer_probs=rho, verbose=False,
+                verify_atol=verify_atol,
+            )
+            r_ok, _ = verify_responses(game, sigmas, alphas, qs, V, atol=verify_atol)
+            p_ok, _ = verify_proposals(game, sigmas, alphas, qs, V, atol=verify_atol)
+            equilibria = [dict(V=V, sigmas=sigmas, alphas=alphas, qs=qs,
+                               V_init_tag="payoffs", verified=r_ok and p_ok)]
+            stopping = "jeres_vfi_single"
+            n_found  = 1
+        else:
+            equilibria = find_equilibria(
+                game, delta=delta, proposer_probs=rho,
+                n_restarts=n_restarts, tol=tol, max_iter=max_iter,
+                cycle_window=cycle_window, seed=seed, verbose=False,
+                verify_atol=verify_atol,
+            )
+            stopping = "jeres_vfi_multistart"
+            n_found  = len(equilibria)
+
+    n_nonconverged = 0
+    n_mip_infeasible = 0
+    for w in caught:
+        text = str(w.message)
+        if "VFI did not converge" in text:
+            n_nonconverged += 1
+        elif "MIP infeasible" in text:
+            n_mip_infeasible += 1
+        else:
+            _warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
+
+    counts = {
+        "vfi_nonconverged_restarts": n_nonconverged,
+        "mip_infeasible_states": n_mip_infeasible,
+    }
 
     if not equilibria:
         return None, {
@@ -164,6 +202,9 @@ def solve_with_jeres_vfi(solver, params=None):
             "final_tau_p": 0.0,
             "final_tau_r": 0.0,
             "n_equilibria_found": 0,
+            "found_at_restart": None,
+            "n_restarts_run": 1 if single else n_restarts,
+            **counts,
         }
 
     # Convert first equilibrium to framework strategy DataFrame
@@ -185,6 +226,12 @@ def solve_with_jeres_vfi(solver, params=None):
 
     strategy_df = _arrays_to_strategy_df(solver, all_sigmas, all_alphas)
 
+    # Which multi-start run produced the exported equilibrium: 0 = the deterministic
+    # payoff-initialised run, k = the k-th random restart.  Reveals whether a hit was
+    # immediate or needed most of the restart budget, which pass/fail alone hides.
+    tag = eq["V_init_tag"]
+    found_at_restart = 0 if tag == "payoffs" else int(tag.split("-")[1]) + 1
+
     return strategy_df, {
         "converged": True,
         "stopping_reason": stopping,
@@ -192,6 +239,9 @@ def solve_with_jeres_vfi(solver, params=None):
         "final_tau_p": 0.0,
         "final_tau_r": 0.0,
         "n_equilibria_found": n_found,
+        "found_at_restart": found_at_restart,
+        "n_restarts_run": 1 if single else n_restarts,
+        **counts,
     }
 
 

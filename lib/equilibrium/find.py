@@ -1095,6 +1095,10 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
         if verbose:
             logger.info("Using Jere's MIP-VFI solver (ported, no module-level globals).")
             logger.info("")
+        # Thread verify_atol into solver_params so vfi uses the same tolerance as
+        # the framework verifier (--verify-atol on the CLI).
+        solver_params = dict(solver_params)
+        solver_params.setdefault("jeres_vfi_verify_atol", verify_atol)
         found_strategy_df, solver_result = solve_with_jeres_vfi(solver, solver_params)
     elif selected_solver_approach == "merit_descent":
         if verbose:
@@ -1351,7 +1355,20 @@ def iter_valid_rice_payoff_tables(directory: Path) -> list[Path]:
 
 
 def _compute_hardness_metrics(result: Dict[str, Any], approval_margin_threshold: float = 1e-3) -> Dict[str, Any]:
-    """Compute runtime-independent fragility metrics from a solved result."""
+    """Compute runtime-independent fragility metrics from a solved result.
+
+    When the solver found nothing there is no value function to measure, so the
+    metrics are reported as absent rather than raising — a failed solve must still
+    produce a usable diagnostics row.
+    """
+    if "V" not in result:
+        return {
+            "min_nonzero_approval_margin": None,
+            "num_small_approval_margins": None,
+            "proposal_ambiguous_rows": None,
+            "proposal_min_best_gap": None,
+        }
+
     players = result["players"]
     states = result["state_names"]
     V = result["V"]
@@ -1437,6 +1454,11 @@ def build_result_diagnostics(
         "converged": solver_result.get("converged"),
         "final_tau_p": solver_result.get("final_tau_p"),
         "final_tau_r": solver_result.get("final_tau_r"),
+        "n_equilibria_found": solver_result.get("n_equilibria_found"),
+        "found_at_restart": solver_result.get("found_at_restart"),
+        "n_restarts_run": solver_result.get("n_restarts_run"),
+        "vfi_nonconverged_restarts": solver_result.get("vfi_nonconverged_restarts"),
+        "mip_infeasible_states": solver_result.get("mip_infeasible_states"),
     })
     diagnostics.update(_compute_hardness_metrics(result, approval_margin_threshold=approval_margin_threshold))
     return diagnostics
