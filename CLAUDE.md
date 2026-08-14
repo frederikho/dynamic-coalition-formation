@@ -287,6 +287,42 @@ To create a new strategy profile:
 4. Leave cells blank (NaN) for countries not in the approval committee for that transition
 5. Reference the new file in a new experiment config in main.py
 
+### Equilibrium Existence: an equilibrium ALWAYS exists
+
+**An equilibrium exists for every game we solve. There are no exceptions.** This is
+established in Heyen & Lehtomaa (2021), Supplementary Material, Section A:
+
+> "The existence of an equilibrium is guaranteed under the conditions of continuous
+> payoff functions u_i(x) and compact state space X (Harris 1985; Ray 2007), but in
+> general the equilibria are not unique."
+
+and in its footnote 11:
+
+> "A stationary Markov equilibrium exists for finite X (Hyndman and Ray 2007,
+> Supplementary notes)."
+
+Our state space is always finite (5 states for n=3, 15 for n=4), so the existence
+guarantee applies unconditionally to every payoff table in `payoff_tables/`.
+
+**The operational consequence — this is the important part:**
+
+When a solver reports "no equilibrium found", that is a statement about *the solver
+and its settings*, never about the game. It means one of:
+
+- the iteration budget ran out before convergence (`jeres_vfi_max_iter` defaults to
+  300, but VFI contracts at rate delta, so delta=0.999 needs ~20,000 iterations —
+  see the delta-dependence note below);
+- the verification tolerance was set tighter than the solver's achievable precision;
+- the equilibrium requires **mixed** strategies and the solver only searches pure
+  ones (existence is guaranteed in mixed strategies; a *pure* equilibrium genuinely
+  may not exist);
+- the search missed it (restarts, initialization, local optimum).
+
+Never write up, log, or report a solver failure as "this game has no equilibrium",
+and never treat a failure rate as an economic finding. Diagnose the setting instead.
+Conversely, a *pure*-strategy equilibrium is not guaranteed, so "no pure equilibrium
+found here" is a legitimate conclusion once convergence has been ruled out.
+
 ### Interpreting Equilibrium Verification
 
 When `verify_equilibrium` fails, the error message indicates:
@@ -306,6 +342,48 @@ The transition probability matrix P shows how likely the system moves from one s
 - Each row sums to 1 (system must be somewhere next period)
 
 High-probability transitions indicate the likely evolution path. Absorbing states have P[x,x] = 1.
+
+### Solver settings: discounting, tolerance, iteration budget
+
+These three interact, and getting them wrong produces failures that look like results.
+
+**`jeres_vfi` is policy iteration, and its iteration budget matters sometimes.**
+Despite the name, `vfi()` is not value function iteration. Each pass does a greedy
+policy improvement (`_vfi_step`) followed by an *exact* policy evaluation
+(`compute_values` solves `(I - delta*T) V = (1-delta) u` directly). That is Newton's
+method on the Bellman equation, so a **converging** run finishes in tens of
+iterations no matter how close delta is to 1 — the delta^k intuition from true value
+iteration does not apply, and reasoning from it gives wrong diagnoses.
+
+But the loop can **cycle** instead of converging, and the cycle-detection and
+bisection path needs iterations to find and resolve those cycles. Both of these are
+measured facts on the n=3 batch, and they pull in opposite directions:
+
+- Raising `--jeres-max-iter` from 300 to 5,000 (delta=0.99) or 30,000 (delta=0.999)
+  changed **no** verdict for chneurusa, nderususa or chnrususa.
+- Raising it from 300 to 1,375 flipped **eurrususa** at rtol=1e-2 from failure to a
+  verified equilibrium, at an identical verification tolerance (63s -> 284s).
+
+So: never explain a failure by the iteration budget without testing it, and never
+leave the budget at the default when it costs real solutions. `--verify-rtol` now
+raises it automatically (see `_cycle_resolution_budget()`); when running the solver
+directly, pass `--jeres-max-iter` explicitly at high delta.
+
+**`vfi()` returns unconverged values silently** at `max_iter` (see its docstring:
+"or at max_iter if not converged"). A run that never converged is currently
+indistinguishable from one that did. Check convergence explicitly before believing
+any high-delta result.
+
+**Verification tolerance must be scaled per game.** RICE payoffs are large in level
+(~-13) but tiny in spread (5e-5 to 2e-2), and the spread varies by ~350x across the
+n=3 batch. A fixed absolute `--verify-atol` is meaningless across such a batch: at
+1e-4 it exceeds 12% of the entire payoff range of the narrowest game, which certifies
+"equilibria" that contain real violations. Use `--verify-rtol` instead, which derives
+the tolerance from the payoff spread (see `payoff_scale()` in `lib/equilibrium/find.py`
+for why the *minimum* per-player spread is the right yardstick). Note that
+`--verify-rtol` currently also rescales the VFI convergence tolerance at a fixed
+100:1 ratio; combined with an unchanged `max_iter` that is what makes high-delta runs
+fail, so raise `--jeres-max-iter` alongside it.
 
 ### Notes
 - Important: Never use fallbacks or placeholders! Better fail early than that it seems it works while it actually doesnt. 
