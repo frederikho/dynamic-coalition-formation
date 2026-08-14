@@ -33,6 +33,7 @@ from lib.coalition import Coalition
 from lib.state import State
 from lib.probabilities_optimized import TransitionProbabilitiesOptimized
 from lib.utils import derive_effectivity, list_members
+from lib.verify_cli import safe_bool
 from lib.mdp import MDP, absorbing_sets, limiting_distribution
 
 
@@ -319,7 +320,107 @@ def compute_stability(
         structures that open membership already accepts.
 
     Returns a dict mapping each state name to
-    ``{"internal", "external_open", "external_consent"}``.
+    ``{"internal", "external_open", "external_consent"}``, or an empty dict when
+    the concept is not defined for this game (see below).
+
+    This delegates to ``lib.results_analysis.benchmarks`` so that the colours in
+    the visualiser and the numbers in the written analysis cannot drift apart.
+    That matters more than it sounds: the two differ on whether a *member* may
+    leave one coalition and join another in a single deviation. Heyen & Lehtomaa
+    (2021) take the narrow reading — a leaver stands alone — which is what the
+    shared implementation applies. Reporting the broad reading here would make
+    the graphs contradict the analysis they illustrate.
+    """
+    import pandas as pd
+
+    from lib.results_analysis.benchmarks import PayoffGame, internal_external_stability
+
+    frame = pd.DataFrame(
+        [[static_payoffs[s][p] for p in players] for s in state_names],
+        index=state_names,
+        columns=players,
+    )
+    try:
+        game = PayoffGame.from_resolved(frame, players, allow_contaminated=True)
+        verdicts = internal_external_stability(game)
+    except (ValueError, KeyError) as exc:
+        # The benchmark is only defined when every "one coalition plus
+        # singletons" structure is present. Reduced or non-canonical state
+        # spaces legitimately fail that test; the frontend renders such nodes as
+        # "unknown" rather than guessing a verdict.
+        logger.warning("Stability colouring unavailable for this profile: %s", exc)
+        return {}
+
+    return {
+        state: {
+            "internal": bool(verdicts.loc[state, "internal"]),
+            "external_open": bool(verdicts.loc[state, "external_open"]),
+            "external_consent": bool(verdicts.loc[state, "external_consent"]),
+        }
+        for state in verdicts.index
+    }
+
+
+def compute_gamma_core(
+    players: List[str],
+    state_names: List[str],
+    static_payoffs: Dict[str, Dict[str, float]],
+) -> Dict[str, Dict[str, Any]]:
+    """Gamma-core membership of every single-coalition state.
+
+    NTU gamma-core of Chander & Tulkens (1997): a coalition ``S`` deviates to the
+    structure ``pi(S)`` (``S`` cooperates, everyone else is a singleton) and
+    blocks the current structure iff *every* member of ``S`` is strictly better
+    off there. The core is the set of structures no coalition can block. This
+    delegates to ``lib.results_analysis.benchmarks.gamma_core`` so the graph
+    colours cannot drift from the written analysis.
+
+    Multi-coalition states are skipped: the gamma-characteristic function lives
+    on the "one coalition plus singletons" sub-lattice. States whose verdict
+    cannot be computed (missing structures, non-numeric payoffs) are omitted so
+    the frontend renders them as "unknown".
+
+    Returns a dict mapping each single-coalition state name to
+    ``{"in_core": bool, "blockers": [["S", ...], ...]}``.
+    """
+    import pandas as pd
+
+    from lib.results_analysis.benchmarks import PayoffGame, gamma_core
+
+    frame = pd.DataFrame(
+        [[static_payoffs[s][p] for p in players] for s in state_names],
+        index=state_names,
+        columns=players,
+    )
+    try:
+        game = PayoffGame.from_resolved(frame, players, allow_contaminated=True)
+        core = gamma_core(game)
+    except (ValueError, KeyError) as exc:
+        logger.warning("Gamma-core colouring unavailable for this profile: %s", exc)
+        return {}
+
+    unblocked = set(core["ntu_unblocked"])
+    return {
+        state: {
+            "in_core": state in unblocked,
+            "blockers": [list(b) for b in core["ntu_blockers"].get(state, [])],
+        }
+        for state in game.state_names
+        if state in unblocked or state in core["ntu_blockers"]
+    }
+
+
+def _compute_stability_broad(
+    players: List[str],
+    state_names: List[str],
+    static_payoffs: Dict[str, Dict[str, float]],
+) -> Dict[str, Dict[str, bool]]:
+    """Broad-deviation variant, retained for reference and not currently used.
+
+    Differs from the benchmark by also treating a coalition member's move into
+    another existing coalition as a deviation. See Section 5 of the appendix
+    draft for why this is a different concept rather than a stricter version of
+    the same one.
     """
     from lib.utils import get_player_coalition
 
@@ -457,8 +558,10 @@ def compute_transition_graph(
         else:
             config['min_power'] = None
         if 'unanimity_required' in file_metadata:
-            unanimity_val = file_metadata['unanimity_required']
-            config['unanimity_required'] = unanimity_val if isinstance(unanimity_val, bool) else str(unanimity_val).lower() == 'true'
+            # Shared with lib.verify_cli so the graph and the analysis cannot
+            # disagree about the approval rule. Excel returns True as 1, which a
+            # string comparison against "true" silently reads as False.
+            config['unanimity_required'] = safe_bool(file_metadata['unanimity_required'])
         if 'discounting' in file_metadata:
             config['discounting'] = float(file_metadata['discounting'])
         
@@ -547,15 +650,27 @@ def compute_transition_graph(
         )
         states.append(state)
 
-    # 4. Derive effectivity
+    # 4. Effectivity correspondence.
+    #
+    # Take it from the effectivity *rule*, exactly as lib.verify_cli does when it
+    # reconstructs a profile. Deriving it instead from the strategy file's NaN
+    # pattern (the previous behaviour) can disagree with the rule the profile was
+    # solved under, and then the graph drawn here is not the chain that was
+    # solved and verified — approval committees differ, so transitions a veto
+    # rules out can appear as edges. Falling back to the file pattern would
+    # reintroduce exactly that silent divergence, so an unreadable rule is an
+    # error rather than a guess.
+    effectivity_rule = str(
+        file_metadata.get("effectivity_rule") or "heyen_lehtomaa_2021"
+    ).strip()
     try:
-        effectivity = derive_effectivity(
-            df=strategy_df,
-            players=config["players"],
-            states=config["state_names"]
+        from lib.effectivity import get_effectivity
+
+        effectivity = get_effectivity(
+            effectivity_rule, config["players"], config["state_names"]
         )
     except Exception as e:
-        logger.error(f"Error deriving effectivity: {e}")
+        logger.error(f"Error building effectivity for rule {effectivity_rule!r}: {e}")
         logger.error(traceback.format_exc())
         raise
 
@@ -696,6 +811,13 @@ def compute_transition_graph(
         static_payoffs=static_payoffs,
     )
 
+    # 8b. Gamma-core membership of each single-coalition state (node coloring)
+    gamma = compute_gamma_core(
+        players=config["players"],
+        state_names=config["state_names"],
+        static_payoffs=static_payoffs,
+    )
+
     # 9. Convert to graph format
     nodes = []
     for i, state_name in enumerate(config["state_names"]):
@@ -709,6 +831,7 @@ def compute_transition_graph(
                 "payoffs": static_payoffs[state_name],
                 "values": long_term_values[state_name],
                 "stability": stability.get(state_name, {}),
+                "gamma_core": gamma.get(state_name, {}),
             }
         })
 

@@ -5,7 +5,8 @@ export type NodeColoringMode =
   | 'deployer'
   | 'internal'
   | 'external'
-  | 'internal-external';
+  | 'internal-external'
+  | 'gamma-core';
 
 export interface GraphNode {
   id: string;

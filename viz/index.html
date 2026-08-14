@@ -94,7 +94,17 @@
               By internal + external stability
               <span class="info-icon" style="position:relative;">
                 i
-                <span class="tooltip tooltip-stability">Combined verdict: green = internally AND externally stable, amber = internal only, blue = external only, red = neither.</span>
+                <span class="tooltip tooltip-stability">Combined verdict: solid red = internally AND externally stable, red with one stripe direction = internal only, red with the opposite stripes = external only, gray = neither.</span>
+              </span>
+            </span>
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="gamma-core">
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              By gamma core (NTU)
+              <span class="info-icon" style="position:relative;">
+                i
+                <span class="tooltip tooltip-stability">NTU gamma-core (Chander &amp; Tulkens 1997): a state is in the core if no coalition S can make every one of its members strictly better off by breaking away to S + singletons. Only single-coalition states are evaluated.</span>
               </span>
             </span>
           </label>

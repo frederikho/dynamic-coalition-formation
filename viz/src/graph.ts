@@ -16,6 +16,26 @@ const PENTAGON_COORDS = [
   { x: -171, y: -55  },
 ];
 
+const STABILITY_RED = '#dc2626';
+const STABILITY_RED_SOFT = '#f87171';
+const STABILITY_NEUTRAL = '#cbd5e1';
+
+// Soft red-with-white-diagonal-stripes tile, used to distinguish
+// internal-only (rotate 45°) from external-only (rotate -45°) in the combined
+// colouring. The fill is a lighter red so the striped states recede visually
+// behind the solid red "both stable" states.
+function stabilityStripeDataUri(rotateDeg: 45 | -45): string {
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='70' height='70'>` +
+    `<defs><pattern id='s' width='14' height='14' patternUnits='userSpaceOnUse' patternTransform='rotate(${rotateDeg})'>` +
+    `<rect width='14' height='14' fill='${STABILITY_RED_SOFT}'/>` +
+    `<rect width='5' height='14' fill='#ffffff'/>` +
+    `</pattern></defs>` +
+    `<rect width='70' height='70' fill='url(#s)'/>` +
+    `</svg>`;
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
 const TRIANGLE_COORDS = {
   N: { x: 0, y: -160 },
   A: { x: -140, y: 110 },
@@ -495,25 +515,42 @@ export class GraphRenderer {
         if (coloringMode === 'internal') {
           const stability = node.meta?.stability as { internal?: boolean } | undefined;
           if (stability && typeof stability.internal === 'boolean') {
-            color = stability.internal ? '#16a34a' : '#dc2626';
+            if (stability.internal) {
+              color = STABILITY_RED_SOFT; // internally stable -> soft red stripes
+              (element.data as any).stab_pattern = 'internal';
+            } else {
+              color = STABILITY_NEUTRAL; // not stable -> no colour
+            }
           }
         } else if (coloringMode === 'external') {
           const stability = node.meta?.stability as { external_consent?: boolean } | undefined;
           if (stability && typeof stability.external_consent === 'boolean') {
-            color = stability.external_consent ? '#16a34a' : '#dc2626';
+            if (stability.external_consent) {
+              color = STABILITY_RED_SOFT; // externally stable -> soft red stripes
+              (element.data as any).stab_pattern = 'external';
+            } else {
+              color = STABILITY_NEUTRAL; // not stable -> no colour
+            }
           }
         } else if (coloringMode === 'internal-external') {
           const stability = node.meta?.stability as { internal?: boolean; external_consent?: boolean } | undefined;
           if (stability && typeof stability.internal === 'boolean' && typeof stability.external_consent === 'boolean') {
             if (stability.internal && stability.external_consent) {
-              color = '#16a34a'; // both stable
+              color = STABILITY_RED; // both stable -> solid red
             } else if (stability.internal) {
-              color = '#f59e0b'; // internal only
+              color = STABILITY_RED_SOFT; // internal only -> soft red stripes
+              (element.data as any).stab_pattern = 'internal';
             } else if (stability.external_consent) {
-              color = '#0284c7'; // external only
+              color = STABILITY_RED_SOFT; // external only -> soft red opposite stripes
+              (element.data as any).stab_pattern = 'external';
             } else {
-              color = '#dc2626'; // neither
+              color = STABILITY_NEUTRAL; // neither -> no colour (default gray)
             }
+          }
+        } else if (coloringMode === 'gamma-core') {
+          const gc = node.meta?.gamma_core as { in_core?: boolean } | undefined;
+          if (gc && typeof gc.in_core === 'boolean') {
+            color = gc.in_core ? STABILITY_RED : STABILITY_NEUTRAL;
           }
         } else if (coloringMode === 'absorbing') {
           const setId = nodeToAbsorbing.get(node.id) ?? null;
@@ -597,6 +634,23 @@ export class GraphRenderer {
           return ele.data('has_deployment') ? 3 : 0;
         },
         'border-color': '#1e293b'
+      }
+    });
+
+    // Red diagonal stripes for internal-only / external-only nodes in the
+    // combined stability colouring (background-color is set via data(color)).
+    styles.push({
+      selector: 'node[stab_pattern="internal"]',
+      style: {
+        'background-image': stabilityStripeDataUri(45),
+        'background-fit': 'cover'
+      }
+    });
+    styles.push({
+      selector: 'node[stab_pattern="external"]',
+      style: {
+        'background-image': stabilityStripeDataUri(-45),
+        'background-fit': 'cover'
       }
     });
 

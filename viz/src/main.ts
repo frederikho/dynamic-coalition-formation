@@ -262,20 +262,22 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
   }
 
   if (coloringMode === 'internal' || coloringMode === 'external') {
-    // Binary stability legend
+    // Binary stability legend (same visual language as the combined mode:
+    // soft-red stripes = stable on that dimension, gray = not).
     const field = coloringMode === 'internal' ? 'internal' : 'external_consent';
     const title = coloringMode === 'internal' ? 'Internal Stability' : 'External Stability';
-    const stableColor = '#16a34a';
-    const unstableColor = '#dc2626';
+    const stripe = coloringMode === 'internal'
+      ? 'repeating-linear-gradient(45deg, #f87171 0 6px, #ffffff 6px 10px)'
+      : 'repeating-linear-gradient(-45deg, #f87171 0 6px, #ffffff 6px 10px)';
     const stableCount = data.nodes.filter(n => n.meta?.stability?.[field] === true).length;
     const unstableCount = data.nodes.filter(n => n.meta?.stability?.[field] === false).length;
 
     const items = [];
     if (stableCount > 0) {
-      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:${stableColor};display:inline-block;border-radius:2px"></span><span>Stable (${stableCount} state${stableCount !== 1 ? 's' : ''})</span></div>`);
+      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:${stripe};display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>Stable (${stableCount} state${stableCount !== 1 ? 's' : ''})</span></div>`);
     }
     if (unstableCount > 0) {
-      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:${unstableColor};display:inline-block;border-radius:2px"></span><span>Unstable (${unstableCount} state${unstableCount !== 1 ? 's' : ''})</span></div>`);
+      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#cbd5e1;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>Not stable (${unstableCount} state${unstableCount !== 1 ? 's' : ''})</span></div>`);
     }
     if (items.length === 0) {
       items.push('<div style="color:#999">No stability data for this profile</div>');
@@ -299,11 +301,11 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
       return 'neither';
     };
 
-    const categories: Array<{ key: 'both' | 'internal' | 'external' | 'neither'; label: string; color: string }> = [
-      { key: 'both', label: 'Internally + externally stable', color: '#16a34a' },
-      { key: 'internal', label: 'Internally stable only', color: '#f59e0b' },
-      { key: 'external', label: 'Externally stable only', color: '#0284c7' },
-      { key: 'neither', label: 'Neither', color: '#dc2626' },
+    const categories: Array<{ key: 'both' | 'internal' | 'external' | 'neither'; label: string; swatch: string }> = [
+      { key: 'both', label: 'Internally + externally stable', swatch: '#dc2626' },
+      { key: 'internal', label: 'Internally stable only', swatch: 'repeating-linear-gradient(45deg, #f87171 0 6px, #ffffff 6px 10px)' },
+      { key: 'external', label: 'Externally stable only', swatch: 'repeating-linear-gradient(-45deg, #f87171 0 6px, #ffffff 6px 10px)' },
+      { key: 'neither', label: 'Neither', swatch: '#cbd5e1' },
     ];
 
     const counts: Record<string, number> = {};
@@ -316,7 +318,7 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
       .filter(cat => (counts[cat.key] || 0) > 0)
       .map(cat => {
         const count = counts[cat.key] || 0;
-        return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:${cat.color};display:inline-block;border-radius:2px"></span><span>${cat.label} (${count} state${count !== 1 ? 's' : ''})</span></div>`;
+        return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:${cat.swatch};display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>${cat.label} (${count} state${count !== 1 ? 's' : ''})</span></div>`;
       });
 
     if (counts['unknown']) {
@@ -327,6 +329,34 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
       <div style="font-weight:600;margin-bottom:6px">Internal + External Stability</div>
       ${items.join('')}
       <div style="font-size:11px;color:#999;margin-top:8px">External = consent-based (approval committees)</div>
+    `;
+  } else if (coloringMode === 'gamma-core') {
+    // Binary gamma-core legend (solid red = in the NTU core, gray = not)
+    const inCoreCount = data.nodes.filter(n => n.meta?.gamma_core?.in_core === true).length;
+    const outCount = data.nodes.filter(n => n.meta?.gamma_core?.in_core === false).length;
+    const unknownCount = data.nodes.filter(
+      n => !n.meta?.gamma_core || typeof n.meta.gamma_core.in_core !== 'boolean'
+    ).length;
+
+    const items = [];
+    if (inCoreCount > 0) {
+      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#dc2626;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>In gamma core (${inCoreCount} state${inCoreCount !== 1 ? 's' : ''})</span></div>`);
+    }
+    if (outCount > 0) {
+      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#cbd5e1;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>Not in core (${outCount} state${outCount !== 1 ? 's' : ''})</span></div>`);
+    }
+    if (items.length === 0) {
+      items.push('<div style="color:#999">No gamma-core data for this profile</div>');
+    }
+    const unknownNote = unknownCount > 0
+      ? `<div style="font-size:11px;color:#999;margin-top:6px">Multi-coalition states (no gamma verdict): ${unknownCount} state${unknownCount !== 1 ? 's' : ''}</div>`
+      : '';
+
+    absorbingLegendDiv.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Gamma Core (NTU)</div>
+      ${items.join('')}
+      ${unknownNote}
+      <div style="font-size:11px;color:#999;margin-top:8px">NTU gamma-core (Chander &amp; Tulkens 1997): no coalition S can strictly improve all its members by breaking away to S + singletons.</div>
     `;
   } else if (coloringMode === 'deployer') {
     // Get unique deploying coalitions
