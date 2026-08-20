@@ -33,6 +33,7 @@ from lib.mdp import MDP
 from lib.probabilities_optimized import (
     TransitionProbabilitiesOptimized as TransitionProbabilities,
 )
+from lib.equilibrium.find import normalise_payoffs
 from lib.equilibrium.solver import format_strategy_df_compact
 import numpy as np
 
@@ -42,7 +43,7 @@ from lib.utils import (
     get_geoengineering_levels,
     verify_equilibrium,
 )
-from lib.effectivity import check_effectivity, get_effectivity
+from lib.effectivity import check_effectivity, get_effectivity, get_forbidden_proposals
 from lib.equilibrium.excel_writer import write_strategy_table_excel
 
 
@@ -175,7 +176,13 @@ def _states_from_strategy_df(df: pd.DataFrame) -> List[str]:
     return _ordered_unique([col[1] for col in df.columns])
 
 
-def _safe_bool(x: Any) -> bool:
+def safe_bool(x: Any) -> bool:
+    """Coerce a metadata value to bool.
+
+    Metadata round-trips through Excel, so a boolean written as True comes back
+    as the integer 1. A naive ``str(x).lower() == "true"`` test therefore reads
+    it as False, silently flipping settings like ``unanimity_required``.
+    """
     if isinstance(x, bool):
         return x
     if x is None or (isinstance(x, float) and pd.isna(x)):
@@ -293,7 +300,7 @@ def _build_config(xlsx_path: Path, strategy_df: pd.DataFrame) -> Dict[str, Any]:
         raise ValueError("Missing required value 'power_rule' in metadata or filename.")
 
     if "unanimity_required" in metadata:
-        config["unanimity_required"] = _safe_bool(metadata["unanimity_required"])
+        config["unanimity_required"] = safe_bool(metadata["unanimity_required"])
     elif inferred_unanimity is not None:
         config["unanimity_required"] = inferred_unanimity
     else:
@@ -394,10 +401,17 @@ def _parse_coalition_structure(state_name: str, all_countries: List[Country]) ->
     return coalitions
 
 
-def _run_verification(xlsx_path: Path, skip_effectivity_check: bool = False, effectivity_rule: str = "heyen_lehtomaa_2021") -> Tuple[bool, str, Dict[str, Any]]:
+def run_verification(xlsx_path: Path, skip_effectivity_check: bool = False, effectivity_rule: str = "heyen_lehtomaa_2021", atol: float = 1e-9, quiet: bool = False, force_raw_units: bool = False, discounting: float | None = None) -> Tuple[bool, str, Dict[str, Any]]:
     strategy_df_raw = pd.read_excel(xlsx_path, header=[0, 1], index_col=[0, 1, 2])
 
     config = _build_config(xlsx_path, strategy_df_raw)
+
+    # Re-verify an existing profile at a DIFFERENT discount factor, holding its
+    # strategies fixed.  Used to ask whether a pure branch found at one delta
+    # survives at another -- i.e. whether a failure band is a search failure or a
+    # region where no pure profile is an equilibrium at all.
+    if discounting is not None:
+        config["discounting"] = float(discounting)
 
     players = config["players"]
     states = config["state_names"]
@@ -435,10 +449,40 @@ def _run_verification(xlsx_path: Path, skip_effectivity_check: bool = False, eff
         payoff_table_path = Path(payoff_table_name)
         payoffs, table_geo_levels = _load_payoff_table(payoff_table_path, state_objects, players)
         geoengineering = table_geo_levels if table_geo_levels is not None else get_geoengineering_levels(states=state_objects)
-        print(f"Payoffs: loaded from '{payoff_table_path.name}'")
+        if not quiet:
+            print(f"Payoffs: loaded from '{payoff_table_path.name}'")
     else:
         payoffs = get_payoff_matrix(states=state_objects, columns=players)
         geoengineering = get_geoengineering_levels(states=state_objects)
+
+    # Reconstruct V in the convention the profile was SOLVED in.  Normalisation
+    # is an exact symmetry of the equilibrium concept, so it cannot change the
+    # verdict in exact arithmetic -- but `atol` is an ABSOLUTE tolerance and V's
+    # scale differs by orders of magnitude between the two conventions, so a
+    # tolerance chosen during solving is only meaningful when reapplied on the
+    # same scale.  Raw RICE V spreads run to ~1e-6 against normalised ~1e-1.
+    #
+    # `payoffs` below stays RAW regardless: every cross-player quantity (welfare
+    # sums) compares players to each other, which normalisation destroys.
+    payoffs_raw = payoffs
+    # Profiles written before this field existed cannot have their convention
+    # recovered.  Treat them as raw (the historical reload behaviour) but say so,
+    # because an atol chosen under normalisation is much weaker in raw units.
+    if "normalise_payoffs" not in metadata and not quiet:
+        print("Units: profile predates the normalise_payoffs field; assuming raw "
+              "table units. An atol chosen under normalisation is a WEAKER test "
+              "here. Re-solve to record the convention.")
+    profile_normalised = str(
+        metadata.get("normalise_payoffs", "")
+    ).strip().lower() in {"true", "1"}
+    use_normalised = profile_normalised and not force_raw_units
+    if use_normalised:
+        payoffs_for_values = normalise_payoffs(payoffs_raw)
+    else:
+        payoffs_for_values = payoffs_raw
+    if not quiet:
+        convention = "normalised [0,1]" if use_normalised else "raw table units"
+        print(f"Units: verifying in {convention}")
 
     file_effectivity = derive_effectivity(df=strategy_df_raw, players=players, states=states)
     effectivity = get_effectivity(effectivity_rule, players, states)
@@ -459,6 +503,31 @@ def _run_verification(xlsx_path: Path, skip_effectivity_check: bool = False, eff
     strategy_df = strategy_df_raw.copy()
     strategy_df.fillna(0.0, inplace=True)
 
+    # Transitions the rule rules out entirely (e.g. non-adjacent moves under
+    # adjacent_step). These are needed twice: to check the strategy table assigns
+    # them zero probability, and — further down — to keep verify_equilibrium from
+    # imposing approval conditions on transitions nobody can ever propose.
+    forbidden = get_forbidden_proposals(effectivity_rule, players, states)
+
+    # Check that forbidden proposals have probability 0 in the strategy table.
+    if not skip_effectivity_check:
+        if forbidden:
+            forbidden_violations = []
+            for (proposer, current_state, next_state) in forbidden:
+                try:
+                    val = strategy_df.loc[(current_state, "Proposition", np.nan), (f"Proposer {proposer}", next_state)]
+                except KeyError:
+                    continue
+                if pd.notna(val) and float(val) > 1e-9:
+                    forbidden_violations.append(
+                        f"  {proposer} proposes {current_state}→{next_state} with p={float(val):.4f} (forbidden by {effectivity_rule})"
+                    )
+            if forbidden_violations:
+                lines = "\n".join(forbidden_violations)
+                raise ValueError(
+                    f"Forbidden proposal violations ({len(forbidden_violations)}):\n{lines}"
+                )
+
     transition_probabilities = TransitionProbabilities(
         df=strategy_df,
         effectivity=tp_effectivity,
@@ -473,23 +542,28 @@ def _run_verification(xlsx_path: Path, skip_effectivity_check: bool = False, eff
 
     V = pd.DataFrame(index=states, columns=players)
     for player in players:
-        V.loc[:, player] = mdp.solve_value_func(payoffs.loc[:, player])
+        V.loc[:, player] = mdp.solve_value_func(payoffs_for_values.loc[:, player])
+
+    V_raw = pd.DataFrame(index=states, columns=players)
+    for player in players:
+        V_raw.loc[:, player] = mdp.solve_value_func(payoffs_raw.loc[:, player])
 
     result = {
         "scenario_name": xlsx_path.stem,
         "V": V,
         "P": P,
         "geoengineering": geoengineering,
-        "payoffs": payoffs,
+        "payoffs": payoffs_for_values,
         "P_proposals": P_proposals,
         "P_approvals": P_approvals,
         "players": players,
         "state_names": states,
         "effectivity": effectivity,
+        "forbidden_proposals": forbidden,
         "strategy_df": strategy_df,
     }
 
-    success, message = verify_equilibrium(result)
+    success, message = verify_equilibrium(result, atol=atol)
 
     compact_strategy = format_strategy_df_compact(
         strategy_df_raw,
@@ -506,8 +580,11 @@ def _run_verification(xlsx_path: Path, skip_effectivity_check: bool = False, eff
         "discounting": config["discounting"],
         "compact_strategy": compact_strategy,
         "V": V,
+        "V_raw": V_raw,
         "P": P,
-        "payoffs": payoffs,
+        "payoffs": payoffs_raw,
+        "payoffs_normalised": use_normalised,
+        "geoengineering": geoengineering,
         "effectivity": effectivity,
         "strategy_df": strategy_df_raw,
         "state_names": states,
@@ -553,6 +630,16 @@ def main() -> None:
         help="Effectivity rule to validate against (default: heyen_lehtomaa_2021).",
     )
     parser.add_argument(
+        "--verify-atol",
+        type=float,
+        default=1e-9,
+        help=(
+            "Absolute tolerance for V-value comparisons in equilibrium verification "
+            "(default: 1e-9). Use 1e-5 or larger for MIP-VFI solutions on near-flat "
+            "RICE payoffs where V precision is ~1e-6."
+        ),
+    )
+    parser.add_argument(
         "--enrich",
         type=str,
         nargs="?",
@@ -573,11 +660,11 @@ def main() -> None:
 
         effectivity_ok = True
         try:
-            success, message, details = _run_verification(profile_path, effectivity_rule=args.effectivity_rule)
+            success, message, details = run_verification(profile_path, effectivity_rule=args.effectivity_rule, atol=args.verify_atol)
         except ValueError as exc:
             effectivity_ok = False
             print(f"Warning: {exc}", file=sys.stderr)
-            success, message, details = _run_verification(profile_path, skip_effectivity_check=True, effectivity_rule=args.effectivity_rule)
+            success, message, details = run_verification(profile_path, skip_effectivity_check=True, effectivity_rule=args.effectivity_rule, atol=args.verify_atol)
             success = False
             message = "Effectivity rule violations (see above)."
 

@@ -71,6 +71,10 @@ def solve_with_jeres_vfi(solver, params=None):
     single       = bool(params.get("jeres_vfi_single", False))
     cycle_window = int(params.get("jeres_vfi_cycle_window", 8))
     verify_atol  = float(params.get("jeres_vfi_verify_atol", tol * 100))
+    restart_scaling = str(params.get("jeres_vfi_restart_scaling", "spread"))
+    v_init_profile = params.get("jeres_vfi_v_init", None)
+    v_init_map = str(params.get("jeres_vfi_v_init_map", "names"))
+    mixed_solve  = bool(params.get("jeres_vfi_mixed_solve", False))
 
     players     = solver.players
     state_names = solver.states
@@ -143,6 +147,59 @@ def solve_with_jeres_vfi(solver, params=None):
         forbidden_transitions.add((i, j_s, j_sp))
 
     game = Game.from_payoffs(players, payoffs_np)
+
+    # Warm start: an equilibrium V from a solved profile of a NEARBY game.
+    # Loaded here because mapping framework state names onto Jere state order
+    # needs fw_to_jere, which only exists in this adapter.
+    extra_v_inits = []
+    if v_init_profile:
+        import pandas as pd
+        from pathlib import Path
+
+        src = Path(v_init_profile)
+        V_df = pd.read_excel(src, sheet_name="Long-term Values",
+                             index_col=0, skiprows=1)
+        V_df = V_df.apply(pd.to_numeric, errors="coerce")
+        V_init_np = np.zeros((len(jere_states), n_players))
+        if v_init_map == "positional":
+            # Cross-table seeding: the source game has DIFFERENT players, so match
+            # by position instead of name.  Both games must have the same number of
+            # players and the same canonical state ordering, which holds for any two
+            # n-player games in this framework.  What transfers is the SHAPE of the
+            # value function across coalition structures, not any player's identity.
+            numeric = V_df.dropna(axis=1, how="all")
+            numeric = numeric.loc[:, [c for c in numeric.columns
+                                      if numeric[c].notna().all()]]
+            if numeric.shape[1] < n_players:
+                raise ValueError(
+                    f"warm-start profile {src.name} has {numeric.shape[1]} usable "
+                    f"value columns, need {n_players} for positional mapping"
+                )
+            if len(numeric.index) != len(state_names):
+                raise ValueError(
+                    f"warm-start profile {src.name} has {len(numeric.index)} states, "
+                    f"target game has {len(state_names)}; positional mapping needs "
+                    "the same state count"
+                )
+            for fw_idx in range(len(state_names)):
+                V_init_np[fw_to_jere[fw_idx]] = numeric.iloc[fw_idx, :n_players].values
+        else:
+            missing = [p for p in players if p not in V_df.columns]
+            if missing:
+                raise ValueError(
+                    f"warm-start profile {src.name} has no columns for {missing}; "
+                    f"it has {list(V_df.columns)}. Use v_init_map='positional' to "
+                    "seed from a table with different players."
+                )
+            for fw_idx, name in enumerate(state_names):
+                if name not in V_df.index:
+                    raise ValueError(
+                        f"warm-start profile {src.name} has no row for state {name!r}"
+                    )
+                V_init_np[fw_to_jere[fw_idx]] = V_df.loc[name, players].values
+        if not np.all(np.isfinite(V_init_np)):
+            raise ValueError(f"warm-start profile {src.name} has non-finite values")
+        extra_v_inits.append((f"warm:{src.stem}", V_init_np))
     game.approval_committees = approval_committees
     game.forbidden_transitions = forbidden_transitions
 
@@ -160,7 +217,7 @@ def solve_with_jeres_vfi(solver, params=None):
             V, sigmas, alphas, qs = vfi(
                 game, delta=delta, max_iter=max_iter, tol=tol,
                 cycle_window=cycle_window, proposer_probs=rho, verbose=False,
-                verify_atol=verify_atol,
+                verify_atol=verify_atol, mixed_solve=mixed_solve,
             )
             r_ok, _ = verify_responses(game, sigmas, alphas, qs, V, atol=verify_atol)
             p_ok, _ = verify_proposals(game, sigmas, alphas, qs, V, atol=verify_atol)
@@ -173,7 +230,8 @@ def solve_with_jeres_vfi(solver, params=None):
                 game, delta=delta, proposer_probs=rho,
                 n_restarts=n_restarts, tol=tol, max_iter=max_iter,
                 cycle_window=cycle_window, seed=seed, verbose=False,
-                verify_atol=verify_atol,
+                verify_atol=verify_atol, restart_scaling=restart_scaling,
+                extra_v_inits=extra_v_inits, mixed_solve=mixed_solve,
             )
             stopping = "jeres_vfi_multistart"
             n_found  = len(equilibria)
@@ -230,7 +288,12 @@ def solve_with_jeres_vfi(solver, params=None):
     # payoff-initialised run, k = the k-th random restart.  Reveals whether a hit was
     # immediate or needed most of the restart budget, which pass/fail alone hides.
     tag = eq["V_init_tag"]
-    found_at_restart = 0 if tag == "payoffs" else int(tag.split("-")[1]) + 1
+    if tag == "payoffs":
+        found_at_restart = 0
+    elif tag.startswith("warm:"):
+        found_at_restart = -1  # warm start, not a point on the restart ladder
+    else:
+        found_at_restart = int(tag.split("-")[1]) + 1
 
     return strategy_df, {
         "converged": True,

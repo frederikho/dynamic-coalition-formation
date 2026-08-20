@@ -1,0 +1,122 @@
+[
+  {
+    "trio": "chneurnde",
+    "delta": 0.885,
+    "cold_solved": true,
+    "seconds": 3.1
+  },
+  {
+    "trio": "chneurusa",
+    "delta": 0.905,
+    "cold_solved": true,
+    "seconds": 3.3
+  },
+  {
+    "trio": "chnnderus",
+    "delta": 0.925,
+    "cold_solved": true,
+    "seconds": 3.1
+  },
+  {
+    "trio": "eurndeusa",
+    "delta": 0.805,
+    "cold_solved": true,
+    "seconds": 3.3
+  },
+  {
+    "trio": "eurndeusa",
+    "delta": 0.81,
+    "cold_solved": true,
+    "seconds": 3.1
+  },
+  {
+    "trio": "eurrususa",
+    "delta": 0.885,
+    "cold_solved": true,
+    "seconds": 3.3
+  },
+  {
+    "trio": "eurrususa",
+    "delta": 0.89,
+    "cold_solved": false,
+    "seconds": 25.9
+  },
+  {
+    "trio": "eurrususa",
+    "delta": 0.895,
+    "cold_solved": false,
+    "seconds": 22.8
+  },
+  {
+    "trio": "eurrususa",
+    "delta": 0.905,
+    "cold_solved": false,
+    "seconds": 23.3
+  },
+  {
+    "trio": "eurrususa",
+    "delta": 0.91,
+    "cold_solved": false,
+    "seconds": 22.1
+  },
+  {
+    "trio": "eurrususa",
+    "delta": 0.915,
+    "cold_solved": false,
+    "seconds": 25.9
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.865,
+    "cold_solved": true,
+    "seconds": 3.1
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.87,
+    "cold_solved": true,
+    "seconds": 2.9
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.875,
+    "cold_solved": false,
+    "seconds": 23.4
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.885,
+    "cold_solved": false,
+    "seconds": 23.6
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.89,
+    "cold_solved": false,
+    "seconds": 23.0
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.895,
+    "cold_solved": false,
+    "seconds": 23.0
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.905,
+    "cold_solved": false,
+    "seconds": 22.8
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.91,
+    "cold_solved": false,
+    "seconds": 24.0
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.915,
+    "cold_solved": false,
+    "seconds": 22.0
+  }
+]

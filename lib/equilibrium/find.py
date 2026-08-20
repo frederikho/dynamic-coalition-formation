@@ -8,6 +8,7 @@ and save the resulting strategy profiles to Excel files.
 import argparse
 import inspect
 import json
+import math
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -358,6 +359,18 @@ def setup_experiment(config):
         geoengineering = get_geoengineering_levels(states=states)
     deploying_coalitions = get_deploying_coalitions(states=states)
 
+    # Rescale each player's payoffs to unit range for solving.  This is an exact
+    # symmetry of the equilibrium concept (see normalise_payoffs) and leaves the
+    # raw payoffs available for anything that compares players to each other.
+    # Normalisation is ON by default: it is an exact symmetry of the equilibrium
+    # concept, and solving in raw units costs half the solvable tables.  Measured
+    # over 91 n=3 tables: 42/91 solved raw vs 67/91 normalised, with timeouts and
+    # failures both halved and 32% less wall time.  Opt out only to reproduce
+    # historical runs, whose --verify-atol values are in raw units.
+    payoffs_raw = payoffs
+    if config.get("normalise_payoffs", True):
+        payoffs = normalise_payoffs(payoffs)
+
     # Derive effectivity from template or generate
     forbidden_proposals: frozenset = frozenset()
     template_file = config.get("template_file", None)
@@ -383,6 +396,10 @@ def setup_experiment(config):
         'effectivity_rule': config.get("effectivity_rule", "heyen_lehtomaa_2021"),
         'protocol': config["protocol"],
         'payoffs': payoffs,
+        'payoffs_raw': payoffs_raw,
+        # Default must match the behaviour at the call site above (True), or a
+        # caller who omits the key gets normalised payoffs labelled as raw.
+        'payoffs_normalised': bool(config.get("normalise_payoffs", True)),
         'geoengineering': geoengineering,
         'deploying_coalitions': deploying_coalitions,
         'discounting': config["discounting"],
@@ -792,6 +809,10 @@ def _build_metadata(config, setup, solver_params, solver_result,
         'effectivity_rule': config.get('effectivity_rule', 'heyen_lehtomaa_2021'),
         'unanimity_required': config['unanimity_required'],
         'discounting': config['discounting'],
+        # The unit convention the profile was SOLVED in.  Normalisation leaves
+        # the equilibrium set unchanged but rescales V, and `atol` is absolute,
+        # so a reloader must know which scale the tolerance was chosen for.
+        'normalise_payoffs': bool(setup.get('payoffs_normalised', False)),
         '  ': '',
         '--- PLAYER PARAMETERS ---': '',
     }
@@ -907,12 +928,143 @@ def _build_saved_payoff_table(setup: dict) -> pd.DataFrame:
     return pd.DataFrame(rows, index=ordered_states)
 
 
+def normalise_payoffs(payoffs: pd.DataFrame) -> pd.DataFrame:
+    """
+    Rescale each player's payoffs independently to the unit interval [0, 1].
+
+    WHY THIS IS SAFE.  Every condition in the equilibrium concept compares a
+    player against *themselves* -- V_i(y) against V_i(x) -- and never one player
+    against another.  Applying a positive affine map u_i -> a_i*u_i + b_i
+    (a_i > 0) to each player separately therefore leaves the equilibrium set
+    exactly unchanged:
+
+      * Values carry the map through unaltered.  V = (I - delta*P)^-1 (1-delta) u
+        is linear in u, and (I - delta*P)^-1 (1-delta) 1 = 1, so
+        V_i -> a_i*V_i + b_i.
+      * Responder consistency compares V_i(y) with V_i(x); a_i > 0 preserves the
+        sign of the difference.
+      * Proposer consistency maximises Psi*V_i(k) + (1-Psi)*V_i(x) over (k,Q),
+        which maps to a_i*(that objective) + b_i.  The argmax is unchanged.
+
+    WHY IT MATTERS.  RICE welfare payoffs sit near -13 while the differences
+    between coalition structures are near 1e-4, so the entire strategic content
+    of the game lives in the fifth significant digit.  Every equilibrium test is
+    then a subtraction of two nearly equal large numbers.  Normalising widens the
+    value gaps the verifier must resolve by four to five orders of magnitude
+    relative to representable precision, and makes a single absolute tolerance
+    mean the same thing in every game -- which a fixed tolerance on raw payoffs
+    emphatically does not, since raw spreads vary by ~350x across the n=3 batch.
+
+    NOT NEUTRAL FOR CROSS-PLAYER QUANTITIES.  Utilitarian welfare sums, and any
+    other comparison between different players, must use the raw payoffs
+    (`setup['payoffs_raw']`).  Normalisation destroys the common unit.
+
+    Raises:
+        ValueError: if any player is indifferent across all states, since that
+                    player has no range to normalise onto.
+    """
+    numeric = payoffs.astype(float)
+    lo = numeric.min(axis=0)
+    hi = numeric.max(axis=0)
+    spread = hi - lo
+
+    flat = [str(p) for p, s in spread.items() if not (s > 0.0)]
+    if flat:
+        raise ValueError(
+            f"Cannot normalise payoffs: player(s) {', '.join(flat)} have identical "
+            "payoffs in every state, so there is no range to rescale onto. Such a "
+            "player is indifferent between all outcomes."
+        )
+    return (numeric - lo) / spread
+
+
+def payoff_spreads(payoffs: pd.DataFrame) -> pd.Series:
+    """
+    Each player's payoff range across the state space: max_x u_i(x) - min_x u_i(x).
+
+    This is the natural yardstick for verification tolerances.  Value functions
+    solve V = (I - delta*P)^-1 (1 - delta) u, and the rows of that operator are
+    the discounted occupancy distribution over states, so they are non-negative
+    and sum to one.  Every V_i(x) is therefore a convex combination of player
+    i's own static payoffs and lies inside [min_x u_i(x), max_x u_i(x)].  Player
+    i's spread is thus an exact upper bound on |V_i(y) - V_i(x)|, the quantity
+    every equilibrium condition compares against zero.
+    """
+    numeric = payoffs.astype(float)
+    return numeric.max(axis=0) - numeric.min(axis=0)
+
+
+def payoff_scale(payoffs: pd.DataFrame) -> float:
+    """
+    The scalar payoff scale used to derive a per-game verification tolerance.
+
+    We take the *smallest* per-player spread, not the largest.  Verification
+    compares V_i(y) against V_i(x) for one player at a time, so the meaningful
+    yardstick is that player's own stake (see payoff_spreads).  A single scalar
+    tolerance is applied to every player alike, so it must be tight enough for
+    the most tightly-stretched one; scaling by the widest player would forgive
+    the narrowest player gaps far larger than anything actually at stake for it.
+    In the n=3 RICE batch the widest and narrowest players differ by a factor of
+    5 to 52 within the same game, so this choice is not cosmetic.
+
+    A genuinely per-player tolerance would be more faithful still, but the
+    framework verifier and the Jeres solver both take a single scalar; using the
+    binding player's spread is the conservative scalar reduction.
+
+    RICE-derived payoffs are large in level (~-13) but tiny in spread (~1e-2 to
+    1e-5), and the spread varies by orders of magnitude between games.  A fixed
+    absolute tolerance is therefore meaningless across a batch: it is negligible
+    for one game and larger than every decisive gap in the next.
+
+    Raises:
+        ValueError: if some player's payoff does not vary at all, which makes
+                    every transition indifferent for that player and leaves no
+                    scale from which to derive a tolerance.
+    """
+    spreads = payoff_spreads(payoffs)
+    scale = float(spreads.min())
+    if not math.isfinite(scale) or scale <= 0.0:
+        flat = [str(p) for p, s in spreads.items() if not (s > 0.0)]
+        raise ValueError(
+            f"Degenerate payoff table: smallest per-player spread is {scale!r} "
+            f"(flat player(s): {', '.join(flat) or 'n/a'}). That player is "
+            "indifferent between all states, so no verification tolerance can be "
+            "derived from its stake."
+        )
+    return scale
+
+
+def _cycle_resolution_budget(rel_tol: float, delta: float, safety: float = 2.0) -> int:
+    """
+    Iteration budget for jeres_vfi's `vfi()` loop, given a relative tolerance.
+
+    `vfi()` is policy iteration, not value iteration: `compute_values` solves the
+    Bellman system exactly at each step, so a *converging* run finishes in tens of
+    iterations no matter how close delta is to 1.  The budget still matters,
+    because the loop can cycle instead of converging, and the cycle-detection and
+    bisection path needs room to find and resolve those cycles.
+
+    Measured on the n=3 RICE batch: at rtol=1e-2 and delta=0.99, eurrususa fails
+    with the default 300 iterations and yields a verified equilibrium with 1375,
+    at an identical verification tolerance.  Other games in the same batch are
+    entirely indifferent to the budget (5,000 and 30,000 changed no verdict).
+    So this is a floor that avoids losing real solutions, not a convergence
+    guarantee, and it is deliberately generous rather than tuned.
+    """
+    if not 0.0 < delta < 1.0:
+        raise ValueError(f"delta must lie strictly between 0 and 1, got {delta}")
+    if not 0.0 < rel_tol < 1.0:
+        raise ValueError(f"rel_tol must lie strictly between 0 and 1, got {rel_tol}")
+    return int(math.ceil(safety * math.log(rel_tol) / math.log(delta)))
+
+
 def find_equilibrium(config, output_file=None, solver_params=None, verbose=True, description=None,
                      load_from_checkpoint=False, random_seed=None, logger=None, save_payoffs=False,
                      save_unverified=False, diagnostics=False,
                      approval_margin_threshold: float = 1e-3,
                      solver_approach: str = "annealing",
-                     verify_atol: float = 1e-9):
+                     verify_atol: float = 1e-9,
+                     verify_rtol: float | None = None):
     """
     Find equilibrium for a given configuration.
 
@@ -934,6 +1086,11 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
                                    classifying small approval margins
         solver_approach: One of 'annealing', 'support_enumeration',
                          'active_set', or 'ordinal_ranking'
+        verify_atol: Absolute tolerance for V-value comparisons in verification
+        verify_rtol: If given, overrides verify_atol with
+                     verify_rtol * payoff_scale(payoffs), and rescales the VFI
+                     convergence tolerance by the same factor. Use for batches
+                     whose payoff spreads differ by orders of magnitude.
 
     Returns:
         Dictionary with equilibrium results
@@ -948,8 +1105,29 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
     start_time = time.time()
     start_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+    # Remember what the caller actually asked for: _get_solver_params() below
+    # merges in defaults, after which user intent is no longer recoverable.
+    user_solver_params = dict(solver_params or {})
+
     # Setup experiment
     setup = setup_experiment(config)
+
+    # Per-game verification tolerance.  See payoff_scale() for why a fixed
+    # absolute tolerance cannot serve a batch of games whose payoff spreads
+    # differ by orders of magnitude.
+    if verify_rtol is not None:
+        spreads = payoff_spreads(setup['payoffs'])
+        scale = payoff_scale(setup['payoffs'])
+        verify_atol = verify_rtol * scale
+        binding = str(spreads.idxmin())
+        logger.info(
+            f"Verification tolerance scaled to this game: binding player {binding} "
+            f"spread {scale:.4e} x rtol {verify_rtol:.1e} -> verify_atol {verify_atol:.4e}"
+        )
+        logger.info(
+            "  per-player spreads: "
+            + ", ".join(f"{p}={s:.3e}" for p, s in spreads.items())
+        )
 
     if verbose:
         logger.info("Resolved Payoffs (Internal Framework States):")
@@ -1016,6 +1194,37 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
 
     # Get solver parameters
     solver_params = _get_solver_params(config, solver_params)
+
+    # A scaled verification tolerance is only meaningful if the solver resolves V
+    # more finely than the tolerance it is judged against, *and* is given enough
+    # iterations to get there.  Both must move together with the tolerance.
+    #
+    # One order of magnitude below verify_atol is enough for solver noise to be
+    # irrelevant to the verdict.  (The unscaled default uses 100:1, which is
+    # calibrated for absolute tolerances; slaving that ratio to an already-tiny
+    # scaled tolerance demands precision that buys nothing.)
+    #
+    # Budget: the loop is policy iteration (compute_values solves the Bellman
+    # system exactly), so when it *converges* it does so in tens of iterations
+    # regardless of delta.  But it can also CYCLE rather than converge, and the
+    # cycle-detection-plus-bisection path in vfi() needs iterations to find and
+    # resolve those cycles.  Measured on the n=3 batch: raising max_iter from 300
+    # to 1375 flips eurrususa at rtol=1e-2 from failure to a verified equilibrium
+    # (identical verify_atol, 63s -> 284s).  Other games are indifferent to it.
+    # So the budget is not the universal explanation it first appeared to be, but
+    # leaving it at 300 does silently lose real equilibria.
+    if verify_rtol is not None:
+        if selected_solver_approach == "jeres_vfi":
+            solver_params['jeres_vfi_tol'] = verify_atol / 10
+            if 'jeres_vfi_max_iter' not in user_solver_params:
+                solver_params['jeres_vfi_max_iter'] = max(
+                    int(solver_params.get('jeres_vfi_max_iter', 300)),
+                    # rtol/10 matches the solver tolerance set just above, and is
+                    # the setting under which eurrususa was verified (1375 iters).
+                    _cycle_resolution_budget(verify_rtol / 10, float(setup['discounting'])),
+                )
+        elif selected_solver_approach == "mip_vfi":
+            solver_params['mip_vfi_tol'] = verify_atol / 10
 
     # Print solver parameters
     if verbose:
@@ -1703,6 +1912,50 @@ Available scenarios (use --list-scenarios to see all):
         )
     )
     parser.add_argument(
+        '--jeres-v-init',
+        type=str,
+        default=None,
+        help=(
+            'Path to a solved strategy profile whose value function is used as an '
+            'extra VFI starting point, tried before the random restarts. Intended '
+            'for continuation in a model parameter: warm-start from the same table '
+            "solved at an adjacent delta. The profile's unit convention must match "
+            'this run (both normalised, or both raw).'
+        ),
+    )
+    parser.add_argument(
+        '--jeres-mixed-solve',
+        action='store_true',
+        help=(
+            'On a detected cycle, solve the indifference system for the mixing '
+            'probabilities instead of only bisecting the value function. The '
+            'cycle supplies the candidate support; the unknowns are the mixing '
+            'probabilities themselves. This is the only path that can produce a '
+            'genuinely mixed equilibrium rather than an average of cycle phases.'
+        ),
+    )
+    parser.add_argument(
+        '--jeres-v-init-map',
+        type=str,
+        choices=['names', 'positional'],
+        default=None,
+        help=(
+            "How to match the warm-start profile's players onto this game. "
+            "'names' (default) requires the same players. 'positional' matches by "
+            'index instead, for seeding from a DIFFERENT table: what transfers is '
+            'the shape of the value function across coalition structures.'
+        ),
+    )
+    parser.add_argument(
+        '--discounting',
+        type=float,
+        default=None,
+        help=(
+            'Override the scenario discount factor delta. Must lie in (0, 1). '
+            'Sweeps delta over a grid without needing a scenario sibling per value.'
+        ),
+    )
+    parser.add_argument(
         '--effectivity-rule',
         type=str,
         default=None,
@@ -1799,6 +2052,63 @@ Available scenarios (use --list-scenarios to see all):
             "Absolute tolerance for V-value comparisons in equilibrium verification "
             "(default: 1e-9, or mip_vfi_tol when solver_approach=mip_vfi). "
             "Use 1e-5 for MIP-VFI solutions on near-flat RICE payoffs."
+        )
+    )
+    parser.add_argument(
+        '--jeres-cycle-window',
+        type=int,
+        default=None,
+        help=(
+            "How many past value functions vfi() scans for a repeating cycle "
+            "(default 8). The mixed-strategy path only triggers when a cycle is "
+            "DETECTED, so a game whose VFI cycles with a period longer than this "
+            "window can never reach it -- the run just iterates to max_iter and "
+            "reports no equilibrium. Raise it when a table fails or times out "
+            "despite converging quickly on other settings."
+        )
+    )
+    parser.add_argument(
+        '--jeres-restart-scaling',
+        choices=['spread', 'level'],
+        default=None,
+        help=(
+            "How multi-start restart noise is scaled for solver_approach=jeres_vfi. "
+            "'spread' (default) perturbs each player by the range of their payoffs "
+            "across states -- the region a value function can actually occupy. "
+            "'level' is the historical rule, scaling by max|payoff|; it is equivalent "
+            "when payoffs straddle zero but collapses the multi-start to a single "
+            "deterministic run when the level dwarfs the spread, as with RICE welfare."
+        )
+    )
+    parser.add_argument(
+        '--no-normalise-payoffs',
+        dest='normalise_payoffs',
+        action='store_false',
+        default=True,
+        help=(
+            "Solve in the payoff table's raw units instead of rescaling each "
+            "player's payoffs to [0,1]. Normalisation is on by default: it is an "
+            "exact symmetry of the equilibrium concept (every condition compares a "
+            "player against themselves), and solving raw costs roughly half the "
+            "solvable tables on RICE payoffs, where the strategic content sits in "
+            "the fifth significant digit. Use this only to reproduce historical "
+            "runs, whose --verify-atol values are in raw units. Cross-player "
+            "welfare sums are always read from the raw payoffs either way."
+        )
+    )
+    parser.add_argument(
+        '--verify-rtol',
+        type=float,
+        default=None,
+        help=(
+            "Derive the verification tolerance per game as rtol x (largest "
+            "per-player payoff spread), instead of a fixed absolute tolerance. "
+            "Value functions are convex combinations of static payoffs, so that "
+            "spread bounds every decisive value gap. Use this when comparing "
+            "games whose payoff spreads differ by orders of magnitude (e.g. the "
+            "n=3 RICE batch, where spreads range over a factor of ~350). "
+            "1e-4 means 'gaps below 0.01%% of the payoff range count as ties'. "
+            "Also rescales the VFI convergence tolerance to match."
         )
     )
     parser.add_argument(
@@ -2050,6 +2360,16 @@ Available scenarios (use --list-scenarios to see all):
         solver_params['jeres_vfi_tol'] = args.jeres_tol
     if args.jeres_seed is not None:
         solver_params['jeres_vfi_seed'] = args.jeres_seed
+    if args.jeres_restart_scaling is not None:
+        solver_params['jeres_vfi_restart_scaling'] = args.jeres_restart_scaling
+    if args.jeres_v_init is not None:
+        solver_params['jeres_vfi_v_init'] = args.jeres_v_init
+    if args.jeres_v_init_map is not None:
+        solver_params['jeres_vfi_v_init_map'] = args.jeres_v_init_map
+    if args.jeres_mixed_solve:
+        solver_params['jeres_vfi_mixed_solve'] = True
+    if args.jeres_cycle_window is not None:
+        solver_params['jeres_vfi_cycle_window'] = args.jeres_cycle_window
     if args.jeres_single:
         solver_params['jeres_vfi_single'] = True
     if args.merit_restarts is not None:
@@ -2061,6 +2381,23 @@ Available scenarios (use --list-scenarios to see all):
 
     # Determine verify_atol: explicit flag wins; mip_vfi defaults to 10x its convergence tol
     # (VFI tol bounds ||ΔV|| per iteration; individual V values need extra headroom)
+    if args.verify_rtol is not None:
+        # Scaling is resolved inside find_equilibrium, which has the payoffs.
+        # Reject the knobs it would silently override rather than picking a winner.
+        if args.verify_atol is not None:
+            parser.error(
+                "--verify-rtol and --verify-atol are mutually exclusive: the first "
+                "derives the tolerance from the payoff spread, the second fixes it."
+            )
+        if args.jeres_tol is not None or args.mip_tol is not None:
+            parser.error(
+                "--verify-rtol rescales the VFI convergence tolerance to match the "
+                "derived verification tolerance, so it conflicts with an explicit "
+                "--jeres-tol/--mip-tol. Pass one or the other."
+            )
+        if not (args.verify_rtol > 0):
+            parser.error(f"--verify-rtol must be positive, got {args.verify_rtol}")
+
     if args.verify_atol is not None:
         verify_atol = args.verify_atol
     elif args.solver_approach == "mip_vfi":
@@ -2090,6 +2427,14 @@ Available scenarios (use --list-scenarios to see all):
         # Inject effectivity rule if specified
         if args.effectivity_rule is not None:
             config['effectivity_rule'] = args.effectivity_rule
+
+        # Override the discount factor if specified
+        if args.discounting is not None:
+            if not 0.0 < args.discounting < 1.0:
+                parser.error('--discounting must lie strictly between 0 and 1')
+            config['discounting'] = args.discounting
+
+        config['normalise_payoffs'] = args.normalise_payoffs
 
         # When players are not hardcoded in the scenario, derive them from the filename
         if config.get('players') is None:
@@ -2164,6 +2509,7 @@ Available scenarios (use --list-scenarios to see all):
             approval_margin_threshold=args.approval_margin_threshold,
             solver_approach=args.solver_approach,
             verify_atol=verify_atol,
+            verify_rtol=args.verify_rtol,
         )
 
         results_summary.append((scenario_name, result['verification_success'],

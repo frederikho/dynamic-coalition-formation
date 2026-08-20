@@ -1,0 +1,505 @@
+{
+  "stats": {
+    "1": {
+      "drawn": 6000,
+      "planted_fail": 0,
+      "pure_variant": 5604,
+      "too_easy": 360,
+      "or_pure": 33,
+      "kept": 3
+    },
+    "2": {
+      "drawn": 788,
+      "planted_fail": 0,
+      "pure_variant": 670,
+      "too_easy": 26,
+      "or_pure": 82,
+      "kept": 10
+    },
+    "3": {
+      "drawn": 685,
+      "planted_fail": 0,
+      "pure_variant": 511,
+      "too_easy": 18,
+      "or_pure": 146,
+      "kept": 10
+    },
+    "4": {
+      "drawn": 778,
+      "planted_fail": 0,
+      "pure_variant": 526,
+      "too_easy": 18,
+      "or_pure": 224,
+      "kept": 10
+    }
+  },
+  "tables": [
+    {
+      "file": "mixedcontrol_m1_00_chneurusa.xlsx",
+      "M": 1,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEUR)->(EURUSA)|EUR": 0.408383466864
+      },
+      "min_payoff_spread": 1.270582
+    },
+    {
+      "file": "mixedcontrol_m1_01_chneurusa.xlsx",
+      "M": 1,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "( )->(CHNEURUSA)|CHN": 0.378047151279
+      },
+      "min_payoff_spread": 1.195439
+    },
+    {
+      "file": "mixedcontrol_m1_02_chneurusa.xlsx",
+      "M": 1,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNUSA)->( )|USA": 0.277720829092
+      },
+      "min_payoff_spread": 0.480106
+    },
+    {
+      "file": "mixedcontrol_m2_00_chneurusa.xlsx",
+      "M": 2,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNUSA)->( )|USA": 0.275159181559,
+        "(CHNEURUSA)->(CHNEUR)|CHN": 0.52510198647
+      },
+      "min_payoff_spread": 17.170008
+    },
+    {
+      "file": "mixedcontrol_m2_01_chneurusa.xlsx",
+      "M": 2,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "( )->(CHNUSA)|USA": 0.656935013835,
+        "(CHNUSA)->(EURUSA)|CHN": 0.521337418997
+      },
+      "min_payoff_spread": 0.564484
+    },
+    {
+      "file": "mixedcontrol_m2_02_chneurusa.xlsx",
+      "M": 2,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->(CHNEUR)|CHN": 0.457484823519,
+        "(EURUSA)->(CHNUSA)|EUR": 0.634351746043
+      },
+      "min_payoff_spread": 1.704443
+    },
+    {
+      "file": "mixedcontrol_m2_03_chneurusa.xlsx",
+      "M": 2,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "( )->(EURUSA)|USA": 0.551289000581,
+        "(CHNEUR)->(CHNUSA)|EUR": 0.515537310438
+      },
+      "min_payoff_spread": 1.022237
+    },
+    {
+      "file": "mixedcontrol_m2_04_chneurusa.xlsx",
+      "M": 2,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEUR)->( )|USA": 0.592758606801,
+        "(CHNUSA)->(CHNEUR)|CHN": 0.616059913885
+      },
+      "min_payoff_spread": 4.268117
+    },
+    {
+      "file": "mixedcontrol_m2_05_chneurusa.xlsx",
+      "M": 2,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "( )->(CHNEURUSA)|CHN": 0.477727092378,
+        "(CHNEURUSA)->(CHNUSA)|EUR": 0.487315643969
+      },
+      "min_payoff_spread": 0.523429
+    },
+    {
+      "file": "mixedcontrol_m2_06_chneurusa.xlsx",
+      "M": 2,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->( )|CHN": 0.461339728022,
+        "(EURUSA)->( )|EUR": 0.303372325142
+      },
+      "min_payoff_spread": 31.344685
+    },
+    {
+      "file": "mixedcontrol_m2_07_chneurusa.xlsx",
+      "M": 2,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEUR)->( )|CHN": 0.316046269157,
+        "(CHNEURUSA)->(CHNUSA)|USA": 0.507334088653
+      },
+      "min_payoff_spread": 1.042035
+    },
+    {
+      "file": "mixedcontrol_m2_08_chneurusa.xlsx",
+      "M": 2,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "( )->(CHNEUR)|USA": 0.716627001053,
+        "(CHNEURUSA)->( )|EUR": 0.743738672004
+      },
+      "min_payoff_spread": 0.793562
+    },
+    {
+      "file": "mixedcontrol_m2_09_chneurusa.xlsx",
+      "M": 2,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNUSA)->(EURUSA)|CHN": 0.460573241684,
+        "(EURUSA)->( )|EUR": 0.468930900224
+      },
+      "min_payoff_spread": 3.977096
+    },
+    {
+      "file": "mixedcontrol_m3_00_chneurusa.xlsx",
+      "M": 3,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "( )->(CHNEUR)|EUR": 0.25185235129,
+        "(EURUSA)->(CHNEUR)|USA": 0.406077286118,
+        "(CHNUSA)->(EURUSA)|CHN": 0.310238936288
+      },
+      "min_payoff_spread": 3.000029
+    },
+    {
+      "file": "mixedcontrol_m3_01_chneurusa.xlsx",
+      "M": 3,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEUR)->(CHNUSA)|USA": 0.523381442386,
+        "(CHNUSA)->(EURUSA)|CHN": 0.393385809497,
+        "(EURUSA)->(CHNEUR)|EUR": 0.688296352022
+      },
+      "min_payoff_spread": 1.649806
+    },
+    {
+      "file": "mixedcontrol_m3_02_chneurusa.xlsx",
+      "M": 3,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->( )|USA": 0.251225794851,
+        "(CHNUSA)->(EURUSA)|EUR": 0.354318407613,
+        "(CHNUSA)->(CHNEUR)|CHN": 0.257759934792
+      },
+      "min_payoff_spread": 6.747224
+    },
+    {
+      "file": "mixedcontrol_m3_03_chneurusa.xlsx",
+      "M": 3,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->(CHNUSA)|EUR": 0.361565437419,
+        "(CHNEUR)->(CHNUSA)|USA": 0.410456723453,
+        "(CHNEURUSA)->(EURUSA)|CHN": 0.323162173862
+      },
+      "min_payoff_spread": 7.886919
+    },
+    {
+      "file": "mixedcontrol_m3_04_chneurusa.xlsx",
+      "M": 3,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->( )|USA": 0.558819490229,
+        "(CHNUSA)->(CHNEUR)|EUR": 0.359662825175,
+        "(CHNEUR)->( )|CHN": 0.358685916607
+      },
+      "min_payoff_spread": 0.897054
+    },
+    {
+      "file": "mixedcontrol_m3_05_chneurusa.xlsx",
+      "M": 3,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(EURUSA)->(CHNEURUSA)|EUR": 0.361997159884,
+        "(EURUSA)->(CHNUSA)|CHN": 0.366909970046,
+        "(CHNEURUSA)->(CHNUSA)|USA": 0.368926617654
+      },
+      "min_payoff_spread": 0.814135
+    },
+    {
+      "file": "mixedcontrol_m3_06_chneurusa.xlsx",
+      "M": 3,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(EURUSA)->(CHNEUR)|EUR": 0.37691240764,
+        "(CHNEURUSA)->(CHNUSA)|USA": 0.673277617008,
+        "(CHNEURUSA)->(CHNEUR)|CHN": 0.726415042542
+      },
+      "min_payoff_spread": 1.700924
+    },
+    {
+      "file": "mixedcontrol_m3_07_chneurusa.xlsx",
+      "M": 3,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->(CHNUSA)|EUR": 0.7335375297,
+        "( )->(CHNEUR)|CHN": 0.577004281158,
+        "(EURUSA)->( )|USA": 0.354273815823
+      },
+      "min_payoff_spread": 0.981125
+    },
+    {
+      "file": "mixedcontrol_m3_08_chneurusa.xlsx",
+      "M": 3,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->(CHNUSA)|EUR": 0.487307702324,
+        "(CHNUSA)->( )|CHN": 0.296256643595,
+        "(EURUSA)->(CHNEUR)|USA": 0.405821765831
+      },
+      "min_payoff_spread": 0.440539
+    },
+    {
+      "file": "mixedcontrol_m3_09_chneurusa.xlsx",
+      "M": 3,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(EURUSA)->(CHNUSA)|EUR": 0.345061963302,
+        "(CHNUSA)->( )|CHN": 0.638095705936,
+        "(CHNEUR)->(CHNEURUSA)|USA": 0.733628342891
+      },
+      "min_payoff_spread": 10.382828
+    },
+    {
+      "file": "mixedcontrol_m4_00_chneurusa.xlsx",
+      "M": 4,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNUSA)->(CHNEUR)|EUR": 0.507044194829,
+        "(CHNUSA)->(EURUSA)|CHN": 0.433713313726,
+        "( )->(CHNEURUSA)|USA": 0.419158573366,
+        "(CHNUSA)->( )|EUR": 0.447298886956
+      },
+      "min_payoff_spread": 9.12574
+    },
+    {
+      "file": "mixedcontrol_m4_01_chneurusa.xlsx",
+      "M": 4,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEUR)->( )|USA": 0.506692952878,
+        "( )->(CHNEURUSA)|CHN": 0.669248168014,
+        "(CHNUSA)->(EURUSA)|EUR": 0.452665267535,
+        "(CHNEUR)->(CHNEURUSA)|USA": 0.349091593236
+      },
+      "min_payoff_spread": 4.720705
+    },
+    {
+      "file": "mixedcontrol_m4_02_chneurusa.xlsx",
+      "M": 4,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(EURUSA)->( )|EUR": 0.648658726641,
+        "(CHNEUR)->(CHNEURUSA)|CHN": 0.749336512113,
+        "(CHNEURUSA)->(CHNUSA)|USA": 0.331779575369,
+        "(EURUSA)->(CHNEURUSA)|EUR": 0.592604465728
+      },
+      "min_payoff_spread": 1.186635
+    },
+    {
+      "file": "mixedcontrol_m4_03_chneurusa.xlsx",
+      "M": 4,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->( )|USA": 0.658570137755,
+        "(EURUSA)->(CHNEUR)|CHN": 0.53568679502,
+        "( )->(CHNEUR)|EUR": 0.666579788244,
+        "(EURUSA)->(CHNUSA)|USA": 0.256866341681
+      },
+      "min_payoff_spread": 1.447618
+    },
+    {
+      "file": "mixedcontrol_m4_04_chneurusa.xlsx",
+      "M": 4,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNUSA)->( )|EUR": 0.66499248957,
+        "(EURUSA)->(CHNEUR)|USA": 0.418552798036,
+        "(EURUSA)->(CHNUSA)|CHN": 0.29116017283,
+        "(EURUSA)->(CHNEURUSA)|EUR": 0.477869324737
+      },
+      "min_payoff_spread": 2.14813
+    },
+    {
+      "file": "mixedcontrol_m4_05_chneurusa.xlsx",
+      "M": 4,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(EURUSA)->(CHNEUR)|EUR": 0.535255952389,
+        "(EURUSA)->(CHNUSA)|CHN": 0.646385495412,
+        "( )->(EURUSA)|USA": 0.541368549887,
+        "(CHNUSA)->(CHNEURUSA)|EUR": 0.740548806449
+      },
+      "min_payoff_spread": 1.812317
+    },
+    {
+      "file": "mixedcontrol_m4_06_chneurusa.xlsx",
+      "M": 4,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEUR)->(CHNUSA)|EUR": 0.723189577682,
+        "(CHNEURUSA)->( )|CHN": 0.565271001874,
+        "(CHNUSA)->( )|USA": 0.330258053251,
+        "(EURUSA)->(CHNEURUSA)|EUR": 0.470086172333
+      },
+      "min_payoff_spread": 1.009268
+    },
+    {
+      "file": "mixedcontrol_m4_07_chneurusa.xlsx",
+      "M": 4,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->(EURUSA)|EUR": 0.586125944437,
+        "(CHNUSA)->(CHNEURUSA)|USA": 0.706746546812,
+        "( )->(CHNUSA)|CHN": 0.556354767739,
+        "(CHNEUR)->(CHNUSA)|EUR": 0.279632743695
+      },
+      "min_payoff_spread": 1.477022
+    },
+    {
+      "file": "mixedcontrol_m4_08_chneurusa.xlsx",
+      "M": 4,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEUR)->(CHNEURUSA)|USA": 0.651607392534,
+        "(CHNEUR)->(EURUSA)|EUR": 0.359785040553,
+        "(EURUSA)->(CHNUSA)|CHN": 0.725131374464,
+        "(CHNEURUSA)->(CHNUSA)|USA": 0.720114690087
+      },
+      "min_payoff_spread": 2.117327
+    },
+    {
+      "file": "mixedcontrol_m4_09_chneurusa.xlsx",
+      "M": 4,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(EURUSA)->(CHNUSA)|EUR": 0.571080293933,
+        "(CHNEURUSA)->(EURUSA)|CHN": 0.719485188403,
+        "( )->(EURUSA)|USA": 0.594900479604,
+        "( )->(CHNEUR)|EUR": 0.542308044958
+      },
+      "min_payoff_spread": 4.968061
+    },
+    {
+      "file": "mixedcontrol_m1_03_chneurusa.xlsx",
+      "M": 1,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->(CHNEUR)|USA": 0.382857106796
+      },
+      "random_hit_rate": 0.0661,
+      "min_payoff_spread": 0.625486
+    },
+    {
+      "file": "mixedcontrol_m1_04_chneurusa.xlsx",
+      "M": 1,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNUSA)->(CHNEUR)|USA": 0.381103215774
+      },
+      "random_hit_rate": 0.0661,
+      "min_payoff_spread": 1.764533
+    },
+    {
+      "file": "mixedcontrol_m1_05_chneurusa.xlsx",
+      "M": 1,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(EURUSA)->(CHNUSA)|CHN": 0.410802704944
+      },
+      "random_hit_rate": 0.1322,
+      "min_payoff_spread": 17.170517
+    },
+    {
+      "file": "mixedcontrol_m1_06_chneurusa.xlsx",
+      "M": 1,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEURUSA)->(EURUSA)|CHN": 0.403894803224
+      },
+      "random_hit_rate": 0.1736,
+      "min_payoff_spread": 0.458702
+    },
+    {
+      "file": "mixedcontrol_m1_07_chneurusa.xlsx",
+      "M": 1,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(EURUSA)->( )|EUR": 0.307211944561
+      },
+      "random_hit_rate": 0.0744,
+      "min_payoff_spread": 1.725267
+    },
+    {
+      "file": "mixedcontrol_m1_08_chneurusa.xlsx",
+      "M": 1,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(CHNEUR)->( )|CHN": 0.457397910941
+      },
+      "random_hit_rate": 0.3719,
+      "min_payoff_spread": 1.750274
+    },
+    {
+      "file": "mixedcontrol_m1_09_chneurusa.xlsx",
+      "M": 1,
+      "delta": 0.9,
+      "mixing_required": true,
+      "planted_thetas": {
+        "(EURUSA)->(CHNEUR)|USA": 0.70275938457
+      },
+      "random_hit_rate": 0.2479,
+      "min_payoff_spread": 15.325514
+    }
+  ]
+}

@@ -1,0 +1,261 @@
+[
+  {
+    "trio": "chneurnde",
+    "delta": 0.5,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 8.0
+  },
+  {
+    "trio": "chneurnde",
+    "delta": 0.82,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 7.8
+  },
+  {
+    "trio": "chneurrus",
+    "delta": 0.5,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 8.0
+  },
+  {
+    "trio": "chneurrus",
+    "delta": 0.84,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 7.9
+  },
+  {
+    "trio": "chneurusa",
+    "delta": 0.5,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 7.9
+  },
+  {
+    "trio": "chneurusa",
+    "delta": 0.84,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 7.9
+  },
+  {
+    "trio": "chnnderus",
+    "delta": 0.5,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 7.9
+  },
+  {
+    "trio": "chnnderus",
+    "delta": 0.84,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 7.7
+  },
+  {
+    "trio": "chnndeusa",
+    "delta": 0.5,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 8.1
+  },
+  {
+    "trio": "chnndeusa",
+    "delta": 0.82,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 7.7
+  },
+  {
+    "trio": "chnrususa",
+    "delta": 0.5,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 8.7
+  },
+  {
+    "trio": "chnrususa",
+    "delta": 0.9,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 8.3
+  },
+  {
+    "trio": "eurnderus",
+    "delta": 0.5,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 8.9
+  },
+  {
+    "trio": "eurnderus",
+    "delta": 0.94,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 14.4
+  },
+  {
+    "trio": "eurndeusa",
+    "delta": 0.5,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 9.5
+  },
+  {
+    "trio": "eurndeusa",
+    "delta": 0.94,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 8.7
+  },
+  {
+    "trio": "eurrususa",
+    "delta": 0.5,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 10.4
+  },
+  {
+    "trio": "eurrususa",
+    "delta": 0.88,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 14.5
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.5,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 14.4
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.9,
+    "group": "solved",
+    "ordinal": "found",
+    "seconds": 14.3
+  },
+  {
+    "trio": "chneurnde",
+    "delta": 0.9,
+    "group": "unsolved",
+    "ordinal": "found",
+    "seconds": 19.1
+  },
+  {
+    "trio": "chneurnde",
+    "delta": 0.97,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 153.4
+  },
+  {
+    "trio": "chneurrus",
+    "delta": 0.9,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 155.0
+  },
+  {
+    "trio": "chneurrus",
+    "delta": 0.97,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 153.5
+  },
+  {
+    "trio": "chneurusa",
+    "delta": 0.92,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 152.1
+  },
+  {
+    "trio": "chneurusa",
+    "delta": 0.98,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 152.2
+  },
+  {
+    "trio": "chnnderus",
+    "delta": 0.94,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 151.6
+  },
+  {
+    "trio": "chnnderus",
+    "delta": 0.98,
+    "group": "unsolved",
+    "ordinal": "found",
+    "seconds": 45.9
+  },
+  {
+    "trio": "chnndeusa",
+    "delta": 0.88,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 150.5
+  },
+  {
+    "trio": "chnndeusa",
+    "delta": 0.97,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 151.4
+  },
+  {
+    "trio": "chnrususa",
+    "delta": 0.94,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 141.7
+  },
+  {
+    "trio": "chnrususa",
+    "delta": 0.96,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 127.7
+  },
+  {
+    "trio": "eurndeusa",
+    "delta": 0.82,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 85.8
+  },
+  {
+    "trio": "eurrususa",
+    "delta": 0.94,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 85.5
+  },
+  {
+    "trio": "eurrususa",
+    "delta": 0.96,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 85.5
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.99,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 85.1
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.997,
+    "group": "unsolved",
+    "ordinal": "none",
+    "seconds": 84.2
+  }
+]

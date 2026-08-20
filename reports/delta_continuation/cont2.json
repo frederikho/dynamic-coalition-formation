@@ -1,0 +1,538 @@
+{
+  "step": 0.005,
+  "max_span": 0.15,
+  "atol": "1e-12",
+  "wall_seconds": 300.1,
+  "walks": [
+    {
+      "trio": "chneurnde",
+      "direction": 1,
+      "anchor": 0.88,
+      "steps": [
+        {
+          "delta": 0.88,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.1
+        },
+        {
+          "delta": 0.885,
+          "warm": true,
+          "solved": true,
+          "seconds": 3.3,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.89,
+          "warm": true,
+          "solved": false,
+          "seconds": 47.2,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.89,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "chneurrus",
+      "direction": 1,
+      "anchor": 0.88,
+      "steps": [
+        {
+          "delta": 0.88,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.3
+        },
+        {
+          "delta": 0.885,
+          "warm": true,
+          "solved": false,
+          "seconds": 42.9,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.885,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "chneurrus",
+      "direction": -1,
+      "anchor": 0.999,
+      "steps": [
+        {
+          "delta": 0.999,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.1
+        },
+        {
+          "delta": 0.994,
+          "warm": true,
+          "solved": false,
+          "seconds": 47.4,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.994,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "chneurusa",
+      "direction": 1,
+      "anchor": 0.9,
+      "steps": [
+        {
+          "delta": 0.9,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.1
+        },
+        {
+          "delta": 0.905,
+          "warm": true,
+          "solved": true,
+          "seconds": 3.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.91,
+          "warm": true,
+          "solved": false,
+          "seconds": 45.6,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.91,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "chnnderus",
+      "direction": 1,
+      "anchor": 0.92,
+      "steps": [
+        {
+          "delta": 0.92,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.1
+        },
+        {
+          "delta": 0.925,
+          "warm": true,
+          "solved": true,
+          "seconds": 3.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.93,
+          "warm": true,
+          "solved": false,
+          "seconds": 43.6,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.93,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "chnndeusa",
+      "direction": 1,
+      "anchor": 0.86,
+      "steps": [
+        {
+          "delta": 0.86,
+          "warm": false,
+          "solved": true,
+          "seconds": 2.9
+        },
+        {
+          "delta": 0.865,
+          "warm": true,
+          "solved": false,
+          "seconds": 46.8,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.865,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "chnrususa",
+      "direction": 1,
+      "anchor": 0.82,
+      "steps": [
+        {
+          "delta": 0.82,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.1
+        },
+        {
+          "delta": 0.825,
+          "warm": true,
+          "solved": false,
+          "seconds": 45.6,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.825,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "chnrususa",
+      "direction": -1,
+      "anchor": 0.98,
+      "steps": [
+        {
+          "delta": 0.98,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.2
+        },
+        {
+          "delta": 0.975,
+          "warm": true,
+          "solved": false,
+          "seconds": 48.3,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.975,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "eurndeusa",
+      "direction": 1,
+      "anchor": 0.8,
+      "steps": [
+        {
+          "delta": 0.8,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.0
+        },
+        {
+          "delta": 0.805,
+          "warm": true,
+          "solved": true,
+          "seconds": 3.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.81,
+          "warm": true,
+          "solved": true,
+          "seconds": 2.7,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.815,
+          "warm": true,
+          "solved": false,
+          "seconds": 42.9,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.815,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "eurrususa",
+      "direction": 1,
+      "anchor": 0.88,
+      "steps": [
+        {
+          "delta": 0.88,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.2
+        },
+        {
+          "delta": 0.885,
+          "warm": true,
+          "solved": true,
+          "seconds": 3.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.89,
+          "warm": true,
+          "solved": true,
+          "seconds": 24.0,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.895,
+          "warm": true,
+          "solved": true,
+          "seconds": 21.9,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.9,
+          "warm": true,
+          "solved": true,
+          "seconds": 14.3,
+          "cold_status": "failed"
+        },
+        {
+          "delta": 0.905,
+          "warm": true,
+          "solved": true,
+          "seconds": 14.2,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.91,
+          "warm": true,
+          "solved": true,
+          "seconds": 14.5,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.915,
+          "warm": true,
+          "solved": true,
+          "seconds": 14.5,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.92,
+          "warm": true,
+          "solved": true,
+          "seconds": 14.5,
+          "cold_status": "failed"
+        },
+        {
+          "delta": 0.925,
+          "warm": true,
+          "solved": false,
+          "seconds": 25.6,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.925,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "eurrususa",
+      "direction": -1,
+      "anchor": 0.99,
+      "steps": [
+        {
+          "delta": 0.99,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.2
+        },
+        {
+          "delta": 0.985,
+          "warm": true,
+          "solved": false,
+          "seconds": 43.8,
+          "cold_status": "not-in-sweep"
+        }
+      ],
+      "stalled_at": 0.985,
+      "note": "warm start failed here"
+    },
+    {
+      "trio": "nderususa",
+      "direction": 1,
+      "anchor": 0.86,
+      "steps": [
+        {
+          "delta": 0.86,
+          "warm": false,
+          "solved": true,
+          "seconds": 3.2
+        },
+        {
+          "delta": 0.865,
+          "warm": true,
+          "solved": true,
+          "seconds": 3.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.87,
+          "warm": true,
+          "solved": true,
+          "seconds": 2.8,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.875,
+          "warm": true,
+          "solved": true,
+          "seconds": 24.6,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.88,
+          "warm": true,
+          "solved": true,
+          "seconds": 20.5,
+          "cold_status": "failed"
+        },
+        {
+          "delta": 0.885,
+          "warm": true,
+          "solved": true,
+          "seconds": 14.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.89,
+          "warm": true,
+          "solved": true,
+          "seconds": 14.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.895,
+          "warm": true,
+          "solved": true,
+          "seconds": 14.2,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.9,
+          "warm": true,
+          "solved": true,
+          "seconds": 14.1,
+          "cold_status": "failed"
+        },
+        {
+          "delta": 0.905,
+          "warm": true,
+          "solved": true,
+          "seconds": 14.0,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.91,
+          "warm": true,
+          "solved": true,
+          "seconds": 13.8,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.915,
+          "warm": true,
+          "solved": true,
+          "seconds": 13.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.92,
+          "warm": true,
+          "solved": true,
+          "seconds": 13.5,
+          "cold_status": "failed"
+        },
+        {
+          "delta": 0.925,
+          "warm": true,
+          "solved": true,
+          "seconds": 13.5,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.93,
+          "warm": true,
+          "solved": true,
+          "seconds": 13.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.935,
+          "warm": true,
+          "solved": true,
+          "seconds": 12.8,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.94,
+          "warm": true,
+          "solved": true,
+          "seconds": 12.8,
+          "cold_status": "failed"
+        },
+        {
+          "delta": 0.945,
+          "warm": true,
+          "solved": true,
+          "seconds": 12.7,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.95,
+          "warm": true,
+          "solved": true,
+          "seconds": 13.0,
+          "cold_status": "failed"
+        },
+        {
+          "delta": 0.955,
+          "warm": true,
+          "solved": true,
+          "seconds": 13.1,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.96,
+          "warm": true,
+          "solved": true,
+          "seconds": 13.1,
+          "cold_status": "failed"
+        },
+        {
+          "delta": 0.965,
+          "warm": true,
+          "solved": true,
+          "seconds": 1.5,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.97,
+          "warm": true,
+          "solved": true,
+          "seconds": 1.5,
+          "cold_status": "solved"
+        },
+        {
+          "delta": 0.975,
+          "warm": true,
+          "solved": true,
+          "seconds": 1.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.98,
+          "warm": true,
+          "solved": true,
+          "seconds": 1.4,
+          "cold_status": "solved"
+        },
+        {
+          "delta": 0.985,
+          "warm": true,
+          "solved": true,
+          "seconds": 1.4,
+          "cold_status": "not-in-sweep"
+        },
+        {
+          "delta": 0.99,
+          "warm": true,
+          "solved": false,
+          "seconds": 22.1,
+          "cold_status": "failed"
+        }
+      ],
+      "stalled_at": 0.99,
+      "note": "warm start failed here"
+    }
+  ]
+}

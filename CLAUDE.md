@@ -313,10 +313,13 @@ and its settings*, never about the game. It means one of:
   300, but VFI contracts at rate delta, so delta=0.999 needs ~20,000 iterations —
   see the delta-dependence note below);
 - the verification tolerance was set tighter than the solver's achievable precision;
-- the equilibrium requires **mixed** strategies and the solver only searches pure
-  ones (existence is guaranteed in mixed strategies; a *pure* equilibrium genuinely
-  may not exist);
-- the search missed it (restarts, initialization, local optimum).
+- the equilibrium requires **mixed** strategies of a kind the solver cannot reach.
+  Note `jeres_vfi` *does* search for mixed strategies -- `_resolve_cycle` bisects on
+  the interpolated value function, with a mean-strategy fallback -- but only along a
+  1-D line between two phases of a detected cycle. The "0/1 acceptance only"
+  limitation belongs to `ordinal_ranking`, NOT to `jeres_vfi`;
+- the search missed it (initialization, local optimum). Note this is NOT about
+  restarts -- see "the multi-start is inert" below.
 
 Never write up, log, or report a solver failure as "this game has no equilibrium",
 and never treat a failure rate as an economic finding. Diagnose the setting instead.
@@ -374,19 +377,243 @@ directly, pass `--jeres-max-iter` explicitly at high delta.
 indistinguishable from one that did. Check convergence explicitly before believing
 any high-delta result.
 
-**Verification tolerance must be scaled per game.** RICE payoffs are large in level
-(~-13) but tiny in spread (5e-5 to 2e-2), and the spread varies by ~350x across the
-n=3 batch. A fixed absolute `--verify-atol` is meaningless across such a batch: at
-1e-4 it exceeds 12% of the entire payoff range of the narrowest game, which certifies
-"equilibria" that contain real violations. Use `--verify-rtol` instead, which derives
-the tolerance from the payoff spread (see `payoff_scale()` in `lib/equilibrium/find.py`
-for why the *minimum* per-player spread is the right yardstick). Note that
-`--verify-rtol` currently also rescales the VFI convergence tolerance at a fixed
-100:1 ratio; combined with an unchanged `max_iter` that is what makes high-delta runs
-fail, so raise `--jeres-max-iter` alongside it.
+**The multi-start is inert. Do not add restarts or seeds.** (But see the
+warm-start carve-out immediately below -- *random* multi-start is what is inert.) VFI here is globally
+convergent to a unique fixed point: 12 restarts from far-apart initialisations
+(initial |dV| 13-24, against a payoff range ~0.004) all reach a **bit-identical**
+V in 3-8 iterations. Confirmed across all 91 tables -- switching restart noise
+scaling changed 0 verdicts, twice. If a game's unique fixed point is not an
+equilibrium, no number of restarts can find one, and a restart ladder just burns
+hours re-deriving the same answer.
+
+**Carve-out, measured 2026-08-18: INFORMED warm starts are NOT inert.** Seeding VFI
+with the equilibrium V of the same table at an adjacent delta (`--jeres-v-init`)
+flips **25 verdicts** that cold starts fail, at identical seed, tolerance and
+restart count (1). `nderususa` goes from a cold failure band of [0.88, 0.96] to
+solving continuously from 0.86 to 0.985. See `reports/delta_continuation/`.
+
+The inertness argument does not reach this case for two reasons: it was measured on
+runs that CONVERGE (the failing tables cycle, so no unique fixed point is reached
+and uniqueness cannot be invoked), and it concerns RANDOM draws from
+`payoffs + N(0, 10*spread)`, a diffuse ball that hits a strategically coherent
+point with probability zero. The gain comes from STRUCTURE in the initialisation,
+not from more initialisations -- so the advice against restart ladders and seed
+sweeps stands unchanged.
+
+Operational consequence: a cold-start failure is now weak evidence of a hard game.
+Try continuation from a neighbouring parameter value before concluding anything,
+and read a *stall under continuation* -- ideally bracketed from both sides -- as
+the real signal that a pure branch has terminated.
+
+### Verification tolerance: `atol` is a NUMERICAL parameter, not an economic one
+
+This caused more wasted effort than anything else in this codebase. Read it before
+touching a tolerance.
+
+**Where it enters.** Exactly two places in `lib/utils.py`, both widening what counts
+as a *tie*, so a larger `atol` is always a WEAKER test:
+- `verify_approvals`: inside `atol` the condition becomes vacuous (any probability in
+  [0,1] passes); outside it, exact behaviour is demanded (`p == 1.` / `p == 0.`).
+- `verify_proposals`: `atol` widens the argmax set, easing the subset test.
+
+Both use `rtol=0`, so the tolerance is purely absolute and only means anything
+relative to the units of V.
+
+**Its only legitimate job is absorbing floating-point error in the V solve.** The
+conditions themselves are exact; in exact arithmetic no tolerance would be needed.
+Measured on a real game:
+
+| delta | cond(I-delta*P) | forward error on V | V spread |
+|-------|-----------------|--------------------|----------|
+| 0.9   | 18              | 4e-15              | 3e-1     |
+| 0.99  | 194             | 4e-14              | 3e-1     |
+| 0.999 | 1964            | 4e-13              | 3e-1     |
+
+Thirteen orders of magnitude separate the noise floor from the signal, so **any**
+choice in that window gives identical verdicts. Use a fixed `--verify-atol 1e-12`
+(1e-10 at delta=0.999). One number works for every table because normalisation puts
+every game's V on a comparable scale and the error bound depends on conditioning and
+machine epsilon, not on the payoffs.
+
+**Anything above ~1e-10 is not tolerance, it is redefining the game** -- declaring
+real preferences to be ties. Tuning `atol` upward until a run passes produces
+"equilibria" that are artefacts; at `atol` >= the V spread the verifier accepts any
+strategy profile whatsoever.
+
+**Compare `atol` to the V SPREAD, not the payoff spread.** The `(1-delta)` factor
+compresses V far below the payoff range, so "1% of what is at stake" can be 100% of
+what the verifier actually has to resolve.
+
+**`--verify-rtol` and `payoff_scale()` are superseded.** They were built to make a
+tolerance comparable across raw-unit tables, which normalisation already achieves,
+and they scale to the payoff spread rather than the V spread. Prefer a fixed
+`--verify-atol`.
+
+### Payoff normalisation (on by default)
+
+`find_equilibrium` rescales each player's payoffs to [0,1] before solving.
+`--no-normalise-payoffs` opts out, for reproducing historical runs only.
+
+**Why it is safe.** Every equilibrium condition compares a player against
+*themselves*, so a per-player positive affine map `u_i -> a_i*u_i + b_i` leaves the
+equilibrium set exactly unchanged (V carries the map through; argmaxes and value-gap
+signs are preserved). Proven analytically and guarded by
+`scripts/check_solver_invariance.py`, which tests arbitrary maps, not just [0,1].
+
+**Why it matters.** RICE payoffs sit near -13 with spreads near 1e-4, so the whole
+strategic content lives in the fifth significant digit. Measured over 91 n=3 tables:
+solve rate 42/91 -> 67/91, timeouts and failures both halved, 32% less wall time.
+
+**What it BREAKS if ignored: cross-player quantities.** Normalisation is exact per
+player but destroys the common unit *between* players. Utilitarian welfare sums must
+read `setup['payoffs_raw']`.
+
+**The unit convention is now recorded and honoured (fixed 2026-08-18).** Profiles
+carry a `normalise_payoffs` metadata field, and `run_verification` reconstructs V in
+the convention the profile was solved in, while keeping `details['payoffs']` and
+`details['V_raw']` in raw units so cross-player sums stay meaningful. Guarded by
+`tests/test_verification_units.py`.
+
+**An earlier note here claimed `compare.py`'s `mpe_expected_welfare` was meaningless
+for normalised profiles. That was wrong** -- `run_verification` loads payoffs fresh
+from the payoff table in raw units and never reads the profile's normalised V, so the
+welfare numbers were always in raw units. The real defect was narrower: `atol` is
+ABSOLUTE, and raw V spreads run ~5100x smaller than normalised ones on RICE tables
+(measured on `kalkuhl_chnrususa` at delta 0.99: 3.17e-6 raw vs 1.63e-2 normalised).
+So a tolerance chosen as strict during solving became a near-vacuous test on reload.
+Profiles written before the fix cannot have their convention recovered;
+`run_verification` treats them as raw (the historical behaviour) and says so.
+
+### Benchmarking a solver change
+
+`scripts/bench_solver.py run --label X` then `compare before after`. Runs every n=3
+payoff table (~6-17 min), prints newly-solved AND regressions by name. Use it for any
+solver change; several plausible-sounding fixes in this codebase changed exactly
+nothing, and only the benchmark revealed that.
+
+Caveats when quoting its numbers: **22 of the 91 tables are synthetic `simple_cycle`
+fixtures**, so 91-denominators are not production scenarios; and a timeout is not a
+failure -- report them separately.
+
+**Current honest ceiling: 44/91 tables at `atol` 1e-10.**
+
+### Known numerical traps
+
+**MIP probabilities can fall outside [0,1].** HiGHS reports within its own
+feasibility tolerance, so a variable bounded to [0,1] can return `-1.0011e-14`
+(observed). The verifier tests probabilities by EXACT equality, so such a value fails
+both the indifference branch (not >= 0) and the strict branch (not == 0), rejecting a
+good profile over a rounding artefact. Handled by `_clean_probability` in
+`jeres_vfi/solver.py`, which must both clip AND snap onto the bounds -- clipping
+alone leaves `1 - 1e-14` failing `p == 1.`.
+
+### Suggestive, not established
+
+Flagged so they are not mistaken for findings:
+
+- **Richer cycle mixing probably would not help.** Searching the full simplex spanned
+  by the cycle phases (rather than `_resolve_cycle`'s 1-D line) finds no verifying
+  point on any of the six unsolved n=3 trios; best residual 5e-3, seven orders above
+  tolerance. But the search is numerical, an equilibrium is generically an isolated
+  point, and the objective is discontinuous (strategies come from a MIP). Only the
+  exact algebraic route (`lib/equilibrium/full_search`, msolve) can *prove* absence.
+- **Table families differ sharply in conditioning** (burke spread/level 1.3e-2 vs
+  kalkuhl 3.2e-5, measured). Whether that makes kalkuhl harder *after* normalisation
+  is NOT established.
+- **The remaining failures may need supports the VFI dynamics never visit.** An
+  inference from the above plus msolve branch statistics, not a demonstrated fact.
+- **`ordinal_ranking` may be structurally unable to find MIXED equilibria, and the
+  gap may not be closable at feasible cost.** Treat as a warning, not a verdict --
+  it rests on 40 synthetic control tables, not on production games.
+
+  OR enumerates value RANKINGS and *derives* a full profile from each. The
+  acceptance half of that derivation looks faithful: in equilibrium alpha must
+  follow sign(dV), so the weak order pins it, and 4-12 weak orders per player passed
+  the acceptance constraints on every control table. The PROPOSAL half is derived by
+  an ordinal rule -- "propose the approved target in your best tier" -- while the
+  equilibrium condition is cardinal: argmax over q(y) * (V(y) - V(x)). Those agree
+  when every q = 1, which is why strict mode is fine for pure equilibria. Once
+  acceptance mixes, q < 1, and a lower-ranked target with high approval probability
+  can beat a higher-ranked one with low approval probability.
+
+  Measured on the 40 controls (`reports/planted_profiles_v3`,
+  `scripts/or_reachability_test.py`): the planted support pattern was reachable by
+  SOME weak order in **0 of 40** cases, with acceptance satisfiable every time and
+  proposals never. A positive control -- patterns derived from a weak order and fed
+  back in -- returned 8/8 reachable, so the test itself discriminates.
+
+  Why the obvious repair looks unaffordable: all five targets were approved in all
+  600 slots, so branching over proposals costs 5^15 ~ 3e10 per weak order, ~5e18
+  overall. And the planted target sat almost uniformly across tier positions
+  (100/124/138/133/105 for positions 0-4), so truncating to the top few loses most
+  solutions -- OR's current "position 0 only" is right about 17% of the time, near
+  chance.
+
+  Caveats before anyone acts on this: the controls are synthetic games built by
+  planting exact ties in V, which is not how RICE payoffs behave; the reachability
+  test encodes OR's derivation as this author reads it, and that reading has been
+  wrong twice before in this session; and none of it touches strict mode, where
+  q = 1 makes the ordinal rule exact -- so the pure-equilibrium results are
+  unaffected.
+
+  Two real fixes came out of the same investigation and ARE settled: a crash in
+  `weak_equality.py` where `nb_iters` was read on the success path but only assigned
+  under `if _use_nb` (a solved pattern was reported as a failure), and
+  `_USE_BOUNDED_SOLVER`, which replaces the logit-space Newton/hybr inner solve with
+  bounded trust-region least-squares in physical space -- 15/40 -> 26/40 on the same
+  controls. The legacy path is retained behind that flag.
+
+### Mixed equilibria: solving vs finding the support pattern
+
+An equilibrium is a **support pattern** (69 discrete facts at n=3: which targets each
+proposer plays, and whether each of the 54 acceptances is 0 / 1 / interior) plus the
+**M interior values**. For a pure slot the support IS the value, so only the interior
+slots leave a number to determine.
+
+**Given the support pattern, solving is free.** 40/40 on the synthetic controls in
+under 0.2 s (`scripts/solve_support_v2.py`), and 40/40 inside `jeres_vfi` with
+`mixed_solve=True` when seeded with the right V. Three non-obvious requirements:
+search the CLOSED box [0,1] (a tie-resting pure equilibrium is a legitimate
+endpoint); use bounded trust-region least-squares, not `hybr`, because the Jacobian
+has a ZERO DIAGONAL (a mixer's own indifference is insensitive to their own
+probability); and at M=1 scan rather than root-find, because with a single mixer the
+other players' conditions are inequalities, so the solution is an INTERVAL.
+
+**Finding the support pattern is the entire remaining difficulty.** Full write-up,
+including the five defects fixed in `vfi()` and one wrong turn that cost 27/40 -> 9/40,
+is in `reports/mixed_solver/FINDINGS.md`.
+
+Three things there that will otherwise be rediscovered the hard way:
+
+- `solve_state_mip` optimises a ZERO objective, so a freed alpha comes back on a
+  bound (measured 570/570 at 0). Nothing in the MIP determines it.
+- An exact tie frees BOTH directions, whose residuals are negatives of one another;
+  keeping both makes every root-find stall on a rank-deficient, flat system. Free one
+  direction, let the sign rule pin the other, try both choices.
+- Generate proposals at the VERIFIER's tolerance, not machine epsilon.
+  `verify_proposals` accepts gains tied within `atol`, so a stricter rule emits only
+  one of the tied patterns and can miss the equilibrium entirely.
+
+**Test set:** `payoff_tables/mixedcontrol_m{M}_*.xlsx`, 40 tables, profiles in
+`reports/planted_profiles_v3/`. Every table has a planted mixed equilibrium AND no
+pure equilibrium, so a solver cannot pass without mixing. Caveat when quoting the M
+labels: most planted knobs are INERT (alpha reaches V only through
+`T[x,y] += rho*sigma*q`), so the effective dimension is ~1 regardless of M.
+
+**Untested: cold.** The mixed path triggers on EXACT ties (`|dV| <= 1e-12`), and cold
+VFI's iterates have near-ties but essentially never exact ones, so it may never fire.
+Do not assume warm success carries over.
 
 ### Notes
 - Important: Never use fallbacks or placeholders! Better fail early than that it seems it works while it actually doesnt. 
+- `jeres_vfi` is the working solver. `lib/equilibrium/full_search` (msolve) is exact
+  but not a practical general tool: positive-dimensional branches are deferred
+  (a null is inconclusive, never a non-existence proof) and it costs on the order of
+  a day per table. Do not propose it as a routine alternative.
+- A general solver should normalise payoffs internally rather than requiring
+  preprocessed tables. Solving is unit-invariant; reporting is not.
+- The n=3 setting is equal power (1/3 each) with `min_power` 0.501 -- deliberately
+  closer to the 2021 paper than GDP-weighted power, which does not add much at n=3.
 - Never use git commands, that's entirely controlled by the user. 
 - I am running /viz using npm run dev, so no rebuild is necessary after changes, is done automatically. When do you changes to the viz/service_viz.py, you will need to restart though. 
 - Activate the environment .venv before running code. If not you will get errors such as ModuleNotFound.

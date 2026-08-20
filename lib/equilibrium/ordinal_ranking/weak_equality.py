@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from scipy.optimize import root as scipy_root
+from scipy.optimize import least_squares as scipy_least_squares
 
 from lib.equilibrium.ordinal_ranking.induced_strategies import (
     _build_induced_arrays_weak,
@@ -28,6 +29,26 @@ from lib.equilibrium.ordinal_ranking.numba_loops import (
 # Cache of pre-allocated guess arrays indexed by n_vars.
 _WEAK_GUESS_CACHE: dict[int, list[np.ndarray]] = {}
 _NEWTON_GUESS_LIMIT = 1
+
+# Which inner solver runs for a weak-order pattern.
+#
+# The legacy path (Newton/Broyden in numba, then scipy `hybr`) works in LOGIT space
+# and is kept below but no longer used.  Two structural problems, both measured on
+# the 40 synthetic control tables whose mixing probabilities are known:
+#
+#   * the logit/sigmoid map covers the OPEN interval (0,1), so it can never place a
+#     probability exactly at a bound -- and a tie-resting solution legitimately sits
+#     at one;
+#   * `hybr` is a Newton-type method, but this system's Jacobian has a ZERO DIAGONAL
+#     (a player who mixes is indifferent, so their own condition is insensitive to
+#     their own probability), which Newton handles badly and worse as M grows.
+#
+# Handed the correct pattern, the legacy path solved 15/40 (M=1: 7/10 ... M=4: 0/10).
+# The bounded trust-region path below solves 40/40 in under 0.2 s by working in
+# PHYSICAL space on the closed box [0,1].
+#
+# Set to False to run the legacy path again for comparison.
+_USE_BOUNDED_SOLVER = True
 
 
 def softmax(x: np.ndarray, temperature: float = 1.0) -> np.ndarray:
@@ -499,6 +520,110 @@ def _solve_weak_equalities(
             return np.array(res, dtype=np.float64)
         _scipy_fn = _residuals_sigmoid
 
+    if _USE_BOUNDED_SOLVER:
+        # Residual in PHYSICAL space: phys[:n_fa] are acceptance probabilities on
+        # the closed box [0,1]; phys[n_fa:] stay softmax logits for proposal rows.
+        # Same layout the downstream _finalize_weak_solution expects.
+        def _residual_phys(phys: np.ndarray) -> np.ndarray:
+            action = canon_action.copy()
+            pass_ = canon_pass.copy()
+            probs = canon_probs.copy()
+            for k, (pi, ai, ci, ni) in enumerate(fa_idx):
+                action[pi, ai, ci, ni] = float(np.clip(phys[k], 0.0, 1.0))
+            var_idx = n_free_approvals
+            for pi, si, widxs in pt_idx:
+                if len(widxs) > 1:
+                    logits = np.zeros(len(widxs))
+                    logits[:-1] = phys[var_idx: var_idx + len(widxs) - 1]
+                    var_idx += len(widxs) - 1
+                    pw = softmax(logits, temperature=1.0)
+                else:
+                    pw = np.array([1.0])
+                probs[pi, si, :] = 0.0
+                for wk, wk_p in zip(widxs, pw):
+                    probs[pi, si, wk] = float(wk_p)
+            affected = {(pi, ci) for pi, _ai, ci, _ni in fa_idx}
+            for pi, si, _ in pt_idx:
+                affected.add((pi, si))
+            for pi, ci in affected:
+                for ni in range(n_states):
+                    pr = 1.0
+                    for ai in committee_idxs[pi][ci][ni]:
+                        pr *= action[pi, ai, ci, ni]
+                    pass_[pi, ci, ni] = pr
+                if (pi, ci) not in pt_set:
+                    tier_p = tiers[pi]
+                    approved = [ni for ni in range(n_states) if pass_[pi, ci, ni]]
+                    if approved:
+                        best_t = min(int(tier_p[ni]) for ni in approved)
+                        winners_l = [ni for ni in approved if int(tier_p[ni]) == best_t]
+                        probs[pi, ci, :] = 0.0
+                        if winners_l:
+                            m = 1.0 / len(winners_l)
+                            for ni in winners_l:
+                                probs[pi, ci, ni] = m
+            P_mat = np.einsum('i,ijk,ijk->jk', protocol_arr, probs, pass_)
+            np.fill_diagonal(P_mat, P_mat.diagonal() + (1.0 - P_mat.sum(axis=1)))
+            V_mat = _solve_values(P_mat, payoff_array, discounting)
+            res = []
+            for _k, (_pi, ai, ci, ni) in enumerate(fa_idx):
+                res.append(float(V_mat[ni, ai]) - float(V_mat[ci, ai]))
+            for pi, si, widxs in pt_idx:
+                ev0 = (float(pass_[pi, si, widxs[0]]) * float(V_mat[widxs[0], pi])
+                       + (1.0 - float(pass_[pi, si, widxs[0]])) * float(V_mat[si, pi]))
+                for wk in widxs[1:]:
+                    evk = (float(pass_[pi, si, wk]) * float(V_mat[wk, pi])
+                           + (1.0 - float(pass_[pi, si, wk])) * float(V_mat[si, pi]))
+                    res.append(evk - ev0)
+            return np.array(res, dtype=np.float64)
+
+        lo = np.concatenate([np.zeros(n_free_approvals),
+                             np.full(n_vars - n_free_approvals, -20.0)])
+        hi = np.concatenate([np.ones(n_free_approvals),
+                             np.full(n_vars - n_free_approvals, 20.0)])
+        starts = [np.concatenate([np.full(n_free_approvals, 0.5),
+                                  np.zeros(n_vars - n_free_approvals)])]
+        _rng = np.random.RandomState(42)
+        for _lvl in (0.25, 0.75):
+            starts.append(np.concatenate([np.full(n_free_approvals, _lvl),
+                                          np.zeros(n_vars - n_free_approvals)]))
+        for _ in range(9):
+            starts.append(np.concatenate([
+                _rng.uniform(0.02, 0.98, n_free_approvals),
+                _rng.uniform(-2.0, 2.0, n_vars - n_free_approvals)]))
+
+        _best_phys = None
+        _best_r = np.inf
+        for _z0 in starts:
+            try:
+                _sol = scipy_least_squares(_residual_phys, np.clip(_z0, lo, hi),
+                                           bounds=(lo, hi), method="trf",
+                                           xtol=1e-15, ftol=1e-15, gtol=1e-15,
+                                           max_nfev=2000)
+            except Exception:
+                continue
+            _r = float(np.max(np.abs(_residual_phys(_sol.x))))
+            if _r < _best_r:
+                _best_r, _best_phys = _r, _sol.x.copy()
+            if _best_r < 1e-9:
+                break
+
+        if _best_phys is None or _best_r > 1e-7:
+            return None
+        res_final = _finalize_weak_solution(
+            _best_phys, canon_action, canon_pass, canon_probs,
+            fa_idx, pt_idx, tiers, committee_idxs,
+            players, states, protocol, payoffs, discounting, unanimity_required,
+            free_approvals, proposal_rows, protocol_arr, payoff_array,
+            timing_data=timing_data, effectivity=effectivity,
+            power_rule=power_rule, geo_levels=geo_levels,
+        )
+        return res_final
+
+    # ---------------------------------------------------------------------------
+    # LEGACY PATH -- retained for comparison, not reached while _USE_BOUNDED_SOLVER
+    # is True.  See the note at that flag for why it was replaced.
+    # ---------------------------------------------------------------------------
     t_guesses0 = time.perf_counter()
     if n_vars not in _WEAK_GUESS_CACHE:
         rng = np.random.RandomState(42)
@@ -528,6 +653,12 @@ def _solve_weak_equalities(
             return
         _flow_stats[key] = _flow_stats.get(key, 0) + value
 
+    # Bound unconditionally: the success branch below logs nb_iters / nb_exit_res,
+    # but they are only assigned inside `if _use_nb`.  When the numba path is
+    # skipped and SciPy succeeds, reading them raises UnboundLocalError -- and it
+    # fires on SUCCESS, so a solved pattern is reported as a failure.
+    nb_iters = 0
+    nb_exit_res = 0.0
     for guess_idx, guess in enumerate(guesses):
         raw: np.ndarray | None = None
         _nb_hit = False

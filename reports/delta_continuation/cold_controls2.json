@@ -1,0 +1,42 @@
+[
+  {
+    "trio": "nderususa",
+    "delta": 0.925,
+    "cold_solved": false
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.93,
+    "cold_solved": false
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.935,
+    "cold_solved": false
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.945,
+    "cold_solved": false
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.955,
+    "cold_solved": false
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.965,
+    "cold_solved": true
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.975,
+    "cold_solved": true
+  },
+  {
+    "trio": "nderususa",
+    "delta": 0.985,
+    "cold_solved": true
+  }
+]

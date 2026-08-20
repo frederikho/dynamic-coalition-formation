@@ -1,0 +1,1406 @@
+{
+  "atol": "1e-12",
+  "retry_atol": "1e-10",
+  "deltas": [
+    0.5,
+    0.7,
+    0.8,
+    0.9,
+    0.95,
+    0.97,
+    0.98,
+    0.99,
+    0.995,
+    0.997,
+    0.999
+  ],
+  "trios": [
+    "chneurnde",
+    "chneurrus",
+    "chneurusa",
+    "chnnderus",
+    "chnndeusa",
+    "chnrususa",
+    "eurnderus",
+    "eurndeusa",
+    "eurrususa",
+    "nderususa"
+  ],
+  "max_iter": 2000,
+  "restarts": 1,
+  "timeout": 600,
+  "wall_seconds": 430.6,
+  "rows": [
+    {
+      "trio": "chneurnde",
+      "delta": 0.5,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 6.1,
+      "absorbing": [
+        "(CHNEUR)",
+        "(CHNNDE)",
+        "(EURNDE)"
+      ]
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.7,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.7,
+      "absorbing": [
+        "(CHNEUR)",
+        "(CHNNDE)",
+        "(EURNDE)"
+      ]
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.8,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.7,
+      "absorbing": [
+        "(CHNEUR)",
+        "(CHNNDE)",
+        "(EURNDE)"
+      ]
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.9,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 36.0
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.95,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 31.6
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.97,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 32.0
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.98,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 32.0
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.99,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 32.7
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.995,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 31.8
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.997,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 32.3
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.999,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 29.0
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.5,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.2,
+      "absorbing": [
+        "(CHNEUR)",
+        "(EURRUS)",
+        "(CHNEURRUS)"
+      ]
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.7,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.3,
+      "absorbing": [
+        "(CHNEUR)",
+        "(EURRUS)",
+        "(CHNEURRUS)"
+      ]
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.8,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.6,
+      "absorbing": [
+        "(CHNEUR)",
+        "(EURRUS)",
+        "(CHNEURRUS)"
+      ]
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.9,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 29.0
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.95,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 27.4
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.97,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 34.3
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.98,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 35.4
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.99,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 29.3
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.995,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 29.1
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.997,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 32.6
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.999,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 3.3,
+      "absorbing": [
+        "(CHNEUR)"
+      ]
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.5,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 3.0,
+      "absorbing": [
+        "(CHNEUR)",
+        "(CHNUSA)"
+      ]
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.7,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 3.0,
+      "absorbing": [
+        "(CHNEUR)",
+        "(CHNUSA)"
+      ]
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.8,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 2.8,
+      "absorbing": [
+        "(CHNEUR)",
+        "(CHNUSA)"
+      ]
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.9,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 2.6,
+      "absorbing": [
+        "(CHNEUR)",
+        "(CHNUSA)",
+        "(EURUSA)"
+      ]
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.95,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 35.4
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.97,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 37.2
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.98,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 31.8
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.99,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 36.9
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.995,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 37.8
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.997,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 37.2
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.999,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 34.6
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.5,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.1,
+      "absorbing": [
+        "(CHNNDE)",
+        "(CHNRUS)",
+        "(CHNNDERUS)"
+      ]
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.7,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.3,
+      "absorbing": [
+        "(CHNNDE)",
+        "(CHNRUS)",
+        "(CHNNDERUS)"
+      ]
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.8,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.6,
+      "absorbing": [
+        "(CHNNDE)",
+        "(CHNRUS)",
+        "(CHNNDERUS)"
+      ]
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.9,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.3,
+      "absorbing": [
+        "(CHNNDE)",
+        "(CHNRUS)",
+        "(CHNNDERUS)"
+      ]
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.95,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 38.1
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.97,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 39.7
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.98,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 34.5
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.99,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 49.0
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.995,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 40.2
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.997,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 35.2
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.999,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 42.2
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.5,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.9,
+      "absorbing": [
+        "(CHNNDE)",
+        "(NDEUSA)"
+      ]
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.7,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 3.8,
+      "absorbing": [
+        "(CHNNDE)",
+        "(NDEUSA)"
+      ]
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.8,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 2.8,
+      "absorbing": [
+        "(CHNNDE)",
+        "(NDEUSA)"
+      ]
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.9,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 50.4
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.95,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 38.0
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.97,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 40.0
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.98,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 43.5
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.99,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 50.1
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.995,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 43.6
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.997,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 48.3
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.999,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 40.7
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.5,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 2.9,
+      "absorbing": [
+        "(CHNUSA)",
+        "(RUSUSA)",
+        "(CHNRUSUSA)"
+      ]
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.7,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.7,
+      "absorbing": [
+        "(CHNUSA)",
+        "(RUSUSA)",
+        "(CHNRUSUSA)"
+      ]
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.8,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.8,
+      "absorbing": [
+        "(CHNUSA)",
+        "(RUSUSA)",
+        "(CHNRUSUSA)"
+      ]
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.9,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.3,
+      "absorbing": [
+        "(CHNUSA)",
+        "(RUSUSA)",
+        "(CHNRUSUSA)"
+      ]
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.95,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 45.3
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.97,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 41.6
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.98,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.0,
+      "absorbing": [
+        "(CHNUSA)"
+      ]
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.99,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.5,
+      "absorbing": [
+        "(CHNUSA)"
+      ]
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.995,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.0,
+      "absorbing": [
+        "(CHNUSA)"
+      ]
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.997,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.1,
+      "absorbing": [
+        "(CHNUSA)"
+      ]
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.999,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.9,
+      "absorbing": [
+        "(CHNUSA)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.5,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.7,
+      "absorbing": [
+        "(EURNDE)",
+        "(EURRUS)",
+        "(EURNDERUS)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.7,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.3,
+      "absorbing": [
+        "(EURNDE)",
+        "(EURRUS)",
+        "(EURNDERUS)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.8,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.6,
+      "absorbing": [
+        "(EURNDE)",
+        "(EURRUS)",
+        "(EURNDERUS)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.9,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.1,
+      "absorbing": [
+        "(EURNDE)",
+        "(EURRUS)",
+        "(EURNDERUS)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.95,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.7,
+      "absorbing": [
+        "(EURRUS)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.97,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.9,
+      "absorbing": [
+        "(EURRUS)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.98,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.7,
+      "absorbing": [
+        "(EURRUS)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.99,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.5,
+      "absorbing": [
+        "(EURRUS)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.995,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.7,
+      "absorbing": [
+        "(EURRUS)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.997,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.7,
+      "absorbing": [
+        "(EURRUS)"
+      ]
+    },
+    {
+      "trio": "eurnderus",
+      "delta": 0.999,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.7,
+      "absorbing": [
+        "(EURRUS)"
+      ]
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.5,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.2,
+      "absorbing": [
+        "(EURNDE)",
+        "(EURUSA)",
+        "(NDEUSA)"
+      ]
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.7,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.3,
+      "absorbing": [
+        "(EURNDE)",
+        "(EURUSA)",
+        "(NDEUSA)"
+      ]
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.8,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.5,
+      "absorbing": [
+        "(EURNDE)",
+        "(EURUSA)",
+        "(NDEUSA)"
+      ]
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.9,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.2,
+      "absorbing": [
+        "(EURUSA)"
+      ]
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.95,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.4,
+      "absorbing": [
+        "(EURUSA)"
+      ]
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.97,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.9,
+      "absorbing": [
+        "(EURUSA)"
+      ]
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.98,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 6.1,
+      "absorbing": [
+        "(EURUSA)"
+      ]
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.99,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.6,
+      "absorbing": [
+        "(EURUSA)"
+      ]
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.995,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 38.7
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.997,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 39.2
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.999,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 41.3
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.5,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.5,
+      "absorbing": [
+        "(EURRUS)",
+        "(EURUSA)",
+        "(EURRUSUSA)"
+      ]
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.7,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.7,
+      "absorbing": [
+        "(EURRUS)",
+        "(EURUSA)",
+        "(EURRUSUSA)"
+      ]
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.8,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.1,
+      "absorbing": [
+        "(EURRUS)",
+        "(EURUSA)",
+        "(EURRUSUSA)"
+      ]
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.9,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 41.3
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.95,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 42.1
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.97,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 38.4
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.98,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 39.9
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.99,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.9,
+      "absorbing": [
+        "(EURUSA)"
+      ]
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.995,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.6,
+      "absorbing": [
+        "(EURUSA)"
+      ]
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.997,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.7,
+      "absorbing": [
+        "(EURUSA)"
+      ]
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.999,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.5,
+      "absorbing": [
+        "(EURUSA)"
+      ]
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.5,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.3,
+      "absorbing": [
+        "(NDEUSA)",
+        "(RUSUSA)"
+      ]
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.7,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.3,
+      "absorbing": [
+        "(NDEUSA)",
+        "(RUSUSA)"
+      ]
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.8,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 5.3,
+      "absorbing": [
+        "(NDEUSA)",
+        "(RUSUSA)"
+      ]
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.9,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 33.8
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.95,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 39.9
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.97,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 4.6,
+      "absorbing": [
+        "(NDEUSA)",
+        "(RUSUSA)",
+        "(NDERUSUSA)"
+      ]
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.98,
+      "atol": "1e-12",
+      "status": "solved",
+      "seconds": 3.2,
+      "absorbing": [
+        "(NDEUSA)",
+        "(RUSUSA)",
+        "(NDERUSUSA)"
+      ]
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.99,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 29.1
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.995,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 33.1
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.997,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 29.7
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.999,
+      "atol": "1e-12",
+      "status": "failed",
+      "seconds": 28.8
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.9,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 32.2
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.95,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 29.7
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.97,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 32.1
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.98,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 32.1
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.99,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 29.9
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.995,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 30.8
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.997,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 29.3
+    },
+    {
+      "trio": "chneurnde",
+      "delta": 0.999,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 30.7
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.9,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 30.6
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.95,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 30.5
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.97,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 31.2
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.98,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 36.4
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.99,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 37.2
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.995,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 30.1
+    },
+    {
+      "trio": "chneurrus",
+      "delta": 0.997,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 35.6
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.95,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 32.2
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.97,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 32.7
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.98,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 40.3
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.99,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 39.1
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.995,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 36.2
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.997,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 37.3
+    },
+    {
+      "trio": "chneurusa",
+      "delta": 0.999,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 37.2
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.95,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 38.5
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.97,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 45.9
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.98,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 38.4
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.99,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 44.0
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.995,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 35.7
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.997,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 40.6
+    },
+    {
+      "trio": "chnnderus",
+      "delta": 0.999,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 37.0
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.9,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 47.1
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.95,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 40.1
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.97,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 37.9
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.98,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 44.6
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.99,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 46.6
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.995,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 43.6
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.997,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 40.6
+    },
+    {
+      "trio": "chnndeusa",
+      "delta": 0.999,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 45.3
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.95,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 42.0
+    },
+    {
+      "trio": "chnrususa",
+      "delta": 0.97,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 36.8
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.995,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 39.4
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.997,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 41.3
+    },
+    {
+      "trio": "eurndeusa",
+      "delta": 0.999,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 35.2
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.9,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 39.7
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.95,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 37.4
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.97,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 37.9
+    },
+    {
+      "trio": "eurrususa",
+      "delta": 0.98,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 40.6
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.9,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 35.9
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.95,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 33.8
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.99,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 34.1
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.995,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 31.8
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.997,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 21.4
+    },
+    {
+      "trio": "nderususa",
+      "delta": 0.999,
+      "atol": "1e-10",
+      "status": "failed",
+      "seconds": 18.9
+    }
+  ]
+}
