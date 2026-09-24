@@ -1,0 +1,1622 @@
+[
+ {
+  "trio": "chneurnde",
+  "delta": 0.5,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.06309103965759277,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.7,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.06188535690307617,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.8,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05787181854248047,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.82,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.06023907661437988,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.84,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.059107065200805664,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.86,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.06296300888061523,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.88,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.061711788177490234,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.9,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.3935837745666504,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.92,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.46205997467041016,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.94,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.5199782848358154,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.95,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.7859659194946289,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.96,
+  "verified": false,
+  "status": "UNSOLVED",
+  "method": null,
+  "seconds": 20.116565942764282,
+  "message": "No equilibrium found (solver returned empty strategy profile)."
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.97,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.265712022781372,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.98,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.0463073253631592,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.99,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.6071078777313232,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.995,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.309157133102417,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.997,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.6272962093353271,
+  "message": null
+ },
+ {
+  "trio": "chneurnde",
+  "delta": 0.999,
+  "verified": false,
+  "status": "UNSOLVED",
+  "method": null,
+  "seconds": 20.805423259735107,
+  "message": "No equilibrium found (solver returned empty strategy profile)."
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.5,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05846571922302246,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.7,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05747866630554199,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.8,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05699348449707031,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.82,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.059294700622558594,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.84,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05752682685852051,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.86,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05631256103515625,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.88,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05647706985473633,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.9,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.4841578006744385,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.92,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.8987002372741699,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.94,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.0510215759277344,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.95,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.0051321983337402,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.96,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.7466580867767334,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.97,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.6455271244049072,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.98,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.5372467041015625,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.99,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.7192442417144775,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.995,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.1600685119628906,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.997,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.1089167594909668,
+  "message": null
+ },
+ {
+  "trio": "chneurrus",
+  "delta": 0.999,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05728316307067871,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.5,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.056241512298583984,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.7,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05538320541381836,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.8,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05580401420593262,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.82,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05622744560241699,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.84,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.08585453033447266,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.86,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05732560157775879,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.88,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05673027038574219,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.9,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05571246147155762,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.92,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.6936385631561279,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.94,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.7275147438049316,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.95,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.7335319519042969,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.96,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.6697213649749756,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.97,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.7876102924346924,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.98,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.7303051948547363,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.99,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 2.0988385677337646,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.995,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 2.2874906063079834,
+  "message": null
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.997,
+  "verified": false,
+  "status": "UNSOLVED",
+  "method": null,
+  "seconds": 21.07935070991516,
+  "message": "No equilibrium found (solver returned empty strategy profile)."
+ },
+ {
+  "trio": "chneurusa",
+  "delta": 0.999,
+  "verified": false,
+  "status": "UNSOLVED",
+  "method": null,
+  "seconds": 20.06259775161743,
+  "message": "No equilibrium found (solver returned empty strategy profile)."
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.5,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05783581733703613,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.7,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.06465888023376465,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.8,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.09273147583007812,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.82,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.06102323532104492,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.84,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.061553001403808594,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.86,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.06202054023742676,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.88,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.06222939491271973,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.9,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.061521291732788086,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.92,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.06253266334533691,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.94,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.2063586711883545,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.95,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.40517377853393555,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.96,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 0.14358878135681152,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.97,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 0.1085658073425293,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.98,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 0.18032145500183105,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.99,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.3452010154724121,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.995,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.616668939590454,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.997,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 3.748589515686035,
+  "message": null
+ },
+ {
+  "trio": "chnnderus",
+  "delta": 0.999,
+  "verified": false,
+  "status": "UNSOLVED",
+  "method": null,
+  "seconds": 20.044670343399048,
+  "message": "No equilibrium found (solver returned empty strategy profile)."
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.5,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.057302236557006836,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.7,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05758070945739746,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.8,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.058332204818725586,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.82,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.057015180587768555,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.84,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05739021301269531,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.86,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.056702375411987305,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.88,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.46627140045166016,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.9,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.39373111724853516,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.92,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.33333396911621094,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.94,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.3396899700164795,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.95,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.2993052005767822,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.96,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.31876277923583984,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.97,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.3141205310821533,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.98,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.36664509773254395,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.99,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.28716039657592773,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.995,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.278200626373291,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.997,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.2694861888885498,
+  "message": null
+ },
+ {
+  "trio": "chnndeusa",
+  "delta": 0.999,
+  "verified": false,
+  "status": "UNSOLVED",
+  "method": null,
+  "seconds": 20.028375148773193,
+  "message": "No equilibrium found (solver returned empty strategy profile)."
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.5,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.06110358238220215,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.7,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.060120582580566406,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.8,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05755162239074707,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.82,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05782151222229004,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.84,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.46319150924682617,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.86,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.47466230392456055,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.88,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.42498326301574707,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.9,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.057592153549194336,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.92,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05726170539855957,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.94,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.5758955478668213,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.95,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.43552708625793457,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.96,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.3738393783569336,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.97,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.5990474224090576,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.98,
+  "verified": false,
+  "status": "UNSOLVED",
+  "method": null,
+  "seconds": 20.040721654891968,
+  "message": "No equilibrium found (solver returned empty strategy profile)."
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.99,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05757403373718262,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.995,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.0568087100982666,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.997,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05670762062072754,
+  "message": null
+ },
+ {
+  "trio": "chnrususa",
+  "delta": 0.999,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.0560152530670166,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.5,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05723214149475098,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.7,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.057810306549072266,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.8,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.057593345642089844,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.82,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05792665481567383,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.84,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.058035850524902344,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.86,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.09226083755493164,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.88,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05650472640991211,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.9,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05614924430847168,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.92,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05690264701843262,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.94,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05617094039916992,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.95,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05635571479797363,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.96,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05753803253173828,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.97,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05984926223754883,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.98,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.0567326545715332,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.99,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05618906021118164,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.995,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05588197708129883,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.997,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05550026893615723,
+  "message": null
+ },
+ {
+  "trio": "eurnderus",
+  "delta": 0.999,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05716443061828613,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.5,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05667757987976074,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.7,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.0584256649017334,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.8,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.0857090950012207,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.82,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.5764102935791016,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.84,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.5230753421783447,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.86,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.7823033332824707,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.88,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05696606636047363,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.9,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05668449401855469,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.92,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05774521827697754,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.94,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.057994842529296875,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.95,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.056966543197631836,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.96,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05684638023376465,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.97,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.057726144790649414,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.98,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.5039839744567871,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.99,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 0.13777565956115723,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.995,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.49187517166137695,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.997,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.5415453910827637,
+  "message": null
+ },
+ {
+  "trio": "eurndeusa",
+  "delta": 0.999,
+  "verified": false,
+  "status": "UNSOLVED",
+  "method": null,
+  "seconds": 20.96194314956665,
+  "message": "No equilibrium found (solver returned empty strategy profile)."
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.5,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05755209922790527,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.7,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05738663673400879,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.8,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05682659149169922,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.82,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.055986642837524414,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.84,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05522751808166504,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.86,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.056179046630859375,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.88,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05695509910583496,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.9,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.36246681213378906,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.92,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.30965566635131836,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.94,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.2674834728240967,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.95,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.2510349750518799,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.96,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.2700333595275879,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.97,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.3172316551208496,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.98,
+  "verified": true,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 0.5144820213317871,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.99,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05763125419616699,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.995,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.058791160583496094,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.997,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05658411979675293,
+  "message": null
+ },
+ {
+  "trio": "eurrususa",
+  "delta": 0.999,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05565237998962402,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.5,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05598044395446777,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.7,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05632305145263672,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.8,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05651354789733887,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.82,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.055942535400390625,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.84,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05614066123962402,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.86,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05591940879821777,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.88,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 0.09685230255126953,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.9,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 0.09438657760620117,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.92,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 0.10076093673706055,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.94,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 0.13377833366394043,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.95,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 0.09820199012756348,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.96,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 0.15852928161621094,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.97,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05798220634460449,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.98,
+  "verified": true,
+  "status": "PURE",
+  "method": "pure",
+  "seconds": 0.05846238136291504,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.99,
+  "verified": false,
+  "status": "UNSOLVED",
+  "method": null,
+  "seconds": 20.112038135528564,
+  "message": "No equilibrium found (solver returned empty strategy profile)."
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.995,
+  "verified": false,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "seconds": 1.1218664646148682,
+  "message": "The value functions V are:\n                 NDE      RUS      USA\n( )         0.936111 0.811323 0.690245\n(NDERUS)    0.956951 0.807267 0.714073\n(NDEUSA)    0.964199 0.793677 0.690245\n(RUSUSA)    0.931394 0.814101 0.690092\n(NDERUSUSA) 0.964156 0.811323 0.720692\n\nProposal strategy error with player NDE! In state ( ), positive probability on state(s) ['(NDEUSA)', '(NDERUSUSA)'], but the argmax states are: ['(NDEUSA)'].\nApproval strategy error with player USA! When player NDE proposes the transition ( ) -> (NDEUSA), the values are V(current) = 0.690245 and V(next) = 0.690245, but approval probability is 0.19568615799399272."
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.997,
+  "verified": true,
+  "status": "MIXED",
+  "method": "homotopy",
+  "seconds": 1.2358436584472656,
+  "message": null
+ },
+ {
+  "trio": "nderususa",
+  "delta": 0.999,
+  "verified": false,
+  "status": "UNSOLVED",
+  "method": null,
+  "seconds": 20.325617790222168,
+  "message": "No equilibrium found (solver returned empty strategy profile)."
+ }
+]

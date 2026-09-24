@@ -1,0 +1,20 @@
+chneurnde  18/18 solved [50s] {'PURE': 7, 'MIXED_NONUNIQUE': 11}
+    0.5:P 0.7:P 0.8:P 0.82:P 0.84:P 0.86:P 0.88:P 0.9:M 0.92:M 0.94:M 0.95:M 0.96:M 0.97:M 0.98:M 0.99:M 0.995:M 0.997:M 0.999:M
+chneurrus  18/18 solved [15s] {'PURE': 7, 'MIXED_NONUNIQUE': 10, 'MIXED': 1}
+    0.5:P 0.7:P 0.8:P 0.82:P 0.84:P 0.86:P 0.88:P 0.9:M 0.92:M 0.94:M 0.95:M 0.96:M 0.97:M 0.98:M 0.99:M 0.995:M 0.997:M 0.999:M
+chneurusa  18/18 solved [51s] {'PURE': 8, 'MIXED_NONUNIQUE': 10}
+    0.5:P 0.7:P 0.8:P 0.82:P 0.84:P 0.86:P 0.88:P 0.9:P 0.92:M 0.94:M 0.95:M 0.96:M 0.97:M 0.98:M 0.99:M 0.995:M 0.997:M 0.999:M
+chnnderus  18/18 solved [28s] {'PURE': 11, 'MIXED_NONUNIQUE': 6, 'MIXED': 1}
+    0.5:P 0.7:P 0.8:P 0.82:P 0.84:P 0.86:P 0.88:P 0.9:P 0.92:P 0.94:M 0.95:M 0.96:M 0.97:P 0.98:P 0.99:M 0.995:M 0.997:M 0.999:M
+chnndeusa  18/18 solved [38s] {'PURE': 6, 'MIXED_NONUNIQUE': 12}
+    0.5:P 0.7:P 0.8:P 0.82:P 0.84:P 0.86:P 0.88:M 0.9:M 0.92:M 0.94:M 0.95:M 0.96:M 0.97:M 0.98:M 0.99:M 0.995:M 0.997:M 0.999:M
+chnrususa  18/18 solved [27s] {'PURE': 8, 'MIXED_NONUNIQUE': 9, 'MIXED': 1}
+    0.5:P 0.7:P 0.8:P 0.82:P 0.84:M 0.86:M 0.88:M 0.9:M 0.92:P 0.94:M 0.95:M 0.96:M 0.97:M 0.98:M 0.99:M 0.995:P 0.997:P 0.999:P
+eurnderus  18/18 solved [0s] {'PURE': 18}
+    0.5:P 0.7:P 0.8:P 0.82:P 0.84:P 0.86:P 0.88:P 0.9:P 0.92:P 0.94:P 0.95:P 0.96:P 0.97:P 0.98:P 0.99:P 0.995:P 0.997:P 0.999:P
+eurndeusa  18/18 solved [24s] {'PURE': 14, 'MIXED_NONUNIQUE': 4}
+    0.5:P 0.7:P 0.8:P 0.82:M 0.84:M 0.86:M 0.88:M 0.9:P 0.92:P 0.94:P 0.95:P 0.96:P 0.97:P 0.98:P 0.99:P 0.995:P 0.997:P 0.999:P
+eurrususa  18/18 solved [6s] {'PURE': 12, 'MIXED_NONUNIQUE': 5, 'MIXED': 1}
+    0.5:P 0.7:P 0.8:P 0.82:P 0.84:P 0.86:P 0.88:P 0.9:P 0.92:P 0.94:M 0.95:M 0.96:M 0.97:M 0.98:M 0.99:M 0.995:P 0.997:P 0.999:P
+nderususa  16/18 solved [584s] {'PURE': 14, 'UNSOLVED': 2, 'MIXED_NONUNIQUE': 1, 'MIXED': 1}
+    0.5:P 0.7:P 0.8:P 0.82:P 0.84:P 0.86:P 0.88:P 0.9:P 0.92:P 0.94:P 0.95:P 0.96:P 0.97:P 0.98:P 0.99:- 0.995:M 0.997:M 0.999:-

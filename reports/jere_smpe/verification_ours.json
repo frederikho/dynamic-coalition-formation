@@ -1,0 +1,2850 @@
+[
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.5,
+  "status": "PURE",
+  "method": "pure",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.5048250817780131,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.7,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.30675511448921833,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.8,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.239573832865273,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.82,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.2205631786869049,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.84,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.20155252450853656,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.86,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.18254187033016844,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.88,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.1635312161518001,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.9,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.1090889125394503,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.92,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.08774263938855342,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.94,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.06618587098889483,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.95,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.05532137509647628,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.96,
+  "status": "MIXED_NONUNIQUE",
+  "method": "gap-filled",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0414434044848373,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.97,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.035588712575658876,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.98,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.022343696790613876,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.99,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.011210518563154137,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.995,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.0056152139782509325,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.997,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 2.220446049250313e-16,
+  "dV": 0.0,
+  "vspread": 0.0033715507624434427,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurnde",
+  "trio": "chneurnde",
+  "payoffs": "ours",
+  "delta": 0.999,
+  "status": "MIXED_NONUNIQUE",
+  "method": "gap-filled",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.001124664159419475,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.5,
+  "status": "PURE",
+  "method": "pure",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.46409225608197474,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.7,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.2978715198659,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.8,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.21476115175786248,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.82,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.1981390781362551,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.84,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.18151700451464758,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.86,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.1648949308930402,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.88,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.14827285727143247,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.9,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.10270386562916156,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.92,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.08629201724458113,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.94,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.06807992093997539,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.95,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.05823740772946073,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.96,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0478675491685997,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.97,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.03694049552066392,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.98,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.025424100915158898,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.99,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 2.220446049250313e-16,
+  "dV": 0.0,
+  "vspread": 0.01445357069696318,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.995,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.006580878528345324,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.997,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.00443756508468629,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurrus",
+  "trio": "chneurrus",
+  "payoffs": "ours",
+  "delta": 0.999,
+  "status": "MIXED",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 1.7763568394002505e-15,
+  "vspread": 0.0017508499747477257,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.5,
+  "status": "PURE",
+  "method": "pure",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.5040771269708464,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.7,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.3057079777591849,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.8,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.20652340315335427,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.82,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.18668648823218803,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.84,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.1668495733110218,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.86,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.14701265838985578,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.88,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.12717574346868954,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.9,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.10733882854752341,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.92,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.08544925821950367,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.94,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.06477268097298183,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.95,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.054138358953467414,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.96,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.04344345554012141,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.97,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0326848839256666,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.98,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.021859312221547134,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.99,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.010840747013563967,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.995,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.005426987364451907,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.997,
+  "status": "MIXED_NONUNIQUE",
+  "method": "gap-filled",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.003257792170215823,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chneurusa",
+  "trio": "chneurusa",
+  "payoffs": "ours",
+  "delta": 0.999,
+  "status": "MIXED_NONUNIQUE",
+  "method": "gap-filled",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0010864662812121173,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.5,
+  "status": "PURE",
+  "method": "pure",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.4475903961952576,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.7,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.28139115467524356,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.8,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.19829153391523646,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.82,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.18167160976323493,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.84,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.16505168561123362,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.86,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.1484317614592321,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.88,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.1318118373072309,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.9,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.11519191315522925,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.92,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.09857198900322839,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.94,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.3877787807814457e-16,
+  "dV": 0.0,
+  "vspread": 0.06625512794354416,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.95,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.05644908709971208,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.96,
+  "status": "MIXED",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.041539170788626345,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.97,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.03218099673717123,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.98,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.022297073164039505,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.99,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.010267516123509957,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.995,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.008915879789268999,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.997,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.006344342260774405,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnnderus",
+  "trio": "chnnderus",
+  "payoffs": "ours",
+  "delta": 0.999,
+  "status": "MIXED_NONUNIQUE",
+  "method": "gap-filled",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0037676642274776517,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.5,
+  "status": "PURE",
+  "method": "pure",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.509605413684211,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.7,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.31344757915789556,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.8,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.2153686618947377,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.82,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.1957528784421062,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.84,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.1761370949894745,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.86,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.156521311536843,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.88,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "dP": 2.220446049250313e-16,
+  "dV": 0.0,
+  "vspread": 0.11552520804399635,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.9,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 1.7763568394002505e-15,
+  "vspread": 0.09687650225111955,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.92,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.07771374680792309,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.94,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.058457040390334836,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.95,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.048789632374095615,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.96,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0390942174967458,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.97,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.029369222777088533,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.98,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.019613002207960584,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.99,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.009823846433184569,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.995,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.004916370421582439,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.997,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0029509020413901466,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnndeusa",
+  "trio": "chnndeusa",
+  "payoffs": "ours",
+  "delta": 0.999,
+  "status": "MIXED_NONUNIQUE",
+  "method": "gap-filled",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0009839959759826433,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.5,
+  "status": "PURE",
+  "method": "pure",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.4629119309100423,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.7,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.2931863501710189,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.8,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.20832355980150696,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.82,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.19135100172760466,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.84,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.17437844365371058,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.86,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.15981768349352476,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.88,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.3270634591222574e-16,
+  "dV": 0.0,
+  "vspread": 0.14541737244520891,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.9,
+  "status": "MIXED_NONUNIQUE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.12978107025353158,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.92,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.13816695747800556,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.94,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.06602916286420979,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.95,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.05695291372982536,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.96,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.04737684958716193,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.97,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.03727267902065978,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.98,
+  "status": "MIXED_NONUNIQUE",
+  "method": "gap-filled",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.021751513310609205,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.99,
+  "status": "MIXED",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.016258405584969493,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.995,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.00825873383919884,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.997,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.004986801682001163,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_chnrususa",
+  "trio": "chnrususa",
+  "payoffs": "ours",
+  "delta": 0.999,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.001672879615861711,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.5,
+  "status": "PURE",
+  "method": "pure",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.5177498017983874,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.7,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.32484972251774236,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.8,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.22839968287741974,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.82,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.20910967494935528,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.84,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.18981966702129083,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.86,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.17052965909322648,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.88,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.15123965116516191,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.9,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.13194964323709646,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.92,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.11265963530903311,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.94,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.06609524102150444,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.95,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.05653417993447185,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.96,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.046434299433902315,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.97,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.03576510030770752,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.98,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.024493737250563474,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.99,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.012584788854767659,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.995,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.00637938379338987,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.997,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.003848798264899256,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurnderus",
+  "trio": "eurnderus",
+  "payoffs": "ours",
+  "delta": 0.999,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0012900450865548363,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.5,
+  "status": "PURE",
+  "method": "pure",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.5621495360206219,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.7,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.38700935042887075,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.8,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.3062844665660829,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.82,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 5.551115123125783e-17,
+  "dV": 0.0,
+  "vspread": 0.22487970444909067,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.84,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.2085300275416212,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.86,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.19118426499604024,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.88,
+  "status": "MIXED_NONUNIQUE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.17251107009071676,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.9,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.10234634856009794,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.92,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.08585480712164173,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.94,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.06758749413248766,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.95,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.057727385639897544,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.96,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.047347101642558065,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.97,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.03641719824397294,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.98,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.024905966632532417,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.99,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.012779211031010096,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.995,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.006473584927221054,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.997,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.003904586503040708,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurndeusa",
+  "trio": "eurndeusa",
+  "payoffs": "ours",
+  "delta": 0.999,
+  "status": "PURE",
+  "method": "support+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0013083950692689417,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.5,
+  "status": "PURE",
+  "method": "pure",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.4794295800871473,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.7,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.3085200166958266,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.8,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.22306523500016628,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.82,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.20597427866103413,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.84,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.18888332232190208,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.86,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.17179236598277015,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.88,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.17709500720884164,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.9,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 2.220446049250313e-16,
+  "vspread": 0.15843259663804599,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.92,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.13781491557074377,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.94,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.6653345369377348e-16,
+  "dV": 0.0,
+  "vspread": 0.07390216226470925,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.95,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.06370994181943335,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.96,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.05297305055837309,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.97,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 2.220446049250313e-16,
+  "dV": 0.0,
+  "vspread": 0.032325870321175953,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.98,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.023553954348134787,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.99,
+  "status": "MIXED",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.01773683279896343,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.995,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.00900634307189807,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.997,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.005437411119491697,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_eurrususa",
+  "trio": "eurrususa",
+  "payoffs": "ours",
+  "delta": 0.999,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.0018237696746614684,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.5,
+  "status": "PURE",
+  "method": "pure",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.4924463146048496,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.7,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.292068630335092,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.8,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.19309377335300526,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.82,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.17344162373926963,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.84,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.1538471798963138,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.86,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.13431585174014926,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.88,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.11485374724046515,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.9,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.09546778876290973,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.92,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.07616585348218552,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.94,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.05695694388366801,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.95,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.047390545045311705,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.96,
+  "status": "PURE",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.037851396154268135,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.97,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.0544864545904622,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.98,
+  "status": "PURE",
+  "method": "pure+followed",
+  "dP": 0.0,
+  "dV": 0.0,
+  "vspread": 0.04761835631325817,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.995,
+  "status": "MIXED_NONUNIQUE",
+  "method": "homotopy",
+  "dP": 1.1102230246251565e-16,
+  "dV": 3.552713678800501e-15,
+  "vspread": 0.027175304195398153,
+  "verdicts": {
+   "1e-12": false,
+   "1e-10": true
+  },
+  "first_fail": "The value functions V are:\n                 NDE      RUS      USA\n( )         0.936111 0.811323 0.690245\n(NDERUS)    0.956948 0.807267 0.714069\n(NDEUSA)    0.974944 0.786926 0.690245\n(RUSUSA)    0.931394 0.814101 0.690092\n(NDERUSUSA) 0.964156 0.811323 0.720692\n\nProposal strategy error with player NDE! In state ( ), positive probability on state(s) ['(NDEUSA)', '(NDERUSUSA)'], but the argmax states are: ['(NDEUSA)']."
+ },
+ {
+  "example": "kalkuhl_nderususa",
+  "trio": "nderususa",
+  "payoffs": "ours",
+  "delta": 0.997,
+  "status": "MIXED",
+  "method": "homotopy+followed",
+  "dP": 1.1102230246251565e-16,
+  "dV": 0.0,
+  "vspread": 0.010351385197981622,
+  "verdicts": {
+   "1e-12": true,
+   "1e-10": true
+  },
+  "first_fail": ""
+ }
+]

@@ -28,6 +28,7 @@ from lib.equilibrium.scenarios import get_scenario, list_scenarios
 from lib.equilibrium.mip_vfi import solve_with_mip_vfi
 from lib.equilibrium.merit_descent import solve_with_merit_descent
 from lib.equilibrium.jeres_vfi import solve_with_jeres_vfi
+from lib.equilibrium.smpe import solve_with_smpe
 from lib.equilibrium.excel_writer import (
     write_strategy_table_excel,
     generate_filename,
@@ -1314,10 +1315,16 @@ def find_equilibrium(config, output_file=None, solver_params=None, verbose=True,
             logger.info("Using merit-descent solver (continuous merit + plateau-aware search).")
             logger.info("")
         found_strategy_df, solver_result = solve_with_merit_descent(solver, solver_params)
+    elif selected_solver_approach == "smpe":
+        if verbose:
+            logger.info("Using Jere's SMPE solver (policy iteration + logit homotopy, "
+                        "committees from the framework effectivity).")
+            logger.info("")
+        found_strategy_df, solver_result = solve_with_smpe(solver, solver_params)
     else:
         raise ValueError(
             f"Unknown solver_approach='{selected_solver_approach}'. "
-            "Expected one of: annealing, support_enumeration, active_set, ordinal_ranking, mip_vfi, jeres_vfi, merit_descent."
+            "Expected one of: annealing, support_enumeration, active_set, ordinal_ranking, mip_vfi, jeres_vfi, merit_descent, smpe."
         )
 
     # Stamp the solver approach into solver_result so _build_metadata can record it.
@@ -2020,7 +2027,7 @@ Available scenarios (use --list-scenarios to see all):
     parser.add_argument(
         '--solver-approach',
         type=str,
-        choices=['annealing', 'support_enumeration', 'active_set', 'ordinal_ranking', 'mip_vfi', 'jeres_vfi', 'merit_descent'],
+        choices=['annealing', 'support_enumeration', 'active_set', 'ordinal_ranking', 'mip_vfi', 'jeres_vfi', 'merit_descent', 'smpe'],
         default='annealing',
         help=(
             "Solver approach to use: 'annealing' for the legacy smoothed solver, "
@@ -2029,7 +2036,8 @@ Available scenarios (use --list-scenarios to see all):
             "'ordinal_ranking' for exhaustive search over ordinal value orders, "
             "'mip_vfi' for the framework's VFI + per-state MIP solver, "
             "'jeres_vfi' for Jere's original MIP-VFI (ported, multi-start), "
-            "'merit_descent' for plateau-aware descent on the continuous merit M(sigma)."
+            "'merit_descent' for plateau-aware descent on the continuous merit M(sigma), "
+            "'smpe' for Jere's policy-iteration + logit-homotopy solver (finds mixed equilibria)."
         )
     )
     parser.add_argument(
@@ -2161,6 +2169,21 @@ Available scenarios (use --list-scenarios to see all):
         '--jeres-single',
         action='store_true',
         help='Single VFI run from payoff init instead of multi-start (jeres_vfi only).'
+    )
+    parser.add_argument(
+        '--smpe-budget',
+        type=float,
+        default=None,
+        help='Seconds per homotopy solve for solver_approach=smpe (default: 15).'
+    )
+    parser.add_argument(
+        '--smpe-anchor-deltas',
+        type=float,
+        nargs='+',
+        default=None,
+        help=('For solver_approach=smpe: also solve at these discount factors and '
+              'carry equilibria to the target delta by continuation (branch '
+              'following + gap filling). Without it, the target delta is solved alone.')
     )
     parser.add_argument(
         '--merit-restarts',
@@ -2372,6 +2395,10 @@ Available scenarios (use --list-scenarios to see all):
         solver_params['jeres_vfi_cycle_window'] = args.jeres_cycle_window
     if args.jeres_single:
         solver_params['jeres_vfi_single'] = True
+    if args.smpe_budget is not None:
+        solver_params['smpe_budget'] = args.smpe_budget
+    if args.smpe_anchor_deltas is not None:
+        solver_params['smpe_anchor_deltas'] = list(args.smpe_anchor_deltas)
     if args.merit_restarts is not None:
         solver_params['merit_restarts'] = args.merit_restarts
     if args.merit_walk is not None:
