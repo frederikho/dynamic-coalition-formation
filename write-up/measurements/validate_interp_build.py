@@ -15,7 +15,7 @@ import numpy as np, sympy as sp, flint
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from scripts.mixed_merit_probe import build_manifold_setup
-from scripts.residual_metric_probe import value_of_strategy, empty_strategy_df
+from lib.equilibrium.residual_metric import value_of_strategy, empty_strategy_df
 from scripts.certified_label_solver import CertifiedLabelSolver
 from lib.utils import verify_equilibrium
 

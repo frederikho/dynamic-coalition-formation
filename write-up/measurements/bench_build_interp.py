@@ -23,8 +23,8 @@ import flint
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from scripts.residual_metric_probe import build_setup
-from scripts._reduced_helpers import _generate_weak_orders
+from lib.equilibrium.residual_metric import build_setup
+from lib.equilibrium.reduced_weak_helpers import _generate_weak_orders
 from scripts.certified_label_solver import CertifiedLabelSolver
 
 setup = build_setup("power_threshold_RICE_n3",
