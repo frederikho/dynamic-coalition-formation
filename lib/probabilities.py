@@ -209,8 +209,8 @@ class TransitionProbabilities:
                     else:
                         # Approval committee with multiple members (>=2).
                         # Handle arbitrary committee sizes (not only 2).
-                        current_members = list_members(current_state)
-                        next_members = list_members(next_state)
+                        current_members = list_members(current_state, self.players)
+                        next_members = list_members(next_state, self.players)
 
                         new_members = [country for country in next_members
                                        if country not in current_members]

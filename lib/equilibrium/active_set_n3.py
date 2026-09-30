@@ -12,6 +12,8 @@ import pandas as pd
 
 from lib.equilibrium.solver import EquilibriumSolver
 from lib.utils import get_approval_committee
+from lib.equilibrium.ordinal_ranking.weak_equality import _solve_weak_equalities
+from lib.equilibrium.ordinal_ranking.numba_loops import _NUMBA_AVAILABLE
 
 
 @dataclass
@@ -844,6 +846,199 @@ def _expand_active_sets_from_violation(
     return False
 
 
+def _build_committee_idxs(solver: EquilibriumSolver) -> List[List[List[tuple]]]:
+    """Build the committee_idxs structure required by the weak-equality solver."""
+    player_idx_map = {p: i for i, p in enumerate(solver.players)}
+    committee_idxs: List[List[List[tuple]]] = []
+    for proposer in solver.players:
+        proposer_rows: List[List[tuple]] = []
+        for current_state in solver.states:
+            row: List[tuple] = []
+            for next_state in solver.states:
+                committee = get_approval_committee(
+                    solver.effectivity, solver.players,
+                    proposer, current_state, next_state,
+                )
+                row.append(tuple(player_idx_map[p] for p in committee))
+            proposer_rows.append(row)
+        committee_idxs.append(proposer_rows)
+    return committee_idxs
+
+
+def _build_numba_comm_arrays(
+    committee_idxs: List[List[List[tuple]]],
+    n_players: int,
+    n_states: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Build the dense comm_arr / comm_size arrays needed by Numba kernels."""
+    max_k = 0
+    for p_rows in committee_idxs:
+        for c_row in p_rows:
+            for comm in c_row:
+                if len(comm) > max_k:
+                    max_k = len(comm)
+    max_k = max(max_k, 1)
+    comm_arr = np.full((n_players, n_states, n_states, max_k), -1, dtype=np.int8)
+    comm_size = np.zeros((n_players, n_states, n_states), dtype=np.int8)
+    for pi in range(n_players):
+        for ci in range(n_states):
+            for ni in range(n_states):
+                comm = committee_idxs[pi][ci][ni]
+                comm_size[pi, ci, ni] = len(comm)
+                for k, ai in enumerate(comm):
+                    comm_arr[pi, ci, ni, k] = ai
+    return comm_arr, comm_size
+
+
+def _tiers_from_V_array(
+    V_array: np.ndarray,  # shape (n_states, n_players)
+    atol: float,
+) -> Tuple[np.ndarray, ...]:
+    """Derive per-player weak-order tier arrays from a value-function matrix.
+
+    Tier 0 = most preferred (highest V). States whose V values differ by
+    at most *atol* receive the same tier number, so they appear indifferent
+    to that player under the induced weak order.
+    """
+    n_states, n_players = V_array.shape
+    tiers = []
+    for pi in range(n_players):
+        v = V_array[:, pi]
+        order = np.argsort(-v)          # descending: best state first
+        tier_arr = np.zeros(n_states, dtype=np.int8)
+        current_tier = 0
+        for k in range(n_states):
+            si = order[k]
+            if k > 0:
+                prev_si = order[k - 1]
+                if abs(float(v[si]) - float(v[prev_si])) > atol:
+                    current_tier += 1
+            tier_arr[si] = current_tier
+        tiers.append(tier_arr)
+    return tuple(tiers)
+
+
+def _try_weak_equality_from_cycle(
+    solver: EquilibriumSolver,
+    cycle_info: Dict[str, Any],
+    atol_values: List[float] | None = None,
+    max_vars: int | None = 100,
+) -> Tuple[pd.DataFrame, Dict[str, Any]] | None:
+    """After cycle detection, try to find an equilibrium via weak-equality Newton solve.
+
+    Tries multiple V candidates derived from all cycle frames plus the
+    element-wise average across frames.  For each V candidate, multiple
+    atol thresholds are tried to discover which states appear indifferent to
+    each player.  Returns (strategy_df, result_dict) on the first successful
+    solve, or None if every attempt fails.
+
+    This handles the common failure mode of the binary active-set search:
+    equilibria that require mixed approval probabilities at exact V-tie points.
+    The equilibrium V (fixed point) often does not match any single cycle frame,
+    so trying all frames plus their average substantially widens coverage.
+
+    When Numba is available the solver uses fast JIT-compiled Newton iterations;
+    otherwise it falls back to scipy root-finding, which is why max_vars is kept
+    small (100) — beyond that, scipy becomes prohibitively slow.
+    """
+    if atol_values is None:
+        atol_values = [0.0, 1e-6, 1e-3, 1e-2, 0.1]
+
+    players = solver.players
+    states = solver.states
+    n_players = len(players)
+
+    proposal_keys, acceptance_keys = _get_strategy_key_orders(solver)
+
+    protocol_arr = np.array([float(solver.protocol[p]) for p in players], dtype=np.float64)
+    payoff_array = solver.payoffs.loc[states, players].to_numpy(dtype=np.float64)
+    player_idx = {p: i for i, p in enumerate(players)}
+    state_idx = {s: i for i, s in enumerate(states)}
+    committee_idxs = _build_committee_idxs(solver)
+
+    # Build Numba arrays once — enables fast JIT Newton path inside _solve_weak_equalities.
+    comm_arr, comm_size = _build_numba_comm_arrays(committee_idxs, n_players, len(states))
+
+    cycle_arrays = cycle_info["cycle_arrays"]
+
+    # Compute V for each cycle frame.
+    V_candidates: List[Tuple[np.ndarray, str]] = []
+    V_sum: np.ndarray | None = None
+    for frame_idx, (p_arr, r_arr) in enumerate(cycle_arrays):
+        _set_strategy_from_arrays(
+            solver, p_arr.copy(), r_arr.copy(), proposal_keys, acceptance_keys,
+        )
+        P, _, _ = solver._compute_transition_probabilities_fast()
+        V = solver._solve_value_functions(P)
+        V_arr = V.loc[states, players].to_numpy(dtype=np.float64)
+        V_candidates.append((V_arr, f"frame_{frame_idx}"))
+        if V_sum is None:
+            V_sum = V_arr.copy()
+        else:
+            V_sum = V_sum + V_arr
+
+    # Add the average V across all frames as an additional candidate.
+    if V_sum is not None and len(cycle_arrays) > 1:
+        V_candidates.append((V_sum / len(cycle_arrays), "avg"))
+
+    seen_tier_keys: set = set()
+    for V_array, _label in V_candidates:
+        for atol in atol_values:
+            tiers = _tiers_from_V_array(V_array, atol=atol)
+            # Deduplicate: skip if this tier pattern was already tried.
+            tier_key = tuple(t.tobytes() for t in tiers)
+            if tier_key in seen_tier_keys:
+                continue
+            seen_tier_keys.add(tier_key)
+
+            # _numba_tiers: shape (n_players, n_states), stacked from the tuple.
+            numba_tiers = np.stack(tiers).astype(np.int8) if _NUMBA_AVAILABLE else None
+            result = _solve_weak_equalities(
+                players=players,
+                states=states,
+                payoffs=solver.payoffs,
+                protocol=solver.protocol,
+                discounting=solver.discounting,
+                unanimity_required=solver.unanimity_required,
+                effectivity=solver.effectivity,
+                power_rule=solver.power_rule,
+                tiers=tiers,
+                committee_idxs=committee_idxs,
+                max_vars=max_vars,
+                use_newton=True,
+                use_broyden=False,
+                player_idx=player_idx,
+                state_idx=state_idx,
+                _precomputed_payoff_array=payoff_array,
+                _precomputed_protocol_arr=protocol_arr,
+                _numba_comm_arr=comm_arr if _NUMBA_AVAILABLE else None,
+                _numba_comm_size=comm_size if _NUMBA_AVAILABLE else None,
+                _numba_tiers=numba_tiers,
+                geo_levels=solver.geo_levels,
+            )
+            if result is not None and result.get("verification_success"):
+                strategy_df = result.get("strategy_df")
+                if strategy_df is not None:
+                    diagnostics_dict = {
+                        "cycle_period": cycle_info.get("cycle_period"),
+                        "unstable_rows": len(cycle_info.get("row_support_options", {})),
+                        "unstable_approvals": len(cycle_info.get("approval_options", {})),
+                        "candidate_combinations": 0,
+                        "accepted_candidate": None,
+                        "expansion_rounds": 0,
+                        "weak_equality_atol": atol,
+                    }
+                    return strategy_df, {
+                        "converged": True,
+                        "stopping_reason": "active_set_weak_equality",
+                        "outer_iterations": 0,
+                        "active_set": diagnostics_dict,
+                        "verification_message": result.get("verification_message", ""),
+                    }
+
+    return None
+
+
 def solve_with_active_set_n3(
     solver: EquilibriumSolver,
     max_candidates: int = 1024,
@@ -912,47 +1107,21 @@ def solve_with_active_set_n3(
         _record_seeded_row_supports(diagnostics, row_items)
         approval_items: List[Tuple[tuple, List[float]]] = []
 
-        max_expansion_rounds = 3
-        for expansion_round in range(max_expansion_rounds + 1):
-            diagnostics.expansion_rounds = expansion_round
-            strategy_df, result, detail = _enumerate_active_candidates(
-                solver=solver,
-                row_items=row_items,
-                approval_items=approval_items,
-                base_p=base_p,
-                base_r=base_r,
-                proposal_keys=proposal_keys,
-                acceptance_keys=acceptance_keys,
-                refinement_iter=refinement_iter,
-                max_candidates=max_candidates,
-                max_candidates_per_round=max_candidates_per_round,
-                diagnostics=diagnostics,
-                freeze_seeded_proposals=freeze_seeded_proposals,
-            )
-            if result["converged"] or result["stopping_reason"] in {"active_set_too_many_candidates", "active_set_round_budget_exhausted"}:
-                return strategy_df, result
-
-            expanded = _expand_active_sets_from_violation(
-                solver=solver,
-                strategy_df=strategy_df,
-                row_items=row_items,
-                approval_items=approval_items,
-                violation=detail or {},
-            )
-            if diagnostics.round_history:
-                diagnostics.round_history[-1]["post_round_action"] = "expanded" if expanded else "stalled"
-                diagnostics.round_history[-1]["post_round_violation"] = detail
-            if solver.verbose:
-                action = "expanded" if expanded else "stalled"
-                solver._log(
-                    f"Active-set {action} after round {expansion_round}: "
-                    f"{_format_violation_short(detail)}"
-                )
-            if not expanded:
-                return strategy_df, result
-
-        result["stopping_reason"] = "active_set_expansion_failed"
-        result["active_set"] = diagnostics.__dict__
+        diagnostics.expansion_rounds = 0
+        strategy_df, result, _detail = _enumerate_active_candidates(
+            solver=solver,
+            row_items=row_items,
+            approval_items=approval_items,
+            base_p=base_p,
+            base_r=base_r,
+            proposal_keys=proposal_keys,
+            acceptance_keys=acceptance_keys,
+            refinement_iter=refinement_iter,
+            max_candidates=max_candidates,
+            max_candidates_per_round=max_candidates_per_round,
+            diagnostics=diagnostics,
+            freeze_seeded_proposals=freeze_seeded_proposals,
+        )
         return strategy_df, result
 
     diagnostics = ActiveSetDiagnostics(
@@ -971,6 +1140,14 @@ def solve_with_active_set_n3(
             f"rows={len(cycle_info['row_support_options'])}, "
             f"approvals={len(cycle_info['approval_options'])}"
         )
+
+    # Before binary enumeration: try weak-equality Newton solve.
+    # Many equilibria (especially with near-identical payoffs) require mixed
+    # approval probabilities at V-tie points — something binary search can
+    # never find.  If this succeeds we skip the enumeration entirely.
+    weak_eq_result = _try_weak_equality_from_cycle(solver, cycle_info)
+    if weak_eq_result is not None:
+        return weak_eq_result
 
     proposal_keys, acceptance_keys = _get_strategy_key_orders(solver)
     base_p, base_r = cycle_info["cycle_arrays"][-1]
@@ -1026,45 +1203,19 @@ def solve_with_active_set_n3(
         max_candidates=max_candidates,
     )
 
-    max_expansion_rounds = 3
-    for expansion_round in range(max_expansion_rounds + 1):
-        diagnostics.expansion_rounds = expansion_round
-        strategy_df, result, detail = _enumerate_active_candidates(
-            solver=solver,
-            row_items=row_items,
-            approval_items=approval_items,
-            base_p=base_p,
-            base_r=base_r,
-            proposal_keys=proposal_keys,
-            acceptance_keys=acceptance_keys,
-            refinement_iter=refinement_iter,
-            max_candidates=max_candidates,
-            max_candidates_per_round=max_candidates_per_round,
-            diagnostics=diagnostics,
-            freeze_seeded_proposals=freeze_seeded_proposals,
-        )
-        if result["converged"] or result["stopping_reason"] in {"active_set_too_many_candidates", "active_set_round_budget_exhausted"}:
-            return strategy_df, result
-
-        expanded = _expand_active_sets_from_violation(
-            solver=solver,
-            strategy_df=strategy_df,
-            row_items=row_items,
-            approval_items=approval_items,
-            violation=detail or {},
-        )
-        if diagnostics.round_history:
-            diagnostics.round_history[-1]["post_round_action"] = "expanded" if expanded else "stalled"
-            diagnostics.round_history[-1]["post_round_violation"] = detail
-        if solver.verbose:
-            action = "expanded" if expanded else "stalled"
-            solver._log(
-                f"Active-set {action} after round {expansion_round}: "
-                f"{_format_violation_short(detail)}"
-            )
-        if not expanded:
-            return strategy_df, result
-
-    result["stopping_reason"] = "active_set_expansion_failed"
-    result["active_set"] = diagnostics.__dict__
+    diagnostics.expansion_rounds = 0
+    strategy_df, result, _detail = _enumerate_active_candidates(
+        solver=solver,
+        row_items=row_items,
+        approval_items=approval_items,
+        base_p=base_p,
+        base_r=base_r,
+        proposal_keys=proposal_keys,
+        acceptance_keys=acceptance_keys,
+        refinement_iter=refinement_iter,
+        max_candidates=max_candidates,
+        max_candidates_per_round=max_candidates_per_round,
+        diagnostics=diagnostics,
+        freeze_seeded_proposals=freeze_seeded_proposals,
+    )
     return strategy_df, result

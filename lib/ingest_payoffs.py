@@ -255,9 +255,12 @@ def compute_welfare_sums(
 
     When average=True, returns the mean across matched periods instead of the sum.
 
+    Bloc codes (e.g. 'eur') are expanded to their constituent GAMS regions and
+    their welfare is summed across all members.
+
     Args:
         gdx_path:     Path to the GDX file.
-        region_codes: List of lowercase GAMS region codes (e.g. ['nde', 'usa', 'chn']).
+        region_codes: List of lowercase GAMS region codes or bloc codes (e.g. ['nde', 'usa', 'eur']).
         start_year:   First year to include (None = no lower bound).
         end_year:     Last year bound.
         average:      If True, divide by the number of matched periods.
@@ -265,8 +268,16 @@ def compute_welfare_sums(
     Returns:
         Dict mapping region code (lowercase) → aggregated welfare float.
     """
+    from lib.rice50x_regions import RICE50X_BLOC_MEMBERS
+
     year_map = parse_gdx_parameter(gdx_path, YEAR_SYMBOL)
     welfare_by_region_period = parse_gdx_parameter_2d(gdx_path, WELFARE_SYMBOL)
+
+    # Expand bloc codes to their constituent GAMS region codes.
+    # Each entry maps the original requested code → list of GDX codes to sum.
+    def _gdx_codes(code: str) -> list[str]:
+        members = RICE50X_BLOC_MEMBERS.get(code.lower())
+        return members if members is not None else [code.lower()]
 
     totals: dict[str, float] = {code.lower(): 0.0 for code in region_codes}
     count = 0
@@ -279,8 +290,9 @@ def compute_welfare_sums(
         ):
             count += 1
             for code in region_codes:
-                key = (period_key.lower(), code.lower())
-                totals[code.lower()] += welfare_by_region_period.get(key, 0.0)
+                for gdx_code in _gdx_codes(code):
+                    key = (period_key.lower(), gdx_code.lower())
+                    totals[code.lower()] += welfare_by_region_period.get(key, 0.0)
     if average and count > 0:
         for code in region_codes:
             totals[code.lower()] /= count
@@ -858,6 +870,21 @@ def main() -> None:
             "e.g. 'nde:IND,usa:USA,rus:RUS' (default: nde:IND,usa:USA,rus:RUS)"
         ),
     )
+    parser.add_argument(
+        "--average",
+        action="store_true",
+        default=False,
+        help="Average payoffs per period instead of summing them.",
+    )
+    parser.add_argument(
+        "--stem-prefix",
+        default=None,
+        help=(
+            "Only consider GDX files whose stem starts with this prefix "
+            "(e.g. 'results_ssp2_bau_impact_kalkuhl'). "
+            "Filters out unrelated files in mixed directories."
+        ),
+    )
     args = parser.parse_args()
 
     # Parse --year-range: either 'YYYY' or 'YYYY-YYYY'
@@ -876,7 +903,7 @@ def main() -> None:
             code, display = part.strip().split(":")
             players.append((code.strip(), display.strip()))
     else:
-        players = DEFAULT_PLAYERS
+        players = None  # auto-detect from GDX filenames
 
     output = Path(args.output)
     if not output.suffix:
@@ -890,6 +917,8 @@ def main() -> None:
         players=players,
         start_year=start_year,
         end_year=end_year,
+        average=args.average,
+        required_stem_prefix=args.stem_prefix,
     )
 
 

@@ -614,6 +614,6 @@ Do not assume warm success carries over.
   preprocessed tables. Solving is unit-invariant; reporting is not.
 - The n=3 setting is equal power (1/3 each) with `min_power` 0.501 -- deliberately
   closer to the 2021 paper than GDP-weighted power, which does not add much at n=3.
-- Never use git commands, that's entirely controlled by the user. 
+- Never use mutating git commands like git add or git commit, that's entirely controlled by the user. 
 - I am running /viz using npm run dev, so no rebuild is necessary after changes, is done automatically. When do you changes to the viz/service_viz.py, you will need to restart though. 
 - Activate the environment .venv before running code. If not you will get errors such as ModuleNotFound.

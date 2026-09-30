@@ -40,13 +40,12 @@ class State:
         """
         Returns the coalition that, according to self.power_rule,
         gets to implement geoengineering.
-
-        Note: we assume that the strongest_coalition is unique.
         """
         if self.power_rule == "power_threshold":
             # Coalition with the highest share of the world power
-            # gets to implement geoengineering, if minimum threshold is met.
-            def sort_key(coalition): return coalition.total_power
+            # gets to implement geoengineering. If powers are tied,
+            # the one with the highest preferred G-level (free-driver) wins.
+            def sort_key(coalition): return (coalition.total_power, coalition.avg_ideal_G)
         elif self.power_rule == "weak_governance":
             # Free-driver case: Coalition with the highest average ideal
             # geoengineering level gets to deploy.
@@ -65,8 +64,9 @@ class State:
     @property
     def geo_deployment_level(self) -> float:
         """Geoengineering deployment chosen by the strongest coalition."""
-        winner_power = self.strongest_coalition.total_power
-        G = self.strongest_coalition.avg_ideal_G
+        winner = self.strongest_coalition
+        winner_power = winner.total_power
+        G = winner.avg_ideal_G
 
         if self.power_rule == "power_threshold":
             assert self.min_power is not None, ("Minimum power threshold "
@@ -76,25 +76,21 @@ class State:
             if winner_power < self.min_power:
                 G = 0.
 
-            # If in the minimum power threshold scenario the geoengineering
-            # deployment is positive, check that there is a unique coalition
-            # with the highest share of global power. This is not required in
-            # general, but simplifies things in the three-country model
-            # considered in this paper.
+            # If multiple coalitions exceed the threshold and have tied power,
+            # the strongest_coalition property has already resolved this via 
+            # G-level tie-breaking. We only raise an error if both power AND 
+            # G-level are tied between different coalitions.
             else:
-                tied = self.coalition_powers.count(winner_power)
-                if tied > 1:
-                    raise ValueError(
-                        f"State '{self.name}' has {tied} coalitions tied at power "
-                        f"{winner_power:.4f}, all exceeding min_power={self.min_power}. "
-                        "The model requires a unique strongest coalition. "
-                        "Adjust min_power so that at most one coalition can exceed the threshold "
-                        "(e.g. use min_power=0.501 with equal power shares of 0.25 so that "
-                        "only 3+-member coalitions qualify)."
-                    )
-
-                assert all(i <= winner_power for i in self.coalition_powers), \
-                    "Incorrect winner assignment"
+                for coal in self.coalitions:
+                    if coal is winner:
+                        continue
+                    if (np.isclose(coal.total_power, winner_power, atol=1e-9) and 
+                        np.isclose(coal.avg_ideal_G, G, atol=1e-9)):
+                        raise ValueError(
+                            f"State '{self.name}' has multiple coalitions tied for both "
+                            f"power ({winner_power:.4f}) and G-level ({G:.4f}). "
+                            "Deployment is ambiguous."
+                        )
 
         return G
 

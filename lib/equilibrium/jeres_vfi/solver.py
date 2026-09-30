@@ -313,8 +313,45 @@ def _freed_alphas(game: Game, V: np.ndarray) -> list:
     return sorted(set(out))
 
 
+def _merit_vector(game, sigmas, alphas, qs, V, knobs, committee_of):
+    """Indifference at the knobs plus the inequality violations everywhere else.
+
+    Mirrors lib.equilibrium.mixed_controls.merit_vector; kept local so the solver has
+    no dependency on the control-game helpers.  Components are signed so zero means
+    satisfied.
+    """
+    ns, npl = game.n_states, game.n_players
+    knobset = set(knobs)
+    out = [V[y, j] - V[x, j] for (x, y, j) in knobs]
+    for x in range(ns):
+        for i in range(npl):
+            for y in range(ns):
+                if y == x:
+                    continue
+                for j in committee_of(x, y, i):
+                    if (x, y, j) in knobset:
+                        continue
+                    a = alphas[x].get((j, y))
+                    if a is None:
+                        continue
+                    gap = V[y, j] - V[x, j]
+                    if a >= 1 - 1e-12:
+                        out.append(min(0.0, gap))
+                    elif a <= 1e-12:
+                        out.append(max(0.0, gap))
+            chosen = next((y for y in range(ns) if sigmas[x].get((i, y), 0.0) > 0.5), x)
+            hc = 0.0 if chosen == x else qs[x][(i, chosen)] * (V[chosen, i] - V[x, i])
+            for y in range(ns):
+                if y == chosen:
+                    continue
+                hy = 0.0 if y == x else qs[x][(i, y)] * (V[y, i] - V[x, i])
+                out.append(max(0.0, hy - hc))
+    return np.array(out, dtype=float)
+
+
 def _step_with_solved_alphas(game: Game, V: np.ndarray, proposer_probs, freed: list,
-                             verify_atol: float = EPS_IND):
+                             verify_atol: float = EPS_IND, max_starts: int = 5,
+                             max_dir_combos: int = 8):
     """A VFI step that SOLVES the freed acceptance probabilities.
 
     Ordinary _vfi_step takes whatever the MIP returns for a freed alpha -- a bound,
@@ -376,7 +413,13 @@ def _step_with_solved_alphas(game: Game, V: np.ndarray, proposer_probs, freed: l
     # 1. collect the reachable proposal patterns by sweeping theta
     rng = np.random.default_rng(0)
     probes = [np.full(n, 0.5)]
-    probes += [np.array(c, dtype=float) for c in itertools.product((0.0, 1.0), repeat=n)]
+    # Corner probes are 2^n; at M=10 the freed set holds 20 alphas, so this must be
+    # capped or it becomes a million evaluations.  Random draws cover the interior
+    # anyway -- the corners matter only because a tie-resting solution can sit on a
+    # bound.
+    probes += [np.array(c, dtype=float)
+               for c in itertools.islice(itertools.product((0.0, 1.0), repeat=n), 256)]
+    probes += [rng.uniform(0.0, 1.0, n) for _ in range(120)]
     probes += [rng.uniform(0.0, 1.0, n) for _ in range(60)]
     patterns = {}
     for th in probes:
@@ -410,48 +453,85 @@ def _step_with_solved_alphas(game: Game, V: np.ndarray, proposer_probs, freed: l
         p_ok, _ = verify_proposals(game, sigmas, alphas, qs, V_new, atol=verify_atol)
         return (sigmas, alphas, qs, T) if (r_ok and p_ok) else None
 
+    # For each proposal pattern, solve the FULL merit system over every freed alpha.
+    #
+    # Earlier versions enumerated which DIRECTION of each tie to free -- 2^(#ties),
+    # capped at 64 -- because freeing both made the bare indifference residual
+    # rank-deficient (the two directions give residuals that are negatives of one
+    # another) and stalled every root-find.  The merit objective removes that problem:
+    # it appends ~110 inequality components, so the system is heavily overdetermined
+    # and least-squares handles the redundancy directly.  Collapsing 64 combinations
+    # to 1 is what makes high M tractable here; the enumeration, not the solve, was
+    # the bottleneck.
+    # Which DIRECTION of each tie to free.  Both cannot be free at once: the merit
+    # then has no component demanding the unused direction take its sign-rule value,
+    # so the solver drifts to a different profile (measured: m8_00 fails that way).
+    # But the enumeration is 2^(#ties), so order it by liveness -- the direction some
+    # proposer actually proposes, hence the one that reaches V -- and cap it.  With the
+    # merit objective a handful of combinations suffice; the old bare-residual version
+    # needed 64 and still took 300 s on m8_00.
+    pairs = {}
+    for k, (x, y, j) in enumerate(freed):
+        pairs.setdefault((frozenset((x, y)), j), []).append(k)
+    pair_keys = sorted(pairs, key=lambda t: (sorted(t[0]), t[1]))
+
     for sigmas, th0 in patterns.values():
-        for choice in itertools.product(*[range(len(pairs[k])) for k in pair_keys]):
-            active = [pairs[k][c] for k, c in zip(pair_keys, choice)]
+        def attempt(theta):
+            alphas = alphas_at(theta)
+            qs = _rebuild_qs(game, alphas)
+            T = full_transition_matrix(game, sigmas, qs, rho)
+            V_new = compute_values(game, T, delta)
+            r_ok, _ = verify_responses(game, sigmas, alphas, qs, V_new, atol=verify_atol)
+            p_ok, _ = verify_proposals(game, sigmas, alphas, qs, V_new, atol=verify_atol)
+            return (sigmas, alphas, qs, T) if (r_ok and p_ok) else None
+
+        for cand in (th0, np.full(n, 0.5)):
+            got = attempt(cand)
+            if got is not None:
+                return got
+
+        per_pair = []
+        for k in pair_keys:
+            opts = pairs[k]
+            live = [idx for idx in opts
+                    if any(freed[idx][2] in _committee(game, freed[idx][0], freed[idx][1], i)
+                           and sigmas[freed[idx][0]].get((i, freed[idx][1]), 0.0) > 0.0
+                           for i in range(game.n_players))]
+            per_pair.append(live + [o for o in opts if o not in live])
+
+        for choice in itertools.islice(itertools.product(*per_pair), max_dir_combos):
+            active = list(choice)
             m = len(active)
             if m == 0:
                 continue
 
             def embed(t_active):
-                # inactive directions keep the sign rule's value (0 at a tie)
                 th = np.zeros(n)
                 for idx, val in zip(active, t_active):
                     th[idx] = float(np.clip(val, 0.0, 1.0))
                 return th
 
-            def residual(t_active, _sig=sigmas, _act=active):
+            def merit(t_active, _sig=sigmas, _act=active):
                 th = embed(t_active)
-                qs = _rebuild_qs(game, alphas_at(th))
+                alphas = alphas_at(th)
+                qs = _rebuild_qs(game, alphas)
                 V_new = compute_values(
                     game, full_transition_matrix(game, _sig, qs, rho), delta)
-                return np.array([V_new[freed[k][1], freed[k][2]]
-                                 - V_new[freed[k][0], freed[k][2]] for k in _act])
+                knobs = [tuple(freed[k]) for k in _act]
+                return _merit_vector(game, _sig, alphas, qs, V_new, knobs,
+                                     lambda x, y, i: _committee(game, x, y, i))
 
-            if m == 1:
-                # One mixer's own indifference is flat in their own probability, so the
-                # residual carries no information -- the standalone scans here too.
-                for t in np.linspace(0.0, 1.0, 401):
-                    got = attempt(sigmas, embed([t]))
-                    if got is not None:
-                        return got
-            else:
-                for z0 in ([np.full(m, 0.5)]
-                           + [rng.uniform(0.0, 1.0, m) for _ in range(11)]):
-                    try:
-                        sol = least_squares(residual, np.clip(z0, 1e-9, 1 - 1e-9),
-                                            bounds=(np.zeros(m), np.ones(m)),
-                                            method="trf", xtol=1e-15, ftol=1e-15,
-                                            gtol=1e-15, max_nfev=1000)
-                    except Exception:
-                        continue
-                    got = attempt(sigmas, embed(sol.x))
-                    if got is not None:
-                        return got
+            for _ in range(max_starts):
+                z0 = rng.uniform(0.02, 0.98, m)
+                try:
+                    sol = least_squares(merit, z0, bounds=(np.zeros(m), np.ones(m)),
+                                        method="trf", xtol=1e-13, ftol=1e-13,
+                                        gtol=1e-13, max_nfev=400)
+                except Exception:
+                    continue
+                got = attempt(embed(sol.x))
+                if got is not None:
+                    return got
     return None
 
 
@@ -737,7 +817,8 @@ def _solve_indifference(game: Game, knobs: list, sigmas0: list, alphas0: list,
 def _try_indifference_solve(game, V_cycle, sigmas_cycle, alphas_cycle,
                             delta, proposer_probs, verify_atol, verbose,
                             max_support: int = 3, max_candidates: int = 8,
-                            outer_passes: int = 12, budget=None):
+                            outer_passes: int = 12, budget=None,
+                            max_starts: int = 40):
     """
     Search small mixed supports, solving the indifference system on each.
 

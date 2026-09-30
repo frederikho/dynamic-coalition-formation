@@ -19,9 +19,9 @@ class Coalition:
 
         Equals the sum of all members' individual powers.
         """
-        power = np.sum([country.power for country in self.members])
-        assert 0. <= power <= 1., "Coalition's total power must be in [0,1]."
-        return power
+        power = float(np.sum([country.power for country in self.members]))
+        assert -1e-9 <= power <= 1. + 1e-9, "Coalition's total power must be in [0,1]."
+        return min(max(power, 0.0), 1.0)
 
     @property
     def avg_ideal_G(self) -> float:

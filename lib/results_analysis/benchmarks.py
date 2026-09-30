@@ -398,6 +398,57 @@ def internal_external_stability(game: PayoffGame) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("state")
 
 
+def ricke_winning_coalitions(
+    game: PayoffGame, min_power: float, power: Dict[str, float]
+) -> pd.DataFrame:
+    """Ricke, Moreno-Cruz & Caldeira (2013)'s static exclusion-game benchmark.
+
+    Ricke et al. model coalition formation as a one-shot "exclusion game": a
+    coalition needs a majority power share to deploy, and is "stable" if "no
+    member has an incentive to leave the coalition for another" (their section
+    2.1). A "winning coalition" is a stable majority coalition, which they
+    assert is unique "by definition."
+
+    In their game only one coalition ever acts, so a member who leaves has
+    nowhere to go but non-member (outsider) status -- their stability test is
+    this framework's own narrow ``internal`` stability (the leaver stands
+    alone), gated by the majority-power requirement. This function reuses that
+    exact narrow-deviation logic from :func:`internal_external_stability`
+    rather than redefining it, so the two benchmarks cannot drift apart.
+
+    Args:
+        game: The payoff game.
+        min_power: The majority-power threshold a coalition's combined power
+            must exceed (matches this framework's ``min_power`` convention:
+            the same rule usually used to decide who *can deploy*, reused here
+            for who *can be a Ricke-style winning coalition*).
+        power: Each player's power share.
+
+    Returns:
+        DataFrame indexed by state (over every single-coalition state in the
+        game, i.e. ``game.structure_of``), with boolean columns ``majority``
+        (combined power exceeds ``min_power``) and ``stable`` (no member wants
+        to leave to become a singleton). A state's Ricke "winning coalition"
+        status is ``majority & stable``; Ricke's uniqueness claim is falsified
+        whenever more than one state has both True.
+    """
+    narrow = internal_external_stability(game)
+
+    rows = []
+    for coalition, state in game.structure_of.items():
+        if len(coalition) < 2:
+            continue
+        p = sum(power.get(m, 0.0) for m in coalition)
+        rows.append({
+            "state": state,
+            "majority": p > min_power,
+            "stable": bool(narrow.loc[state, "internal"]) if state in narrow.index else False,
+            "power": p,
+        })
+
+    return pd.DataFrame(rows).set_index("state")
+
+
 def gamma_core(game: PayoffGame) -> Dict[str, object]:
     """Gamma-core analysis, in both no-transfer and transferable-utility form.
 

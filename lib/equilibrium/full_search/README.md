@@ -61,7 +61,7 @@ exact arithmetic. Target: **~100× speedup**. Decision: build the measurement ha
 projection first, then a FLINT `poly_build` spike to measure the real ceiling before choosing
 Python+FLINT vs a Julia (Nemo + Groebner.jl) rewrite. See `routes/README.md`.
 
-## Cross-package deps (still in `scripts/`, shared with older approaches)
+## Cross-package deps (in `lib/equilibrium/`, shared with older approaches)
 
-- `scripts.residual_metric_probe.build_setup`
-- `scripts._reduced_helpers._generate_weak_orders`
+- `lib.equilibrium.residual_metric.build_setup`
+- `lib.equilibrium.reduced_weak_helpers._generate_weak_orders`

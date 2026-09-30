@@ -364,6 +364,30 @@ SCENARIOS["power_threshold_RICE_n3"] = {
     "power_rule": "power_threshold",
 }
 
+# Discount-factor siblings of power_threshold_RICE_n3, identical in every other
+# respect. The n=3 benchmark batch sweeps delta over {0.9, 0.99, 0.999} to show
+# how the farsighted prediction moves between the myopic limit (delta -> 0, where
+# it collapses onto static stability) and the fully patient limit.
+SCENARIOS["power_threshold_RICE_n3_d90"] = {
+    **_base_rice(),
+    "scenario_description": (
+        "As power_threshold_RICE_n3 but delta = 0.90 (impatient). "
+        "Players inferred from --payoff-table filename."
+    ),
+    "power_rule": "power_threshold",
+    "discounting": 0.90,
+}
+
+SCENARIOS["power_threshold_RICE_n3_d999"] = {
+    **_base_rice(),
+    "scenario_description": (
+        "As power_threshold_RICE_n3 but delta = 0.999 (near-fully patient). "
+        "Players inferred from --payoff-table filename."
+    ),
+    "power_rule": "power_threshold",
+    "discounting": 0.999,
+}
+
 SCENARIOS["power_threshold_RICE_n3_unequal_protocol"] = {
     **_base_rice(),
     "scenario_description": (
