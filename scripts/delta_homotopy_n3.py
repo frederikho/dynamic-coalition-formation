@@ -58,12 +58,17 @@ def absorbing_states(profile: Path) -> list[str] | None:
 
 
 def run_one(trio: str, delta: float, atol: str, args) -> dict:
-    profile = PROFILE_DIR / f"{trio}_d{delta}_atol{atol}_s{args.seed}.xlsx"
+    profile = PROFILE_DIR / (
+        f"{trio}_d{delta}_atol{atol}_s{args.seed}"
+        + ("" if args.effectivity_rule == "heyen_lehtomaa_2021"
+           else f"_{args.effectivity_rule}")
+        + ".xlsx"
+    )
     cmd = [
         sys.executable, "-m", "lib.equilibrium.find", "power_threshold_RICE_n3",
         "--payoff-table", str(table_for(trio)),
         "--discounting", str(delta),
-        "--effectivity-rule", "heyen_lehtomaa_2021",
+        "--effectivity-rule", args.effectivity_rule,
         "--solver-approach", "jeres_vfi",
         "--jeres-n-restarts", str(args.restarts),
         "--jeres-seed", str(args.seed),
@@ -183,6 +188,9 @@ def main():
     ap.add_argument("--timeout", type=int, default=600)
     ap.add_argument("--workers", type=int, default=10)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--effectivity-rule", default="heyen_lehtomaa_2021",
+                    help="effectivity rule passed to the solver "
+                         "(e.g. adjacent_step)")
     ap.add_argument("--deltas", help="comma-separated delta grid, overrides the default")
     ap.add_argument("--trios", help="comma-separated trio subset, overrides the default")
     args = ap.parse_args()
@@ -208,6 +216,7 @@ def main():
             "deltas": DELTAS, "trios": TRIOS,
             "max_iter": args.max_iter, "restarts": args.restarts,
             "seed": args.seed,
+            "effectivity_rule": args.effectivity_rule,
             "timeout": args.timeout,
             "wall_seconds": round(time.time() - t0, 1), "rows": rows}
     path = OUT_DIR / f"{args.label}.json"

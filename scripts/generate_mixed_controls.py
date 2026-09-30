@@ -232,16 +232,18 @@ def build_one(rng, n_ties):
         V[y, j] = V[x, j]
     thetas = {t: float(rng.uniform(0.25, 0.75)) for t in ties}
 
+    # Rescale BEFORE deriving the profile.  profile_at picks proposals with an
+    # ABSOLUTE 1e-15 threshold, so applying the affine map afterwards can push a
+    # sub-threshold gain across it and leave the stored proposals inconsistent with
+    # the payoffs actually written out.  A positive affine map per player leaves the
+    # equilibrium set unchanged, so doing it first costs nothing.
+    scale = np.exp(rng.uniform(-2.5, 2.5, size=n_p))
+    shift = rng.uniform(-5.0, 5.0, size=n_p)
+    V = V * scale + shift
+
     sigmas, alphas, qs = profile_at(probe, comm, V, thetas)
     T = full_transition_matrix(probe, sigmas, qs, None)
     u = (np.eye(n_s) - DELTA * T) @ V / (1.0 - DELTA)
-
-    # Vary the payoff spread: a positive affine map per player leaves the
-    # equilibrium set exactly unchanged, so a solver must be invariant to it.
-    scale = np.exp(rng.uniform(-2.5, 2.5, size=n_p))
-    shift = rng.uniform(-5.0, 5.0, size=n_p)
-    u = u * scale + shift
-    V = V * scale + shift
 
     game = Game.from_payoffs(PLAYERS, u)
     V_check = compute_values(game, T, DELTA)

@@ -29,16 +29,20 @@ sys.path.insert(0, str(REPO))
 import importlib.util
 g_sp = importlib.util.spec_from_file_location("gen", REPO/"scripts/generate_mixed_controls.py")
 gen = importlib.util.module_from_spec(g_sp); g_sp.loader.exec_module(gen)
-e_sp = importlib.util.spec_from_file_location("enu", REPO/"scripts/enumerate_knobs_m1.py")
-enu = importlib.util.module_from_spec(e_sp); e_sp.loader.exec_module(enu)
 from lib.equilibrium.jeres_vfi import Game, fw_state_name_to_partition
 from lib.equilibrium.jeres_vfi.solver import (compute_values, full_transition_matrix,
     verify_proposals, verify_responses)
 from lib.effectivity import get_effectivity
+from lib.equilibrium import mixed_controls as enu
 
 PL = gen.PLAYERS; ST = gen.state_names(); OUT = gen.OUT
 DELTA = gen.DELTA; EPS = 1e-12
-PROF = REPO/"reports"/"planted_profiles_v3"
+# M is bounded by the number of independent indifference conditions: a player has
+# 5 states, so at most 4 independent ties, and 4 x 3 players = 12.  In practice the
+# generator stops producing verifying profiles past ~10-11, because by then V has
+# collapsed to near-total indifference.
+TARGET_MS = tuple(range(1, 11))
+PROF = REPO/"reports"/"planted_profiles_v4"
 
 def framework_game(u):
     eff = get_effectivity("heyen_lehtomaa_2021", PL, ST)
@@ -121,12 +125,12 @@ def main():
     PROF.mkdir(parents=True, exist_ok=True)
     tmp = REPO/"reports"/"_rebuild_candidate.xlsx"
     rng = np.random.default_rng(20260820)
-    kept = {m: [] for m in (1, 2, 3, 4)}
+    kept = {m: [] for m in TARGET_MS}
     stats = {m: dict(drawn=0, planted_fail=0, pure_variant=0, too_easy=0,
                      or_pure=0, kept=0)
              for m in kept}
     t0 = time.time()
-    for target in (1, 2, 3, 4):
+    for target in TARGET_MS:
         for _ in range(args.draws):
             if len(kept[target]) >= args.per_m:
                 break
@@ -148,10 +152,24 @@ def main():
                   f"(draw {stats[target]['drawn']}, {time.time()-t0:.0f}s)", flush=True)
         print(f"M={target}: {stats[target]}", flush=True)
 
-    for old in OUT.glob("mixedcontrol_m*_chneurusa.xlsx"):
-        old.unlink()
-    for old in PROF.glob("*.json"):
-        old.unlink()
+    # Do NOT delete existing tables.  An earlier version wiped every
+    # mixedcontrol_m*.xlsx before writing, so a run that kept fewer tables in a
+    # bucket than the previous batch silently destroyed the difference -- M=1 went
+    # from 10 tables to 3 that way, and only the profile backups made it
+    # recoverable.  Anything not overwritten below is left alone; use --archive to
+    # move a previous batch aside instead.
+    if args.archive:
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        arch_t = OUT / f"_archive_{stamp}"
+        arch_p = PROF.parent / f"{PROF.name}_archive_{stamp}"
+        arch_t.mkdir(parents=True, exist_ok=True)
+        arch_p.mkdir(parents=True, exist_ok=True)
+        moved = 0
+        for old in OUT.glob("mixedcontrol_m*_chneurusa.xlsx"):
+            old.rename(arch_t / old.name); moved += 1
+        for old in PROF.glob("*.json"):
+            old.rename(arch_p / old.name)
+        print(f"archived {moved} tables -> {arch_t}")
     manifest = []
     for m, recs in sorted(kept.items()):
         for k, rec in enumerate(recs):

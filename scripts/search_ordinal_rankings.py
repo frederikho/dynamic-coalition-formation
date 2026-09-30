@@ -35,7 +35,8 @@ from lib.equilibrium.find import (
 )
 from lib.equilibrium.scenarios import get_scenario, fill_players
 from lib.equilibrium.excel_writer import write_strategy_table_excel
-from lib.verify_cli import _run_verification
+from lib.verify_cli import run_verification
+from lib.equilibrium.ordinal_ranking.output import _format_ranking, _format_weak_order
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +48,7 @@ def _build_payoff_config(
     payoff_table: str,
     effectivity_rule: str | None = None,
     allow_non_canonical_states: bool = False,
+    no_supermajorities: bool = False,
 ) -> dict:
     config = get_scenario(scenario_name)
     config["payoff_table"] = payoff_table
@@ -57,6 +59,8 @@ def _build_payoff_config(
         config["effectivity_rule"] = effectivity_rule
     if allow_non_canonical_states:
         config["allow_non_canonical_states"] = True
+    if no_supermajorities:
+        config["no_supermajorities"] = True
     return config
 
 
@@ -64,6 +68,7 @@ def _build_inferred_payoff_config(
     payoff_path: Path,
     effectivity_rule: str | None = None,
     allow_non_canonical_states: bool = False,
+    no_supermajorities: bool = False,
 ) -> dict:
     players = _infer_players_from_payoff_table(payoff_path)
     uniform = 1.0 / len(players)
@@ -87,24 +92,14 @@ def _build_inferred_payoff_config(
         config["effectivity_rule"] = effectivity_rule
     if allow_non_canonical_states:
         config["allow_non_canonical_states"] = True
+    if no_supermajorities:
+        config["no_supermajorities"] = True
     return config
 
 
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
-
-def _format_ranking(states: list[str], perm: np.ndarray) -> str:
-    return " > ".join(states[int(idx)] for idx in perm)
-
-
-def _format_weak_order(states: list[str], tiers: np.ndarray) -> str:
-    groups: dict[int, list[str]] = {}
-    for state_idx, tier in enumerate(tiers):
-        groups.setdefault(int(tier), []).append(states[int(state_idx)])
-    ordered = [" = ".join(groups[t]) for t in sorted(groups)]
-    return " > ".join(ordered)
-
 
 def _verify_via_cli(
     config: dict,
@@ -123,6 +118,9 @@ def _verify_via_cli(
             "effectivity_rule": effectivity_rule,
             "unanimity_required": config.get("unanimity_required", True),
             "discounting": config.get("discounting", 0.99),
+            "players": ", ".join(solver.players),
+            "n_players": len(solver.players),
+            "states": ", ".join(solver.states),
         }
         if config.get("power_rule") == "power_threshold":
             meta["min_power"] = config.get("min_power", 0.501)
@@ -138,10 +136,11 @@ def _verify_via_cli(
             states=solver.states,
             metadata=meta,
             value_functions=solver.value_functions,
+            geo_levels=solver.geo_levels,
             static_payoffs=solver.payoffs,
             transition_matrix=solver.transition_matrix,
         )
-        ok, msg, _ = _run_verification(temp_path, effectivity_rule=effectivity_rule)
+        ok, msg, _ = run_verification(temp_path, effectivity_rule=effectivity_rule)
         return ok, msg
     except Exception as exc:
         return False, f"verifier unavailable: {exc}"
@@ -149,10 +148,13 @@ def _verify_via_cli(
         temp_path.unlink(missing_ok=True)
 
 
-def _resolve_output_path(payoff_path: Path, write_output: str | None) -> Path:
+def _resolve_output_path(payoff_path: Path, write_output: str | None, scenario: str | None = None) -> Path:
     if write_output:
         return Path(write_output)
-    return REPO_ROOT / "strategy_tables" / f"ordinal_{payoff_path.stem}.xlsx"
+    stem = payoff_path.stem
+    if scenario:
+        stem = f"{stem}_{scenario}"
+    return REPO_ROOT / "strategy_tables" / f"ordinal_{stem}.xlsx"
 
 
 def _print_solver_execution_summary(
@@ -340,7 +342,7 @@ def _print_pruning_report(
     players: list,
     states: list,
     payoff_array,
-    total_original: int,
+    total_full_space: int,
     concept_label: str,
 ) -> None:
     print()
@@ -350,7 +352,7 @@ def _print_pruning_report(
     n_orig = report["n_orders_original"]
     total_pruned = report["total_after_pruning"]
     factor = report["reduction_factor"]
-    pct_kept = 100.0 * total_pruned / max(total_original, 1)
+    pct_kept = 100.0 * total_pruned / max(total_full_space, 1)
     print(f"  Absorbing state (trusted from {concept_label}): {absorbing}")
     print(f"  Weak orders per player (original):   {n_orig:,d}")
     print()
@@ -371,7 +373,7 @@ def _print_pruning_report(
             c_label = "(none)"
         print(f"  {player:<10}  {n_valid:>8,d}  {n_pruned:>8,d}  {pct:>7.1f}%  {c_label}")
     print()
-    print(f"  Full search space:  {total_original:>15,d}")
+    print(f"  Full search space:  {total_full_space:>15,d}")
     print(f"  After pruning:      {total_pruned:>15,d}")
     print(f"  Reduction factor:   {factor:>15.1f}×  ({pct_kept:.2f}% of original)")
     print()
@@ -402,14 +404,14 @@ def _print_pruning_report(
 def _print_topology_pruning_report(
     report: dict,
     players: list,
-    total_original: int,
+    total_full_space: int,
 ) -> None:
     n_comp = report["n_components"]
     components = report["components"]
     n_orig = report["n_orders_original"]
     total_after = report["total_after_pruning"]
     factor = report["reduction_factor"]
-    pct_kept = 100.0 * total_after / max(total_original, 1)
+    pct_kept = 100.0 * total_after / max(total_full_space, 1)
 
     print()
     print("LCS Topology Pruning  (Theorem 1 + Theorem 2)")
@@ -478,7 +480,7 @@ def _print_topology_pruning_report(
         print(f"  {player:<10}  {n_valid:>8,d}  {n_pruned:>8,d}  {pct:>7.1f}%  {c_label}")
 
     print()
-    print(f"  Full search space:  {total_original:>15,d}")
+    print(f"  Full search space:  {total_full_space:>15,d}")
     print(f"  After pruning:      {total_after:>15,d}")
     print(f"  Reduction factor:   {factor:>15.1f}×  ({pct_kept:.2f}% of original)")
 
@@ -534,6 +536,8 @@ def main():
     parser.add_argument("--dedup-by", choices=("none", "transition", "strategy"), default="none")
     parser.add_argument("--shuffle", action="store_true")
     parser.add_argument("--random-seed", type=int, default=0)
+    parser.add_argument("--continue-at", type=int, default=0,
+                        help="Resume search from this combination index.")
     parser.add_argument("--disable-newton", action="store_true",
                         help="Disable Newton's method in weak-equality solver (use only Scipy)")
     parser.add_argument("--use-broyden", action="store_true",
@@ -551,7 +555,22 @@ def main():
         ),
     )
 
+    parser.add_argument(
+        "--no-supermajorities",
+        action="store_true",
+        help="Remove states where a coalition has a redundant member (i.e., power remains above min_power after removal).",
+    )
+
     args = parser.parse_args()
+
+    if args.ranking_order == "random":
+        args.shuffle = True
+
+    if args.continue_at > 0:
+        if args.ranking_order == "random":
+            parser.error("--continue-at cannot be used with --ranking-order random.")
+        if args.shuffle:
+            parser.error("--continue-at cannot be used with --shuffle.")
 
     payoff_path = Path(args.file)
     if args.scenario:
@@ -560,6 +579,7 @@ def main():
             str(payoff_path),
             effectivity_rule=args.effectivity_rule,
             allow_non_canonical_states=args.allow_non_canonical_states,
+            no_supermajorities=args.no_supermajorities,
         )
         config_source = f"scenario:{args.scenario}"
     else:
@@ -567,6 +587,7 @@ def main():
             payoff_path,
             effectivity_rule=args.effectivity_rule,
             allow_non_canonical_states=args.allow_non_canonical_states,
+            no_supermajorities=args.no_supermajorities,
         )
         config_source = "inferred"
 
@@ -602,12 +623,17 @@ def main():
         n_orders = order_arrays.shape[0]
     else:
         n_orders = math.factorial(n_states)
-    total_triples = n_orders ** len(players)
-    n_to_test = min(total_triples, args.max_combinations) if args.max_combinations else total_triples
+    total_combinations = n_orders ** len(players)
+    n_to_test = min(total_combinations, args.max_combinations) if args.max_combinations else total_combinations
 
     output_dir = args.write_all_output_dir
     if args.write_all and not output_dir:
-        output_dir = str(REPO_ROOT / "strategy_tables" / f"ordinal_all_{payoff_path.stem}")
+        parts = ["ordinal_all", payoff_path.stem]
+        if args.scenario:
+            parts.append(args.scenario)
+        if args.dedup_by != "none":
+            parts.append(f"by_{args.dedup_by}")
+        output_dir = str(REPO_ROOT / "strategy_tables" / "_".join(parts))
 
     # ── Stability-based auto-pruning ──────────────────────────────────────────
     absorbing_state: str | None = None
@@ -670,7 +696,7 @@ def main():
                 list(players),
                 list(states),
                 payoff_array_pre,
-                total_triples,
+                total_combinations,
                 concept_label=prune_concept_label,
             )
         else:
@@ -687,7 +713,7 @@ def main():
             committee_idxs_pre, stable_members,
             forbidden_proposals=setup["forbidden_proposals"],
         )
-        _print_topology_pruning_report(topo_report_pre, list(players), total_triples)
+        _print_topology_pruning_report(topo_report_pre, list(players), total_combinations)
 
     # ── Header ───────────────────────────────────────────────────────────────
     print("Ordinal Ranking Verification Search")
@@ -702,7 +728,9 @@ def main():
     print(f"allow_non_canonical_states: {args.allow_non_canonical_states}")
     if args.effectivity_rule:
         print(f"effectivity_rule: {args.effectivity_rule}")
-    print(f"total_ranking_triples: {total_triples:,d}")
+    if args.no_supermajorities:
+        print(f"no_supermajorities: True")
+    print(f"total_ranking_combinations: {total_combinations:,d}")
     if args.prune:
         print(f"prune: {args.prune}")
         if absorbing_state and prune_concept_label:
@@ -745,6 +773,8 @@ def main():
         power_rule=setup["power_rule"],
         forbidden_proposals=setup["forbidden_proposals"],
         effectivity_rule=_effectivity_rule,
+        verbose=False,
+        geo_levels=setup.get("geoengineering"),
     )
 
     extra_metadata: dict = {"effectivity_rule": _effectivity_rule}
@@ -775,6 +805,7 @@ def main():
         extra_metadata=extra_metadata,
         lccs_absorbing_state=absorbing_state,
         lcs_states=lcs_states_for_solver,
+        continue_at=args.continue_at,
     )
 
     # ── Summary ──────────────────────────────────────────────────────────────
@@ -979,13 +1010,16 @@ def main():
         print(f"cli_message: {cli_msg}")
 
         if cli_ok:
-            out_path = _resolve_output_path(payoff_path, args.write_output)
+            out_path = _resolve_output_path(payoff_path, args.write_output, scenario=args.scenario)
             meta: dict = {
                 "payoff_source": "precomputed_table",
                 "payoff_table": str(config.get("payoff_table", "")),
                 "power_rule": config.get("power_rule", "power_threshold"),
                 "unanimity_required": config.get("unanimity_required", True),
                 "discounting": config.get("discounting", 0.99),
+                "players": ", ".join(players),
+                "n_players": len(players),
+                "states": ", ".join(states),
             }
             write_strategy_table_excel(
                 df=df,
@@ -995,6 +1029,7 @@ def main():
                 states=states,
                 metadata=meta,
                 value_functions=solver.value_functions,
+                geo_levels=solver.geo_levels,
                 static_payoffs=solver.payoffs,
                 transition_matrix=solver.transition_matrix,
             )

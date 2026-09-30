@@ -19,7 +19,6 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -292,7 +291,7 @@ def main() -> None:
     }
     rows: list[dict[str, Any]] = []
 
-    for path in tqdm(files, desc="Computing stability predictors", unit="file"):
+    for path in files:
         metadata = _load_metadata(path)
         if not (metadata and _truthy(metadata.get("verification_success")) and int(float(metadata.get("n_players", 0))) == 3):
             continue

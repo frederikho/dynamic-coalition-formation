@@ -19,10 +19,9 @@ import numpy as np
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 import importlib.util
+from lib.equilibrium import mixed_controls as enu
 spec = importlib.util.spec_from_file_location("gen", REPO/"scripts/generate_mixed_controls.py")
 gen = importlib.util.module_from_spec(spec); spec.loader.exec_module(gen)
-sp2 = importlib.util.spec_from_file_location("enu", REPO/"scripts/enumerate_knobs_m1.py")
-enu = importlib.util.module_from_spec(sp2); sp2.loader.exec_module(enu)
 
 PL = ["CHN","EUR","USA"]
 OUT = REPO/"reports"/"planted_profiles"

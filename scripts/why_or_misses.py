@@ -23,9 +23,9 @@ from pathlib import Path
 import numpy as np
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+
+from lib.equilibrium import mixed_controls as enu  # noqa: E402
 import importlib.util
-sp = importlib.util.spec_from_file_location("enu", REPO/"scripts/enumerate_knobs_m1.py")
-enu = importlib.util.module_from_spec(sp); sp.loader.exec_module(enu)
 from lib.equilibrium.jeres_vfi import Game, fw_state_name_to_partition
 from lib.equilibrium.jeres_vfi.solver import (compute_values, full_transition_matrix,
     verify_responses, verify_proposals)
