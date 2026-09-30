@@ -358,6 +358,40 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
       ${unknownNote}
       <div style="font-size:11px;color:#999;margin-top:8px">NTU gamma-core (Chander &amp; Tulkens 1997): no coalition S can strictly improve all its members by breaking away to S + singletons.</div>
     `;
+  } else if (coloringMode === 'ricke') {
+    // Binary Ricke-winning-coalition legend (solid red = winning, gray = majority but not stable)
+    const winningCount = data.nodes.filter(n => n.meta?.ricke?.winning === true).length;
+    const majorityNotStableCount = data.nodes.filter(
+      n => n.meta?.ricke?.majority === true && n.meta?.ricke?.winning === false
+    ).length;
+    const unknownCount = data.nodes.filter(
+      n => !n.meta?.ricke || typeof n.meta.ricke.majority !== 'boolean' || n.meta.ricke.majority === false
+    ).length;
+
+    const items = [];
+    if (winningCount > 0) {
+      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#dc2626;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>Ricke winning coalition (${winningCount} state${winningCount !== 1 ? 's' : ''})</span></div>`);
+    }
+    if (majorityNotStableCount > 0) {
+      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#cbd5e1;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>Majority power, not stable (${majorityNotStableCount} state${majorityNotStableCount !== 1 ? 's' : ''})</span></div>`);
+    }
+    if (items.length === 0) {
+      items.push('<div style="color:#999">No Ricke-stability data for this profile</div>');
+    }
+    const uniquenessNote = winningCount > 1
+      ? `<div style="font-size:11px;color:#dc2626;margin-top:6px;font-weight:600">${winningCount} simultaneous winning coalitions -- falsifies Ricke et al.'s uniqueness claim for this game.</div>`
+      : '';
+    const unknownNote = unknownCount > 0
+      ? `<div style="font-size:11px;color:#999;margin-top:6px">Below majority power (no Ricke verdict): ${unknownCount} state${unknownCount !== 1 ? 's' : ''}</div>`
+      : '';
+
+    absorbingLegendDiv.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Ricke Winning Coalition</div>
+      ${items.join('')}
+      ${uniquenessNote}
+      ${unknownNote}
+      <div style="font-size:11px;color:#999;margin-top:8px">Ricke, Moreno-Cruz &amp; Caldeira (2013): majority power share + no member wants to leave (their game has only one active coalition, so leaving collapses onto internal stability).</div>
+    `;
   } else if (coloringMode === 'deployer') {
     // Get unique deploying coalitions
     const deployerSet = new Set<string>();

@@ -6,7 +6,8 @@ export type NodeColoringMode =
   | 'internal'
   | 'external'
   | 'internal-external'
-  | 'gamma-core';
+  | 'gamma-core'
+  | 'ricke';
 
 export interface GraphNode {
   id: string;

@@ -10,7 +10,7 @@ import logging
 import sys
 import traceback
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 import pandas as pd
 import numpy as np
@@ -407,6 +407,59 @@ def compute_gamma_core(
         }
         for state in game.state_names
         if state in unblocked or state in core["ntu_blockers"]
+    }
+
+
+def compute_ricke_stability(
+    players: List[str],
+    state_names: List[str],
+    static_payoffs: Dict[str, Dict[str, float]],
+    power: Dict[str, float],
+    min_power: Optional[float],
+) -> Dict[str, Dict[str, Any]]:
+    """Ricke, Moreno-Cruz & Caldeira (2013)'s static exclusion-game verdict per state.
+
+    A coalition is a Ricke "winning coalition" if it holds a majority power
+    share (exceeds ``min_power``) and is "stable" in their sense -- no member
+    wants to leave, which (since only one coalition ever acts in their game)
+    collapses onto this framework's own narrow internal-stability test. This
+    delegates to ``lib.results_analysis.benchmarks.ricke_winning_coalitions``
+    so the graph colouring cannot drift from the written analysis.
+
+    Undefined (and skipped) when ``min_power`` is not set, e.g. under
+    ``weak_governance`` where there is no majority-power concept to apply.
+
+    Returns a dict mapping each single-coalition state name to
+    ``{"majority": bool, "stable": bool, "winning": bool}``, where ``winning``
+    is ``majority and stable`` -- Ricke's own uniqueness claim is falsified
+    whenever more than one state in a game has ``winning: True``.
+    """
+    import pandas as pd
+
+    from lib.results_analysis.benchmarks import PayoffGame, ricke_winning_coalitions
+
+    if min_power is None or not power:
+        return {}
+
+    frame = pd.DataFrame(
+        [[static_payoffs[s][p] for p in players] for s in state_names],
+        index=state_names,
+        columns=players,
+    )
+    try:
+        game = PayoffGame.from_resolved(frame, players, allow_contaminated=True)
+        verdicts = ricke_winning_coalitions(game, min_power=min_power, power=power)
+    except (ValueError, KeyError) as exc:
+        logger.warning("Ricke-stability colouring unavailable for this profile: %s", exc)
+        return {}
+
+    return {
+        state: {
+            "majority": bool(verdicts.loc[state, "majority"]),
+            "stable": bool(verdicts.loc[state, "stable"]),
+            "winning": bool(verdicts.loc[state, "majority"] and verdicts.loc[state, "stable"]),
+        }
+        for state in verdicts.index
     }
 
 
@@ -818,6 +871,16 @@ def compute_transition_graph(
         static_payoffs=static_payoffs,
     )
 
+    # 8c. Ricke et al. (2013) static exclusion-game verdict of each single-coalition
+    # state (node coloring) -- undefined under weak_governance (no min_power).
+    ricke = compute_ricke_stability(
+        players=config["players"],
+        state_names=config["state_names"],
+        static_payoffs=static_payoffs,
+        power=config.get("power", {}),
+        min_power=config.get("min_power"),
+    )
+
     # 9. Convert to graph format
     nodes = []
     for i, state_name in enumerate(config["state_names"]):
@@ -832,6 +895,7 @@ def compute_transition_graph(
                 "values": long_term_values[state_name],
                 "stability": stability.get(state_name, {}),
                 "gamma_core": gamma.get(state_name, {}),
+                "ricke": ricke.get(state_name, {}),
             }
         })
 

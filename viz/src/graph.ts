@@ -552,6 +552,11 @@ export class GraphRenderer {
           if (gc && typeof gc.in_core === 'boolean') {
             color = gc.in_core ? STABILITY_RED : STABILITY_NEUTRAL;
           }
+        } else if (coloringMode === 'ricke') {
+          const rk = node.meta?.ricke as { majority?: boolean; winning?: boolean } | undefined;
+          if (rk && typeof rk.majority === 'boolean' && rk.majority) {
+            color = rk.winning ? STABILITY_RED : STABILITY_NEUTRAL;
+          }
         } else if (coloringMode === 'absorbing') {
           const setId = nodeToAbsorbing.get(node.id) ?? null;
           if (setId !== null) {
