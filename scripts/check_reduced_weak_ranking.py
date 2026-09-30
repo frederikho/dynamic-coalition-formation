@@ -42,7 +42,7 @@ from scripts.search_ordinal_rankings import (
     _weak_value_param_count,
     _weak_tie_structure,
 )
-from scripts.reduced_weak_exact import (
+from lib.equilibrium.reduced_weak_exact import (
     exact_check_deterministic_resolutions,
     shared_variable_structure,
     solve_shared_parameter_ansatz,

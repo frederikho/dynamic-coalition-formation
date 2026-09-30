@@ -17,8 +17,16 @@ scripts/combined*
 
 .claude/
 results/hpo/
-reports/rice_hardness*.csv
 # Note: /docs is committed (GitHub Pages deploys from this folder)
 # full_search generated artifacts (order/corpora/checkpoints, large+derived)
 lib/equilibrium/full_search/data/
 viz/assets/
+
+# reports/ is run output: gitignored by default (also covers already-tracked
+# files/dirs below, whose git history is unaffected). Un-ignore a specific
+# path with a `!reports/...` rule when a result backs a finding worth keeping.
+*.npy
+reports/
+
+# Third-party reference papers - do not commit copyrighted PDFs
+/*.pdf
