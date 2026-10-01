@@ -235,9 +235,15 @@ def read_metadata_from_xlsx(xlsx_path: str) -> Dict[str, Any]:
                 
             # Clean parameter name and store value
             param_clean = str(param).strip()
-            # Convert boolean-like integer fields to actual booleans
+            # Convert boolean-like fields to actual booleans. Older profiles store
+            # this as an int (1/0), newer ones as a bool-like string ('True'/'False').
             if param_clean == 'verification_success':
-                metadata[param_clean] = bool(int(value)) if not pd.isna(value) else False
+                if pd.isna(value):
+                    metadata[param_clean] = False
+                elif isinstance(value, str):
+                    metadata[param_clean] = value.strip().lower() in ('true', '1')
+                else:
+                    metadata[param_clean] = bool(int(value))
             else:
                 metadata[param_clean] = value
 
@@ -356,6 +362,8 @@ def compute_stability(
             "internal": bool(verdicts.loc[state, "internal"]),
             "external_open": bool(verdicts.loc[state, "external_open"]),
             "external_consent": bool(verdicts.loc[state, "external_consent"]),
+            "stable_open": bool(verdicts.loc[state, "stable_open"]),
+            "stable_consent": bool(verdicts.loc[state, "stable_consent"]),
         }
         for state in verdicts.index
     }
@@ -1165,19 +1173,49 @@ async def get_graph(
         )
 
 
+
+# Subfolders of strategy_tables/ (matched against any path component, so this
+# catches both a top-level "archive" and the "ordinal_all_*" sweep directories
+# nested inside it) that are excluded from the default profile listing, still
+# browsable by passing include_archived=true. These hold pre-metadata saves or
+# thousands of per-transition sweep files, not standalone profiles worth
+# surfacing by default.
+HIDDEN_PROFILE_CATEGORY_PREFIXES = ("archive", "ordinal_all_")
+
+
 @app.get("/profiles")
-async def list_profiles(profiles_dir: str = Query(DEFAULT_PROFILES_DIR, description="Directory containing XLSX profiles")):
+async def list_profiles(
+    profiles_dir: str = Query(DEFAULT_PROFILES_DIR, description="Directory containing XLSX profiles"),
+    include_archived: bool = Query(False, description="Include profiles from hidden categories (e.g. archive/)"),
+):
     """
     List available strategy profile XLSX files.
+
+    Recurses arbitrarily deep into subfolders (e.g. "01 rice_n4/d0.990/") so
+    the reorganised strategy_tables/ directory still surfaces every profile.
+    Each profile's path relative to profiles_dir, minus the filename, is
+    reported as "category" ("" for files directly in profiles_dir), which the
+    frontend uses to group and filter the dropdown.
     """
     try:
         profiles_path = Path(profiles_dir)
         if not profiles_path.exists():
             return {"profiles": [], "error": f"Directory not found: {profiles_dir}"}
 
-        xlsx_files = list(profiles_path.glob("*.xlsx"))
+        xlsx_files = list(profiles_path.glob("**/*.xlsx"))
         # Filter out lock files
         xlsx_files = [f for f in xlsx_files if not f.name.startswith(".~lock")]
+
+        def category_of(f: Path) -> str:
+            rel_parent = f.parent.relative_to(profiles_path)
+            return "" if str(rel_parent) == "." else str(rel_parent)
+
+        def is_hidden(category: str) -> bool:
+            parts = Path(category).parts if category else ()
+            return any(part.startswith(HIDDEN_PROFILE_CATEGORY_PREFIXES) for part in parts)
+
+        if not include_archived:
+            xlsx_files = [f for f in xlsx_files if not is_hidden(category_of(f))]
 
         profiles = sorted(
             [
@@ -1185,6 +1223,7 @@ async def list_profiles(profiles_dir: str = Query(DEFAULT_PROFILES_DIR, descript
                     "name": f.stem,
                     "path": str(f),
                     "filename": f.name,
+                    "category": category_of(f),
                     "created_at": f.stat().st_mtime,
                 }
                 for f in xlsx_files

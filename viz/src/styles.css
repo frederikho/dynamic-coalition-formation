@@ -14,6 +14,7 @@ body {
   display: flex;
   height: 100vh;
   position: relative;
+  overflow: hidden;
 }
 
 #sidebar {
@@ -35,6 +36,123 @@ body {
   flex: 1;
   position: relative;
   background: #fafafa;
+}
+
+#relations-panel {
+  width: 0;
+  min-width: 0;
+  background: white;
+  border-right: 1px solid #ddd;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: width 0.2s ease, padding 0.2s ease, min-width 0.2s ease;
+}
+
+#relations-panel.active {
+  width: 24rem;
+  min-width: 300px;
+  max-width: 420px;
+  padding: 1rem;
+}
+
+#relations-panel h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+/* Vertically centered open/close handle, sitting on the seam between the
+   sidebar and the relations panel. Position is driven from JS (left offset
+   depends on whether the panel is open), since that offset is layout-derived. */
+#relations-handle {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  width: 20px;
+  height: 48px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+#relations-handle:hover {
+  background: #eef2f6;
+}
+
+#relations-subtitle {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+  white-space: nowrap;
+}
+
+#relations-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+#relations-table th,
+#relations-table td {
+  text-align: left;
+  padding: 5px 4px;
+  border-bottom: 1px solid #eef2f6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#relations-table th:first-child,
+#relations-table td:first-child {
+  white-space: normal;
+}
+
+/* Concept name gets the most room; the numeric/verdict columns are narrow. */
+#relations-table th:nth-child(1), #relations-table td:nth-child(1) { width: 34%; }
+#relations-table th:nth-child(2), #relations-table td:nth-child(2) { width: 12%; }
+#relations-table th:nth-child(3), #relations-table td:nth-child(3) { width: 24%; }
+#relations-table th:nth-child(4), #relations-table td:nth-child(4) { width: 15%; }
+#relations-table th:nth-child(5), #relations-table td:nth-child(5) { width: 15%; }
+
+#relations-table th {
+  color: #475569;
+  font-weight: 600;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+#relations-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+#relations-table td.relation-EQUAL { color: #15803d; font-weight: 600; }
+#relations-table td.relation-SUBSET { color: #1d4ed8; }
+#relations-table td.relation-SUPERSET { color: #b45309; }
+#relations-table td.relation-INTERSECTION { color: #334155; }
+#relations-table td.relation-DISJOINT { color: #94a3b8; }
+#relations-table td.relation-UNDEFINED { color: #cbd5e1; font-style: italic; }
+
+#relations-panel:not(.active) > * {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  #relations-panel,
+  #relations-handle {
+    display: none !important;
+  }
 }
 
 /* Mobile menu toggle button */

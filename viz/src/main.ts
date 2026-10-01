@@ -2,9 +2,11 @@ import { GraphRenderer } from './graph';
 import { fetchProfiles, fetchGraph } from './api';
 import type { GraphData, NodeColoringMode } from './types';
 import { computeAbsorbingSets } from './absorbing';
+import { computeConceptRelations } from './relations';
 
 // UI Elements
 const profileSelect = document.getElementById('profile-select') as HTMLSelectElement;
+const profileFilter = document.getElementById('profile-filter') as HTMLInputElement;
 const downloadXlsxBtn = document.getElementById('download-xlsx-btn') as HTMLButtonElement;
 const probThresholdInput = document.getElementById('prob-threshold') as HTMLInputElement;
 const filterModeRadios = document.querySelectorAll('input[name="filter-mode"]') as NodeListOf<HTMLInputElement>;
@@ -26,6 +28,10 @@ const menuToggleBtn = document.getElementById('menu-toggle') as HTMLButtonElemen
 const sidebarBackdrop = document.getElementById('sidebar-backdrop') as HTMLDivElement;
 const sidebar = document.getElementById('sidebar') as HTMLDivElement;
 const sidebarCloseBtn = document.getElementById('sidebar-close') as HTMLButtonElement;
+const relationsPanel = document.getElementById('relations-panel') as HTMLDivElement;
+const relationsSubtitle = document.getElementById('relations-subtitle') as HTMLParagraphElement;
+const relationsTbody = document.getElementById('relations-tbody') as HTMLTableSectionElement;
+const relationsHandle = document.getElementById('relations-handle') as HTMLButtonElement;
 
 // State
 let currentGraphData: GraphData | null = null;
@@ -147,31 +153,74 @@ function syncUrlToSelectedProfile() {
   window.history.replaceState(null, '', url.toString());
 }
 
+let allProfiles: Array<{ path: string; name: string; filename?: string; category?: string; created_at?: number }> = [];
+
+// Group profiles by category and render as <optgroup>s, newest first within
+// each group. Profiles with no category (flat legacy files) go in a
+// "general" group at the top.
+function renderProfileOptions(profiles: typeof allProfiles, filterText: string) {
+  const previousValue = profileSelect.value;
+  profileSelect.innerHTML = '';
+
+  const needle = filterText.trim().toLowerCase();
+  const filtered = needle
+    ? profiles.filter(p => p.name.toLowerCase().includes(needle))
+    : profiles;
+
+  if (filtered.length === 0) {
+    profileSelect.innerHTML = '<option value="">No matching profiles</option>';
+    return;
+  }
+
+  const groups = new Map<string, typeof allProfiles>();
+  for (const profile of filtered) {
+    const key = profile.category || 'general';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(profile);
+  }
+
+  const orderedKeys = [...groups.keys()].sort((a, b) => {
+    if (a === 'general') return -1;
+    if (b === 'general') return 1;
+    return a.localeCompare(b);
+  });
+
+  for (const key of orderedKeys) {
+    const container: HTMLElement = key === 'general'
+      ? profileSelect
+      : profileSelect.appendChild(Object.assign(document.createElement('optgroup'), { label: key }));
+    for (const profile of groups.get(key)!) {
+      const option = document.createElement('option');
+      option.value = profile.path;
+      option.textContent = profile.name;
+      container.appendChild(option);
+    }
+  }
+
+  // Keep the current selection if it still matches the filter.
+  if (previousValue && filtered.some(p => p.path === previousValue)) {
+    profileSelect.value = previousValue;
+  }
+}
+
 // Load profiles list
 async function loadProfiles() {
   try {
     const data = await fetchProfiles();
-
-    profileSelect.innerHTML = '';
 
     if (data.profiles.length === 0) {
       profileSelect.innerHTML = '<option value="">No profiles found</option>';
       return;
     }
 
-    const sortedProfiles = [...data.profiles]
+    allProfiles = [...data.profiles]
       .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
 
-    sortedProfiles.forEach(profile => {
-      const option = document.createElement('option');
-      option.value = profile.path;
-      option.textContent = profile.name;
-      profileSelect.appendChild(option);
-    });
+    renderProfileOptions(allProfiles, profileFilter.value);
 
     const requestedKey = getRequestedProfileKeyFromUrl();
     if (requestedKey) {
-      const matchedPath = findProfilePathByKey(requestedKey, sortedProfiles);
+      const matchedPath = findProfilePathByKey(requestedKey, allProfiles);
       if (matchedPath) {
         profileSelect.value = matchedPath;
       } else {
@@ -234,6 +283,9 @@ async function loadGraph() {
 
     // Update legend
     updateLegend(graphData, coloringMode);
+
+    // Update solution-concepts-vs-MPE relations table
+    updateRelationsPanel(graphData);
 
     // Show appropriate status message
     if (graphData.edges.length === 0) {
@@ -483,6 +535,70 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
       <div style="font-size:11px;color:#999;margin-top:4px">Light = Low cooling | Dark = High cooling</div>
     `;
   }
+}
+
+let relationsPanelVisible = false;
+
+function positionRelationsHandle() {
+  if (!relationsHandle) return;
+  // Sits on the seam between the sidebar and the relations panel: the
+  // sidebar's right edge when collapsed, or the relations panel's right
+  // edge when expanded. Measured from the live layout rather than hardcoded,
+  // since the sidebar is itself resizable between its min/max width.
+  //
+  // relationsHandle's containing block is #app (position: relative), so its
+  // `left` must be expressed relative to #app's own box, not the viewport --
+  // using a bare viewport-relative getBoundingClientRect().right here would
+  // overshoot whenever #app itself is offset from the viewport's left edge,
+  // which can push this absolutely-positioned element past the content edge
+  // and introduce a spurious horizontal scrollbar.
+  const appEl = document.getElementById('app') as HTMLDivElement;
+  const appRect = appEl.getBoundingClientRect();
+  const anchor = relationsPanelVisible ? relationsPanel : sidebar;
+  const rect = anchor.getBoundingClientRect();
+  relationsHandle.style.left = `${rect.right - appRect.left}px`;
+  relationsHandle.textContent = relationsPanelVisible ? '<<' : '>';
+  relationsHandle.title = relationsPanelVisible ? 'Hide relations table' : 'Show relations table';
+}
+
+function setRelationsPanelVisible(visible: boolean) {
+  relationsPanelVisible = visible;
+  relationsPanel.classList.toggle('active', visible);
+  // Wait for the width transition to apply before re-measuring the seam.
+  requestAnimationFrame(positionRelationsHandle);
+}
+
+function updateRelationsPanel(data: GraphData) {
+  if (!relationsPanel || !relationsTbody) return;
+
+  // MPE reference set: nodes in some absorbing set, over the full (unfiltered)
+  // transition graph -- the relations table should reflect the actual dynamic
+  // equilibrium, not whatever edge-probability threshold is currently applied
+  // for display.
+  const nodeToAbsorbing = computeAbsorbingSets(data);
+  const rows = computeConceptRelations(data, nodeToAbsorbing);
+
+  const mpeCount = [...nodeToAbsorbing.values()].filter(v => v !== null).length;
+  relationsSubtitle.textContent = mpeCount > 0
+    ? `MPE absorbing set: ${mpeCount} state${mpeCount !== 1 ? 's' : ''}`
+    : 'No absorbing set found for this profile';
+
+  relationsTbody.innerHTML = rows.map(row => {
+    const sizeStr = row.relation === 'UNDEFINED' ? '–' : String(row.conceptSetSize);
+    const jaccardStr = row.jaccard === null ? '–' : row.jaccard.toFixed(3);
+    const hammingStr = row.hamming === null ? '–' : String(row.hamming);
+    return `
+      <tr>
+        <td>${row.concept}</td>
+        <td>${sizeStr}</td>
+        <td class="relation-${row.relation}">${row.relation}</td>
+        <td>${jaccardStr}</td>
+        <td>${hammingStr}</td>
+      </tr>
+    `;
+  }).join('');
+
+  setRelationsPanelVisible(relationsPanelVisible);
 }
 
 // State for result indicator expansion
@@ -1099,6 +1215,10 @@ function handleNodeSelect(nodeId: string | null) {
 // Event listeners
 refreshBtn.addEventListener('click', loadGraph);
 
+relationsHandle.addEventListener('click', () => setRelationsPanelVisible(!relationsPanelVisible));
+window.addEventListener('resize', positionRelationsHandle);
+positionRelationsHandle();
+
 resetViewBtn.addEventListener('click', () => {
   if (renderer) {
     renderer.resetView();
@@ -1145,6 +1265,11 @@ probThresholdInput.addEventListener('change', () => {
 profileSelect.addEventListener('change', async () => {
   syncUrlToSelectedProfile();
   await loadGraph();
+});
+
+// Live-filter the profile dropdown by name as the user types.
+profileFilter.addEventListener('input', () => {
+  renderProfileOptions(allProfiles, profileFilter.value);
 });
 
 // Node coloring mode change

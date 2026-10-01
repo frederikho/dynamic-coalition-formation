@@ -151,16 +151,6 @@
       "scenario_description": "Standard 3-player weak governance scenario."
     },
     {
-      "name": "eq_n4_power_threshold_similar_geoengineering_preferences_7b8c44",
-      "filename": "eq_n4_power_threshold_similar_geoengineering_preferences_7b8c44.json",
-      "path": "strategy_tables/eq_n4_power_threshold_similar_geoengineering_preferences_7b8c44.xlsx",
-      "created_at": 1771339040.0,
-      "num_states": 15,
-      "num_transitions": 36,
-      "scenario_name": "power_threshold_similar_geoengineering_preferences_n4",
-      "scenario_description": "Players have ideal temperatures close to their base temperature, power threshold."
-    },
-    {
       "name": "eq_n4_weak_governance_similar_geoengineering_preferences_0f7a50",
       "filename": "eq_n4_weak_governance_similar_geoengineering_preferences_0f7a50.json",
       "path": "strategy_tables/eq_n4_weak_governance_similar_geoengineering_preferences_0f7a50.xlsx",

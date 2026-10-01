@@ -2443,9 +2443,18 @@ Available scenarios (use --list-scenarios to see all):
         except KeyError as e:
             parser.error(str(e))
 
-        # Inject payoff table path into config if provided
+        # Inject payoff table path into config if provided. Normalized relative
+        # to the repo root (when inside it) so that solving the same table from
+        # an absolute vs. relative CLI argument -- or from a different machine
+        # where the repo is mounted under a different path -- produces the same
+        # config_hash instead of spuriously different ones.
         if args.payoff_table is not None:
-            config['payoff_table'] = args.payoff_table
+            repo_root = Path(__file__).resolve().parents[2]
+            resolved = Path(args.payoff_table).resolve()
+            try:
+                config['payoff_table'] = str(resolved.relative_to(repo_root))
+            except ValueError:
+                config['payoff_table'] = str(resolved)
 
         # Inject non-canonical states flag if set
         if args.allow_non_canonical_states:

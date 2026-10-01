@@ -20,6 +20,22 @@ export interface GraphNode {
     deploying_coalition?: string;
     payoffs?: Record<string, number>;
     values?: Record<string, number>;
+    stability?: {
+      internal?: boolean;
+      external_open?: boolean;
+      external_consent?: boolean;
+      stable_open?: boolean;
+      stable_consent?: boolean;
+    };
+    gamma_core?: {
+      in_core?: boolean;
+      blockers?: string[][];
+    };
+    ricke?: {
+      majority?: boolean;
+      stable?: boolean;
+      winning?: boolean;
+    };
     [key: string]: any;
   };
 }
@@ -57,6 +73,11 @@ export interface GraphData {
     file_metadata?: {
       [key: string]: any;
     };
+    chain_diagnostics?: {
+      is_ergodic?: boolean | null;
+      num_absorbing_sets?: number;
+      absorbing_sets?: string[][] | null;
+    };
   };
 }
 
@@ -64,6 +85,7 @@ export interface Profile {
   name: string;
   path: string;
   filename: string;
+  category?: string;
   created_at?: number;
 }
 
