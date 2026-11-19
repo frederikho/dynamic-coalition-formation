@@ -1,4 +1,4 @@
-import { GraphRenderer, buildEmojiMoods } from './graph';
+import { GraphRenderer, buildEmojiMoods, emojiModeSupported } from './graph';
 import { fetchProfiles, fetchGraph, profileXlsxUrl } from './api';
 import type { GraphData, NodeColoringMode, RingColoringMode } from './types';
 import { computeAbsorbingSets } from './absorbing';
@@ -47,10 +47,19 @@ let showEdgeLabels = true;
 let showNodeLabels = true;
 let showGeoLevel = true;
 const emojiModeCheckbox = document.getElementById('emoji-mode') as HTMLInputElement;
-// Browsers restore checkbox state on reload, so the checkbox is the source of truth.
-let showEmojiMode = emojiModeCheckbox.checked;
-// Remembered across profile switches (the metadata panel is re-rendered each time).
-let shortTermPayoffEmoji = false;
+// Both emoji switches are persisted in localStorage so they survive reloads.
+const EMOJI_MODE_STORAGE_KEY = 'viz:emoji-mode';
+const PAYOFF_EMOJI_STORAGE_KEY = 'viz:short-term-payoff-emoji';
+function readStoredFlag(key: string): boolean {
+  try { return localStorage.getItem(key) === '1'; } catch { return false; }
+}
+function storeFlag(key: string, on: boolean) {
+  try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* ignore localStorage errors */ }
+}
+let showEmojiMode = readStoredFlag(EMOJI_MODE_STORAGE_KEY);
+emojiModeCheckbox.checked = showEmojiMode; // stored value wins over browser form restoration
+// Also remembered across profile switches (the metadata panel is re-rendered each time).
+let shortTermPayoffEmoji = readStoredFlag(PAYOFF_EMOJI_STORAGE_KEY);
 
 function getRenderOptions() {
   const filterMode = getFilterMode();
@@ -1030,7 +1039,7 @@ function updateMetadata(data: GraphData) {
       return 25 + ((u - range[0]) / (range[1] - range[0])) * 95; // 25 (orange) .. 120 (green)
     };
     // Emoji view (n=3 only): same mood scale as the graph's emoji mode.
-    const emojiAvailable = players.length === 3 && data.nodes.length === 5;
+    const emojiAvailable = emojiModeSupported(data);
     const moods = emojiAvailable ? buildEmojiMoods(data) : null;
     const rows = nodes.map(n => {
       const g = n.meta?.geo_level;
@@ -1042,7 +1051,7 @@ function updateMetadata(data: GraphData) {
         const mood = moods ? (moods[n.id].find(m => m.player === pl)?.mood ?? (() => { throw new Error(`No mood for player ${pl}`); })()) : '';
         return `<td style="text-align:right;padding:3px 4px;font-variant-numeric:tabular-nums;${bg}"><span class="pay-num">${u.toFixed(3)}</span>${moods ? `<span class="pay-emoji" style="display:none;font-size:14px;">${mood}</span>` : ''}</td>`;
       }).join('');
-      return `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:3px 4px;white-space:nowrap;">${n.label ?? n.id}</td>${cells}<td style="text-align:right;padding:3px 4px;color:#64748b;">${gStr}</td></tr>`;
+      return `<tr data-node-id="${n.id}" style="border-bottom:1px solid #e2e8f0;"><td style="padding:3px 4px;white-space:nowrap;">${n.label ?? n.id}</td>${cells}<td style="text-align:right;padding:3px 4px;color:#64748b;">${gStr}</td></tr>`;
     }).join('');
     playerParamsSection = `
       <div style="margin-top:12px;">
@@ -1092,6 +1101,7 @@ function updateMetadata(data: GraphData) {
   const applyPayoffEmoji = () => {
     const on = payoffEmojiToggle?.checked ?? false;
     shortTermPayoffEmoji = on;
+    storeFlag(PAYOFF_EMOJI_STORAGE_KEY, on);
     metadataDiv.querySelectorAll<HTMLElement>('#short-term-payoff-table .pay-num').forEach(el => { el.style.display = on ? 'none' : ''; });
     metadataDiv.querySelectorAll<HTMLElement>('#short-term-payoff-table .pay-emoji').forEach(el => { el.style.display = on ? '' : 'none'; });
   };
@@ -1116,7 +1126,18 @@ function updateMetadata(data: GraphData) {
 }
 
 // Handle node selection
+// Mark the selected state's row in the sidebar short-term payoff table (if shown).
+function highlightPayoffRow(nodeId: string | null) {
+  const rows = metadataDiv.querySelectorAll<HTMLElement>('#short-term-payoff-table tr[data-node-id]');
+  rows.forEach(row => {
+    const selected = nodeId !== null && row.dataset.nodeId === nodeId;
+    row.classList.toggle('payoff-row-selected', selected);
+    if (selected) row.scrollIntoView({ block: 'nearest' });
+  });
+}
+
 function handleNodeSelect(nodeId: string | null) {
+  highlightPayoffRow(nodeId);
   if (!nodeId || !renderer) {
     nodeDetailsDiv.style.display = 'none';
     return;
@@ -1342,6 +1363,12 @@ positionRelationsHandle();
 
 resetViewBtn.addEventListener('click', () => {
   if (renderer) {
+    // Reset also forgets hand-placed bubbles: re-layout from the default positions, then fit.
+    renderer.clearUserPositions();
+    if (currentGraphData) {
+      const threshold = parseFloat(probThresholdInput.value) || 0;
+      renderer.render(currentGraphData, threshold, getRenderOptions());
+    }
     renderer.resetView();
   }
 });
@@ -1518,12 +1545,13 @@ ringColoringRadios.forEach(radio => {
 });
 
 emojiModeCheckbox.addEventListener('change', () => {
-  if (emojiModeCheckbox.checked && currentGraphData && currentGraphData.nodes.length !== 5) {
+  if (emojiModeCheckbox.checked && currentGraphData && !emojiModeSupported(currentGraphData)) {
     emojiModeCheckbox.checked = false;
-    showStatus('Emoji mode is only available for 3-player profiles', 'info');
+    showStatus('Emoji mode is only available for 3- and 4-player profiles', 'info');
     return;
   }
   showEmojiMode = emojiModeCheckbox.checked;
+  storeFlag(EMOJI_MODE_STORAGE_KEY, showEmojiMode);
   if (currentGraphData && renderer) {
     const threshold = parseFloat(probThresholdInput.value) || 0;
     renderer.render(currentGraphData, threshold, getRenderOptions());
@@ -1549,11 +1577,12 @@ document.addEventListener('keydown', (ev) => {
     showStatus(`Node labels ${showNodeLabels ? 'shown' : 'hidden'}`, 'info');
     changed = true;
   } else if (key === 'm') {
-    if (currentGraphData && currentGraphData.nodes.length !== 5) {
-      showStatus('Emoji mode is only available for 3-player profiles', 'info');
+    if (currentGraphData && !emojiModeSupported(currentGraphData)) {
+      showStatus('Emoji mode is only available for 3- and 4-player profiles', 'info');
     } else {
       showEmojiMode = !showEmojiMode;
       emojiModeCheckbox.checked = showEmojiMode;
+      storeFlag(EMOJI_MODE_STORAGE_KEY, showEmojiMode);
       showStatus(`Emoji mode ${showEmojiMode ? 'on' : 'off'}`, 'info');
       changed = true;
     }

@@ -809,3 +809,14 @@ button.secondary:hover {
     padding-right: 40px;
   }
 }
+
+/* Selected state's row in the sidebar short-term payoff table */
+tr.payoff-row-selected {
+  outline: 2px solid #2563eb;
+  outline-offset: -1px;
+}
+tr.payoff-row-selected td:first-child {
+  background: #2563eb;
+  color: #fff;
+  font-weight: 700;
+}

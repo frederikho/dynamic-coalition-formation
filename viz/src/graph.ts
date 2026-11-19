@@ -40,14 +40,15 @@ const GAMMA_CORE_TEAL = '#0d9488';
 // single-dimension and combined stability colourings. The fill is a lighter
 // shade so the striped states recede visually behind the solid "both stable"
 // states.
-function stabilityStripeDataUri(rotateDeg: 45 | -45, fill: string): string {
+function stabilityStripeDataUri(rotateDeg: 45 | -45, fill: string, size = 70, overlay = ''): string {
   const svg =
-    `<svg xmlns='http://www.w3.org/2000/svg' width='70' height='70'>` +
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>` +
     `<defs><pattern id='s' width='14' height='14' patternUnits='userSpaceOnUse' patternTransform='rotate(${rotateDeg})'>` +
     `<rect width='14' height='14' fill='${fill}'/>` +
     `<rect width='5' height='14' fill='#ffffff'/>` +
     `</pattern></defs>` +
-    `<rect width='70' height='70' fill='url(#s)'/>` +
+    `<rect width='${size}' height='${size}' fill='url(#s)'/>` +
+    overlay +
     `</svg>`;
   return 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
@@ -314,16 +315,25 @@ const COUNTRY_FLAGS: Record<string, string> = {
 };
 
 // Mood by the rank of a state's static payoff among the player's distinct
-// payoffs (1 = best). Zero payoff (= no benefit from SG) is crying, unless it
-// is the player's best outcome.
-// n=3 has 5 states, hence at most 5 ranks: star-eyes, neutral, confused, worried, crying.
-const MOOD_BY_RANK = ['\u{1F929}', '\u{1F610}', '\u{1F615}', '\u{1F61F}', '\u{1F62D}'];
-const MOOD_ZERO = '\u{1F62D}';
+// payoffs (1 = best). Best = star-eyes; the worst distinct value (exactly 0
+// once payoffs are normalised per player) = crying; ranks in between use
+// MOOD_MIDDLE in order. n=3 has at most 3 middle ranks, n=4 at most 4.
+const MOOD_BEST = '\u{1F929}';
+const MOOD_WORST = '\u{1F62D}';
+const MOOD_MIDDLE = ['\u{1F610}', '\u{1F615}', '\u{1F61F}', '\u{1F629}'];
 
-export function buildEmojiMoods(graphData: GraphData): Record<string, { player: string; flag: string; mood: string; member: boolean }[]> {
+/** Emoji mode needs a known player count (flag strip layouts exist for 3 and 4). */
+export function emojiModeSupported(graphData: GraphData): boolean {
+  const n = Object.keys(graphData.nodes[0]?.meta?.payoffs || {}).length;
+  return n === 3 || n === 4;
+}
+
+type EmojiItem = { player: string; flag: string; mood: string; member: boolean };
+
+export function buildEmojiMoods(graphData: GraphData): Record<string, EmojiItem[]> {
   const players = Object.keys(graphData.nodes[0]?.meta?.payoffs || {});
-  if (players.length !== 3) {
-    throw new Error(`Emoji mode supports exactly 3 players, got ${players.length}`);
+  if (!emojiModeSupported(graphData)) {
+    throw new Error(`Emoji mode supports 3 or 4 players, got ${players.length}`);
   }
   const EPS = 1e-9;
   const rankOf: Record<string, number[]> = {};
@@ -335,16 +345,18 @@ export function buildEmojiMoods(graphData: GraphData): Record<string, { player: 
     }
     rankOf[pl] = vals.map(v => distinct.findIndex(d => Math.abs(d - v) <= EPS) + 1);
   }
-  const out: Record<string, { player: string; flag: string; mood: string; member: boolean }[]> = {};
+  const out: Record<string, EmojiItem[]> = {};
   graphData.nodes.forEach((n, i) => {
     out[n.id] = players.map(pl => {
       const rank = rankOf[pl][i];
+      const nRanks = Math.max(...rankOf[pl]);
       const payoff = n.meta!.payoffs![pl];
-      const mood = rank === 1 ? MOOD_BY_RANK[0]
-        : Math.abs(payoff) <= EPS ? MOOD_ZERO
-        : MOOD_BY_RANK[rank - 1];
-      if (!mood) throw new Error(`No mood for payoff rank ${rank}`);
-      // n=3 has at most one non-singleton coalition, e.g. "(NDEUSA)"; "( )" has none.
+      let mood: string | undefined;
+      if (rank === 1) mood = MOOD_BEST;
+      else if (rank === nRanks || Math.abs(payoff) <= EPS) mood = MOOD_WORST;
+      else mood = MOOD_MIDDLE[rank - 2];
+      if (!mood) throw new Error(`No mood for payoff rank ${rank} of ${nRanks} (${pl})`);
+      // Members = every player listed inside a coalition, e.g. "(CHNEUR)(NDEUSA)".
       const member = coalitionMembers(n.label, players).includes(pl);
       return { player: pl, flag: COUNTRY_FLAGS[pl] ?? pl, mood, member };
     });
@@ -355,7 +367,6 @@ export function buildEmojiMoods(graphData: GraphData): Record<string, { player: 
 // Split a coalition name such as "(EURUSA)" into player codes. A substring test
 // is wrong here ("RUS" occurs inside "EURUSA"), so segment the whole string.
 function coalitionMembers(stateLabel: string, players: string[]): string[] {
-  const content = stateLabel.match(/\(([^)]*)\)/)?.[1].trim() ?? '';
   const split = (rest: string): string[] | null => {
     if (!rest) return [];
     for (const pl of players) {
@@ -366,27 +377,62 @@ function coalitionMembers(stateLabel: string, players: string[]): string[] {
     }
     return null;
   };
-  const members = split(content);
-  if (!members) throw new Error(`Cannot parse coalition "${stateLabel}" into players ${players.join(',')}`);
+  // A state can hold several coalitions, e.g. "(CHNEUR)(NDEUSA)".
+  const members: string[] = [];
+  for (const m of stateLabel.matchAll(/\(([^)]*)\)/g)) {
+    const part = split(m[1].trim());
+    if (!part) throw new Error(`Cannot parse coalition "${stateLabel}" into players ${players.join(',')}`);
+    members.push(...part);
+  }
   return members;
 }
 
 // One SVG strip per state: each country is a flag with its mood emoji
 // overlapping the flag's lower-right corner, which saves width over text.
-function emojiSvgDataUri(items: { player: string; flag: string; mood: string; member: boolean }[]): string {
-  const pitch = 27;
-  const w = pitch * items.length + 4;
+// Strip geometry per player count: 3 players in a row, 4 players in a 2x2 grid
+// (a 4-wide row would need a much wider circle).
+function emojiStripLayout(nPlayers: number) {
+  const cols = nPlayers === 4 ? 2 : nPlayers;
+  const rows = nPlayers === 4 ? 2 : 1;
+  const pitchX = 27, pitchY = 18;
+  const w = pitchX * cols + 4, h = pitchY * (rows - 1) + 32;
+  // Node diameter, strip top, label offset below the node centre (all in px).
+  const geom = nPlayers === 4
+    ? { nodeSize: 90, stripTop: 12, labelMargin: 18 }
+    : { nodeSize: 86, stripTop: 21, labelMargin: 17 };
+  return { cols, pitchX, pitchY, w, h, ...geom };
+}
+
+function emojiStripInner(items: EmojiItem[]): string {
+  const L = emojiStripLayout(items.length);
   const cells = items.map((it, i) => {
-    const x = 2 + i * pitch;
-    // 1px outline around the flag of each country in the coalition.
+    const x = 2 + (i % L.cols) * L.pitchX;
+    const yOff = Math.floor(i / L.cols) * L.pitchY;
+    // 1px outline around the flag of each country in a coalition.
     const outline = it.member
-      ? `<rect x="${x + 0.5}" y="3.5" width="21" height="13.5" fill="none" stroke="#ffe600" stroke-width="1"/>`
+      ? `<rect x="${x + 0.5}" y="${yOff + 3.5}" width="21" height="13.5" fill="none" stroke="#ffe600" stroke-width="1"/>`
       : '';
-    return `<text x="${x}" y="17" font-size="18">${it.flag}</text>${outline}`
-      + `<text x="${x + 6}" y="17" font-size="16">${it.mood}</text>`;
+    return `<text x="${x}" y="${yOff + 17}" font-size="18">${it.flag}</text>${outline}`
+      + `<text x="${x + 6}" y="${yOff + 17}" font-size="16">${it.mood}</text>`;
   }).join('');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="32">${cells}</svg>`;
+  return cells;
+}
+
+function emojiSvgDataUri(items: EmojiItem[]): string {
+  const L = emojiStripLayout(items.length);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${L.w}" height="${L.h}">${emojiStripInner(items)}</svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+// Stability-striped nodes already use the node's single background image for
+// the stripes, so the emoji strip is baked into a node-sized stripe image
+// (same stripe scale as normal nodes, emoji at the same position).
+function emojiOnStripeDataUri(items: EmojiItem[], pattern: string): string {
+  const L = emojiStripLayout(items.length);
+  const rotate = pattern.startsWith('internal') ? 45 : -45;
+  const fill = pattern.endsWith('red') ? STABILITY_RED_SOFT : STABILITY_ORANGE_SOFT;
+  const overlay = `<svg x='${(L.nodeSize - L.w) / 2}' y='${L.stripTop}' width='${L.w}' height='${L.h}'>${emojiStripInner(items)}</svg>`;
+  return stabilityStripeDataUri(rotate, fill, L.nodeSize, overlay);
 }
 
 function getN5PlayerCodes(graphData: GraphData): string[] {
@@ -441,6 +487,14 @@ export class GraphRenderer {
   private selectedNode: string | null = null;
   private onNodeSelect: ((nodeId: string | null) => void) | null = null;
   private savedPositions: Record<string, { x: number; y: number }> = {};
+  // Positions the user dragged by hand. Persisted in localStorage (keyed by the
+  // set of states, so the same layout is reused across profiles of one n) and
+  // applied above every other position source until Reset View clears them.
+  private userPositions: Record<string, { x: number; y: number }> = {};
+  private userPositionsKey: string | null = null;
+  // Set by clearUserPositions(): the next render must not re-save the live node
+  // positions (that would immediately undo the reset).
+  private discardLivePositions = false;
   private savedZoom: number | null = null;
   private savedPan: { x: number; y: number } | null = null;
 
@@ -450,6 +504,37 @@ export class GraphRenderer {
 
   setOnNodeSelect(callback: (nodeId: string | null) => void) {
     this.onNodeSelect = callback;
+  }
+
+  private static storageKey(stateKey: string) {
+    return `node-positions:${stateKey}`;
+  }
+
+  private loadUserPositions(stateKey: string) {
+    this.userPositionsKey = stateKey;
+    this.userPositions = {};
+    try {
+      const stored = localStorage.getItem(GraphRenderer.storageKey(stateKey));
+      if (stored) this.userPositions = JSON.parse(stored);
+    } catch { /* localStorage unavailable or corrupt: behave as if nothing was saved */ }
+  }
+
+  private persistUserPositions() {
+    if (!this.userPositionsKey) return;
+    try {
+      localStorage.setItem(GraphRenderer.storageKey(this.userPositionsKey), JSON.stringify(this.userPositions));
+    } catch { /* ignore localStorage errors */ }
+  }
+
+  /** Forget all hand-placed positions (memory + localStorage); used by Reset View. */
+  clearUserPositions() {
+    this.userPositions = {};
+    this.savedPositions = {};
+    this.discardLivePositions = true;
+    if (!this.userPositionsKey) return;
+    try {
+      localStorage.removeItem(GraphRenderer.storageKey(this.userPositionsKey));
+    } catch { /* ignore localStorage errors */ }
   }
 
   private saveCurrentPositions() {
@@ -549,7 +634,11 @@ export class GraphRenderer {
   }) {
     // Save current positions before destroying
     if (this.cy) {
-      this.saveCurrentPositions();
+      if (this.discardLivePositions) {
+        this.discardLivePositions = false;
+      } else {
+        this.saveCurrentPositions();
+      }
       this.cy.destroy();
       this.cy = null;
     }
@@ -563,7 +652,8 @@ export class GraphRenderer {
     const showNodeLabels = options?.showNodeLabels !== false; // default true
     const showGeoLevel = options?.showGeoLevel !== false; // default true
     // Emoji mode is n=3 only; anything else silently keeps the normal labels.
-    const showEmojiMode = options?.showEmojiMode === true && graphData.nodes.length === 5;
+    const showEmojiMode = options?.showEmojiMode === true && emojiModeSupported(graphData);
+    const emojiLayout = showEmojiMode ? emojiStripLayout(Object.keys(graphData.nodes[0].meta!.payoffs!).length) : null;
     const emojiMoods = showEmojiMode ? buildEmojiMoods(graphData) : null;
 
     // Filter edges by probability threshold
@@ -645,8 +735,14 @@ export class GraphRenderer {
     // This ensures that user interactions (dragging) or previous renders are preserved
     const finalPositions: Record<string, { x: number; y: number }> = {};
 
+    const stateKey = graphData.nodes.map(n => n.id).sort().join(',');
+    if (stateKey !== this.userPositionsKey) this.loadUserPositions(stateKey);
+
     for (const nodeId of graphData.nodes.map(n => n.id)) {
-      if (this.savedPositions[nodeId]) {
+      if (this.userPositions[nodeId]) {
+        // Hand-placed by the user: wins over everything, survives reloads
+        finalPositions[nodeId] = this.userPositions[nodeId];
+      } else if (this.savedPositions[nodeId]) {
         // Always prioritize saved positions from previous render
         finalPositions[nodeId] = this.savedPositions[nodeId];
       } else if (layoutMode === 'connections' && cachedForcePositions?.[nodeId]) {
@@ -792,6 +888,11 @@ export class GraphRenderer {
             && nodeToAbsorbing.get(node.id) !== undefined;
         }
 
+        const stabPattern = (element.data as any).stab_pattern as string | undefined;
+        if (emojiMoods && stabPattern) {
+          (element.data as any).stripe_img = emojiOnStripeDataUri(emojiMoods[node.id], stabPattern);
+        }
+
         return element;
       }),
       // Edges
@@ -826,30 +927,30 @@ export class GraphRenderer {
         'text-halign': 'center',
         'font-size': graphData.nodes.length === 52 ? '10px' : '12px',
         'font-weight': 'normal',
-        'width': graphData.nodes.length === 52 ? 62 : (showEmojiMode ? 86 : 70),
-        'height': graphData.nodes.length === 52 ? 62 : (showEmojiMode ? 86 : 70),
+        'width': graphData.nodes.length === 52 ? 62 : (emojiLayout ? emojiLayout.nodeSize : 70),
+        'height': graphData.nodes.length === 52 ? 62 : (emojiLayout ? emojiLayout.nodeSize : 70),
         'text-outline-width': 0,
         'text-wrap': 'wrap',
-        'text-max-width': graphData.nodes.length === 52 ? '58px' : (showEmojiMode ? '82px' : '65px'),
+        'text-max-width': graphData.nodes.length === 52 ? '58px' : (emojiLayout ? `${emojiLayout.nodeSize - 4}px` : '65px'),
         'border-width': 0,
         'border-color': '#1e293b'
       }
     });
 
-    if (showEmojiMode) {
+    if (emojiLayout) {
       // Emoji strip sits in the upper part of the node; text label moves below it.
       styles.push({
         selector: 'node[emoji_img]',
         style: {
           'background-image': 'data(emoji_img)',
           'background-fit': 'none',
-          'background-width': '85px',
-          'background-height': '32px',
+          'background-width': `${emojiLayout.w}px`,
+          'background-height': `${emojiLayout.h}px`,
           'background-position-x': '50%',
-          'background-position-y': '21px',
+          'background-position-y': `${emojiLayout.stripTop}px`,
           'background-clip': 'none',
           'text-valign': 'center',
-          'text-margin-y': 17,
+          'text-margin-y': emojiLayout.labelMargin,
         }
       });
     }
@@ -919,6 +1020,22 @@ export class GraphRenderer {
         'background-fit': 'cover'
       }
     });
+
+    // Emoji + stripes: the combined node-sized image replaces both single images.
+    if (emojiLayout) {
+      styles.push({
+        selector: 'node[stab_pattern][stripe_img]',
+        style: {
+          'background-image': 'data(stripe_img)',
+          'background-fit': 'none',
+          'background-width': `${emojiLayout.nodeSize}px`,
+          'background-height': `${emojiLayout.nodeSize}px`,
+          'background-position-x': '50%',
+          'background-position-y': '50%',
+          'background-clip': 'node',
+        }
+      });
+    }
 
     // Selected node
     styles.push({
@@ -1167,6 +1284,15 @@ export class GraphRenderer {
       } else {
         this.selectNode(node.id());
       }
+    });
+
+    // Remember hand-dragged nodes (persisted so they survive reloads)
+    this.cy.on('dragfree', 'node', (evt) => {
+      const node = evt.target;
+      if (node.data('is_taxonomy_label')) return;
+      const pos = node.position();
+      this.userPositions[node.id()] = { x: pos.x, y: pos.y };
+      this.persistUserPositions();
     });
 
     // Click background to deselect
