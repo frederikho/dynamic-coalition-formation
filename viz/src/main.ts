@@ -1,6 +1,6 @@
-import { GraphRenderer } from './graph';
-import { fetchProfiles, fetchGraph } from './api';
-import type { GraphData, NodeColoringMode } from './types';
+import { GraphRenderer, buildEmojiMoods } from './graph';
+import { fetchProfiles, fetchGraph, profileXlsxUrl } from './api';
+import type { GraphData, NodeColoringMode, RingColoringMode } from './types';
 import { computeAbsorbingSets } from './absorbing';
 import { computeConceptRelations } from './relations';
 
@@ -21,6 +21,8 @@ const nodePayoffsDiv = document.getElementById('node-payoffs') as HTMLDivElement
 const outgoingTransitionsDiv = document.getElementById('outgoing-transitions') as HTMLDivElement;
 const graphContainer = document.getElementById('graph-container') as HTMLDivElement;
 const nodeColoringRadios = document.querySelectorAll('input[name="node-coloring"]') as NodeListOf<HTMLInputElement>;
+const ringColoringRadios = document.querySelectorAll('input[name="ring-coloring"]') as NodeListOf<HTMLInputElement>;
+const ringLegendDiv = document.getElementById('ring-legend') as HTMLDivElement;
 const layoutModeRadios = document.querySelectorAll('input[name="layout-mode"]') as NodeListOf<HTMLInputElement>;
 const absorbingLegendDiv = document.getElementById('absorbing-legend') as HTMLDivElement;
 const resultIndicatorDiv = document.getElementById('result-indicator') as HTMLDivElement;
@@ -44,12 +46,18 @@ let showSelfLoops = true;
 let showEdgeLabels = true;
 let showNodeLabels = true;
 let showGeoLevel = true;
+const emojiModeCheckbox = document.getElementById('emoji-mode') as HTMLInputElement;
+// Browsers restore checkbox state on reload, so the checkbox is the source of truth.
+let showEmojiMode = emojiModeCheckbox.checked;
+// Remembered across profile switches (the metadata panel is re-rendered each time).
+let shortTermPayoffEmoji = false;
 
 function getRenderOptions() {
   const filterMode = getFilterMode();
   const coloringMode = getNodeColoringMode();
+  const ringColoringMode = getRingColoringMode();
   const layoutMode = getLayoutMode();
-  return { coloringMode, filterMode, layoutMode, showSelfLoops, showEdgeLabels, showNodeLabels, showGeoLevel };
+  return { coloringMode, ringColoringMode, filterMode, layoutMode, showSelfLoops, showEdgeLabels, showNodeLabels, showGeoLevel, showEmojiMode };
 }
 
 // Initialize graph renderer
@@ -73,6 +81,33 @@ function getNodeColoringMode(): NodeColoringMode {
   return (selected?.value as NodeColoringMode) || 'none';
 }
 
+// Get selected ring coloring mode
+function getRingColoringMode(): RingColoringMode {
+  const selected = Array.from(ringColoringRadios).find(radio => radio.checked);
+  return (selected?.value as RingColoringMode) || 'none';
+}
+
+// Persist the last-picked node/ring coloring mode across page loads. Kept to
+// just these two radio groups (not every UI toggle) since they're the ones
+// most worth not having to re-pick every time the page is reloaded.
+const NODE_COLORING_STORAGE_KEY = 'viz:node-coloring-mode';
+const RING_COLORING_STORAGE_KEY = 'viz:ring-coloring-mode';
+
+function restoreColoringModeSelections() {
+  try {
+    const savedNodeMode = localStorage.getItem(NODE_COLORING_STORAGE_KEY);
+    if (savedNodeMode) {
+      const match = Array.from(nodeColoringRadios).find(radio => radio.value === savedNodeMode);
+      if (match) match.checked = true;
+    }
+    const savedRingMode = localStorage.getItem(RING_COLORING_STORAGE_KEY);
+    if (savedRingMode) {
+      const match = Array.from(ringColoringRadios).find(radio => radio.value === savedRingMode);
+      if (match) match.checked = true;
+    }
+  } catch { /* ignore localStorage errors (e.g. disabled in private browsing) */ }
+}
+
 // Get selected layout mode
 function getLayoutMode(): 'default' | 'connections' | 'deployer' | 'geo-level' {
   const selected = Array.from(layoutModeRadios).find(radio => radio.checked);
@@ -87,6 +122,20 @@ function updateTooltip() {
   } else {
     thresholdTooltip.textContent = 'Hide edges with probability below this value';
   }
+}
+
+// Formats a probability (0-1) as a percentage string for display, making a
+// nonzero value that rounds to "0.0%" visually distinct from a true zero --
+// otherwise e.g. a 0.021% path probability silently reads as exactly 0.
+// The full-precision value goes in `title` so hovering reveals the real number.
+function formatPercentDisplay(value: number, decimals: number = 1): { text: string; title: string } {
+  const pct = value * 100;
+  const rounded = pct.toFixed(decimals);
+  const roundsToZero = pct > 0 && parseFloat(rounded) === 0;
+  const text = roundsToZero ? `<${(1 / Math.pow(10, decimals)).toFixed(decimals)}%` : `${rounded}%`;
+  // Show enough precision to be meaningful even for very small probabilities.
+  const title = `${pct.toPrecision(3)}%`;
+  return { text, title };
 }
 
 // Status display
@@ -267,6 +316,13 @@ async function loadGraph() {
     const hasAnyG = graphData.nodes.some(node => (node.meta?.geo_level || 0) > 0);
     showGeoLevel = hasAnyG;
 
+    // A 52-state graph has enough transitions that labels and self-loops turn
+    // the initial view into visual noise (they remain one-key shortcuts: E/S).
+    // Smaller profiles retain the detailed default view.
+    const isN5 = graphData.nodes.length === 52;
+    showEdgeLabels = !isN5;
+    showSelfLoops = !isN5;
+
     // Render graph
     initRenderer();
     const threshold = parseFloat(probThresholdInput.value) || 0;
@@ -283,6 +339,7 @@ async function loadGraph() {
 
     // Update legend
     updateLegend(graphData, coloringMode);
+    updateRingLegend(graphData, getRingColoringMode());
 
     // Update solution-concepts-vs-MPE relations table
     updateRelationsPanel(graphData);
@@ -383,7 +440,7 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
       <div style="font-size:11px;color:#999;margin-top:8px">External = consent-based (approval committees)</div>
     `;
   } else if (coloringMode === 'gamma-core') {
-    // Binary gamma-core legend (solid red = in the NTU core, gray = not)
+    // Binary gamma-core legend (solid teal = in the NTU core, gray = not)
     const inCoreCount = data.nodes.filter(n => n.meta?.gamma_core?.in_core === true).length;
     const outCount = data.nodes.filter(n => n.meta?.gamma_core?.in_core === false).length;
     const unknownCount = data.nodes.filter(
@@ -392,7 +449,7 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
 
     const items = [];
     if (inCoreCount > 0) {
-      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#dc2626;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>In gamma core (${inCoreCount} state${inCoreCount !== 1 ? 's' : ''})</span></div>`);
+      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#0d9488;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>In gamma core (${inCoreCount} state${inCoreCount !== 1 ? 's' : ''})</span></div>`);
     }
     if (outCount > 0) {
       items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#cbd5e1;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>Not in core (${outCount} state${outCount !== 1 ? 's' : ''})</span></div>`);
@@ -422,7 +479,7 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
 
     const items = [];
     if (winningCount > 0) {
-      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#dc2626;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>Ricke winning coalition (${winningCount} state${winningCount !== 1 ? 's' : ''})</span></div>`);
+      items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#7c3aed;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>Ricke winning coalition (${winningCount} state${winningCount !== 1 ? 's' : ''})</span></div>`);
     }
     if (majorityNotStableCount > 0) {
       items.push(`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:#cbd5e1;display:inline-block;border-radius:2px;border:1px solid #e2e8f0"></span><span>Majority power, not stable (${majorityNotStableCount} state${majorityNotStableCount !== 1 ? 's' : ''})</span></div>`);
@@ -444,78 +501,6 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
       ${unknownNote}
       <div style="font-size:11px;color:#999;margin-top:8px">Ricke, Moreno-Cruz &amp; Caldeira (2013): majority power share + no member wants to leave (their game has only one active coalition, so leaving collapses onto internal stability).</div>
     `;
-  } else if (coloringMode === 'deployer') {
-    // Get unique deploying coalitions
-    const deployerSet = new Set<string>();
-    data.nodes.forEach(node => {
-      const deployer = node.meta?.deploying_coalition;
-      if (deployer) deployerSet.add(deployer);
-    });
-
-    const deployers = Array.from(deployerSet).sort();
-    const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
-
-    const items = deployers.map((deployer, i) => {
-      const color = palette[i % palette.length];
-      // Count states with this deployer
-      const count = data.nodes.filter(n => n.meta?.deploying_coalition === deployer).length;
-      return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:16px;height:12px;background:${color};display:inline-block;border-radius:2px"></span><span>${deployer} (${count} state${count !== 1 ? 's' : ''})</span></div>`;
-    }).join('');
-
-    absorbingLegendDiv.innerHTML = `
-      <div style="font-weight:600;margin-bottom:6px">Deploying Coalition</div>
-      ${items}
-      <div style="font-size:11px;color:#999;margin-top:8px">Border = This is the coalition which deploys within this group.</div>
-    `;
-  } else if (coloringMode === 'absorbing') {
-    // Compute absorbing sets from graph structure
-    const nodeToAbsorbing = computeAbsorbingSets(data);
-    const absorbingSetIds = new Set<number>();
-    nodeToAbsorbing.forEach(setId => {
-      if (setId !== null) absorbingSetIds.add(setId);
-    });
-
-    if (absorbingSetIds.size === 0) {
-      absorbingLegendDiv.innerHTML = '<div style="color:#999; padding:6px">No absorbing sets found</div>';
-      return;
-    }
-
-    // Build set membership for display
-    const setMembers = new Map<number, string[]>();
-    nodeToAbsorbing.forEach((setId, nodeId) => {
-      if (setId !== null) {
-        if (!setMembers.has(setId)) {
-          setMembers.set(setId, []);
-        }
-        setMembers.get(setId)!.push(nodeId);
-      }
-    });
-
-    const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
-    const sortedIds = Array.from(absorbingSetIds).sort((a, b) => a - b);
-    const items = sortedIds.map((setId, i) => {
-      const color = palette[i % palette.length];
-      const members = setMembers.get(setId) || [];
-      const label = members.length === 1 ? members[0] : `Set ${setId + 1} (${members.length} states)`;
-      return `<div class="absorbing-legend-item" data-set-id="${setId}" style="display:flex;align-items:center;gap:8px;margin:4px 0;cursor:default"><span style="width:16px;height:12px;background:${color};display:inline-block;border-radius:2px"></span><span>${label}</span></div>`;
-    });
-    absorbingLegendDiv.innerHTML = `<div style="font-weight:600;margin-bottom:6px">Absorbing sets</div>` + items.join('');
-
-    // Attach hover listeners to legend items to highlight corresponding nodes
-    const legendItems = Array.from(absorbingLegendDiv.querySelectorAll('.absorbing-legend-item')) as HTMLDivElement[];
-    legendItems.forEach(el => {
-      el.addEventListener('mouseover', () => {
-        const sid = el.getAttribute('data-set-id');
-        if (!sid) return;
-        const setId = parseInt(sid, 10);
-        const members = setMembers.get(setId) || [];
-        // Highlight nodes and their edges via renderer
-        if (renderer) renderer.highlightNodes(members);
-      });
-      el.addEventListener('mouseout', () => {
-        if (renderer) renderer.clearHighlights();
-      });
-    });
   } else if (coloringMode === 'geoengineering') {
     // Find min/max G values for the scale
     const geoLevels = data.nodes.map(n => n.meta?.geo_level || 0);
@@ -537,14 +522,71 @@ function updateLegend(data: GraphData, coloringMode: NodeColoringMode) {
   }
 }
 
+function updateRingLegend(data: GraphData, ringColoringMode: RingColoringMode) {
+  if (!ringLegendDiv) return;
+
+  if (ringColoringMode === 'none') {
+    ringLegendDiv.innerHTML = '';
+    return;
+  }
+
+  // ringColoringMode === 'absorbing'
+  const nodeToAbsorbing = computeAbsorbingSets(data);
+  const absorbingSetIds = new Set<number>();
+  nodeToAbsorbing.forEach(setId => {
+    if (setId !== null) absorbingSetIds.add(setId);
+  });
+
+  if (absorbingSetIds.size === 0) {
+    ringLegendDiv.innerHTML = '<div style="color:#999; padding:6px">No absorbing sets found</div>';
+    return;
+  }
+
+  // Build set membership for display
+  const setMembers = new Map<number, string[]>();
+  nodeToAbsorbing.forEach((setId, nodeId) => {
+    if (setId !== null) {
+      if (!setMembers.has(setId)) {
+        setMembers.set(setId, []);
+      }
+      setMembers.get(setId)!.push(nodeId);
+    }
+  });
+
+  const sortedIds = Array.from(absorbingSetIds).sort((a, b) => a - b);
+  const items = sortedIds.map(setId => {
+    const members = setMembers.get(setId) || [];
+    const label = members.length === 1 ? members[0] : `Set ${setId + 1} (${members.length} states)`;
+    return `<div class="ring-legend-item" data-set-id="${setId}" style="display:flex;align-items:center;gap:8px;margin:4px 0;cursor:default"><span style="width:14px;height:10px;border:4px solid #dc2626;border-radius:50%;display:inline-block;background:transparent"></span><span>${label}</span></div>`;
+  });
+  ringLegendDiv.innerHTML = `<div style="font-weight:600;margin-bottom:6px">Absorbing sets (ring)</div>` + items.join('');
+
+  // Attach hover listeners to legend items to highlight corresponding nodes
+  const legendItems = Array.from(ringLegendDiv.querySelectorAll('.ring-legend-item')) as HTMLDivElement[];
+  legendItems.forEach(el => {
+    el.addEventListener('mouseover', () => {
+      const sid = el.getAttribute('data-set-id');
+      if (!sid) return;
+      const setId = parseInt(sid, 10);
+      const members = setMembers.get(setId) || [];
+      if (renderer) renderer.highlightNodes(members);
+    });
+    el.addEventListener('mouseout', () => {
+      if (renderer) renderer.clearHighlights();
+    });
+  });
+}
+
 let relationsPanelVisible = false;
 
 function positionRelationsHandle() {
   if (!relationsHandle) return;
-  // Sits on the seam between the sidebar and the relations panel: the
-  // sidebar's right edge when collapsed, or the relations panel's right
-  // edge when expanded. Measured from the live layout rather than hardcoded,
-  // since the sidebar is itself resizable between its min/max width.
+  // relationsPanel always sits immediately after the sidebar in flex order,
+  // so its right edge IS the seam in both states: when collapsed (width: 0)
+  // its right edge coincides exactly with the sidebar's right edge, and when
+  // expanded it's the panel's own right edge. Anchoring to the panel alone
+  // (rather than switching anchor by visibility) keeps this correct
+  // continuously through the width transition, not just at its two endpoints.
   //
   // relationsHandle's containing block is #app (position: relative), so its
   // `left` must be expressed relative to #app's own box, not the viewport --
@@ -554,8 +596,7 @@ function positionRelationsHandle() {
   // and introduce a spurious horizontal scrollbar.
   const appEl = document.getElementById('app') as HTMLDivElement;
   const appRect = appEl.getBoundingClientRect();
-  const anchor = relationsPanelVisible ? relationsPanel : sidebar;
-  const rect = anchor.getBoundingClientRect();
+  const rect = relationsPanel.getBoundingClientRect();
   relationsHandle.style.left = `${rect.right - appRect.left}px`;
   relationsHandle.textContent = relationsPanelVisible ? '<<' : '>';
   relationsHandle.title = relationsPanelVisible ? 'Hide relations table' : 'Show relations table';
@@ -564,8 +605,18 @@ function positionRelationsHandle() {
 function setRelationsPanelVisible(visible: boolean) {
   relationsPanelVisible = visible;
   relationsPanel.classList.toggle('active', visible);
-  // Wait for the width transition to apply before re-measuring the seam.
-  requestAnimationFrame(positionRelationsHandle);
+  // Track the handle continuously through the 0.2s width transition (rAF
+  // ticks), plus a final correction once it ends, so it never lags behind
+  // or snaps to a stale position mid-animation.
+  const start = performance.now();
+  const duration = 250; // matches styles.css's width transition + margin
+  const tick = (now: number) => {
+    positionRelationsHandle();
+    if (now - start < duration) {
+      requestAnimationFrame(tick);
+    }
+  };
+  requestAnimationFrame(tick);
 }
 
 function updateRelationsPanel(data: GraphData) {
@@ -959,6 +1010,59 @@ function updateMetadata(data: GraphData) {
     }
   }
 
+  // Precomputed-table profiles have no meaningful temperature/damage inputs, so
+  // show the one-period (short-term) payoffs per state instead, as served by the
+  // API (normalised per player to [0,1]).
+  if (payoffFromTable && players.length > 0) {
+    const nodes = [...data.nodes].sort((a, b) => (a.meta?.index ?? 0) - (b.meta?.index ?? 0));
+    // Per-player range of the NON-ZERO payoffs. Zero (the worst state) is pinned
+    // to pure red; the non-zero values are stretched over orange -> green by their
+    // own min/max, since on a plain 0..1 scale they all land in one narrow band.
+    const nzRange: Record<string, [number, number]> = {};
+    players.forEach(pl => {
+      const nz = nodes.map(n => n.meta?.payoffs?.[pl]).filter((v): v is number => typeof v === 'number' && isFinite(v) && v > 1e-9);
+      if (nz.length > 0) nzRange[pl] = [Math.min(...nz), Math.max(...nz)];
+    });
+    const payoffHue = (pl: string, u: number): number => {
+      if (!(u > 1e-9)) return 0; // exact zero: red
+      const range = nzRange[pl];
+      if (!range || range[1] - range[0] < 1e-9) return 120;
+      return 25 + ((u - range[0]) / (range[1] - range[0])) * 95; // 25 (orange) .. 120 (green)
+    };
+    // Emoji view (n=3 only): same mood scale as the graph's emoji mode.
+    const emojiAvailable = players.length === 3 && data.nodes.length === 5;
+    const moods = emojiAvailable ? buildEmojiMoods(data) : null;
+    const rows = nodes.map(n => {
+      const g = n.meta?.geo_level;
+      const gStr = (typeof g === 'number' && isFinite(g)) ? g.toFixed(2) : '—';
+      const cells = players.map(pl => {
+        const u = n.meta?.payoffs?.[pl];
+        if (typeof u !== 'number' || !isFinite(u)) return '<td style="text-align:right;padding:3px 4px;">—</td>';
+        const bg = `background:hsl(${payoffHue(pl, u).toFixed(0)},75%,87%);`;
+        const mood = moods ? (moods[n.id].find(m => m.player === pl)?.mood ?? (() => { throw new Error(`No mood for player ${pl}`); })()) : '';
+        return `<td style="text-align:right;padding:3px 4px;font-variant-numeric:tabular-nums;${bg}"><span class="pay-num">${u.toFixed(3)}</span>${moods ? `<span class="pay-emoji" style="display:none;font-size:14px;">${mood}</span>` : ''}</td>`;
+      }).join('');
+      return `<tr style="border-bottom:1px solid #e2e8f0;"><td style="padding:3px 4px;white-space:nowrap;">${n.label ?? n.id}</td>${cells}<td style="text-align:right;padding:3px 4px;color:#64748b;">${gStr}</td></tr>`;
+    }).join('');
+    playerParamsSection = `
+      <div style="margin-top:12px;">
+        <details open>
+          <summary style="font-weight:600;font-size:13px;cursor:pointer;">Short-term payoffs (one period)</summary>
+          ${emojiAvailable ? `<label class="checkbox-group" style="margin-top:6px;"><input type="checkbox" id="payoff-emoji-toggle"${shortTermPayoffEmoji ? ' checked' : ''}> Show as emojis</label>` : ''}
+          <table id="short-term-payoff-table" style="width:100%;font-size:11px;border-collapse:collapse;margin-top:6px;">
+            <thead><tr style="border-bottom:2px solid #e2e8f0;">
+              <th style="text-align:left;padding:3px 4px;">State</th>
+              ${players.map(pl => `<th style="text-align:right;padding:3px 4px;">${pl}</th>`).join('')}
+              <th style="text-align:right;padding:3px 4px;color:#64748b;">G</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div style="font-size:11px;color:#999;margin-top:4px;">Payoffs normalised per player to [0, 1] (0 = worst, 1 = best); zero is red; non-zero values run orange to green across that country's own range. G = geoengineering level.</div>
+        </details>
+      </div>
+    `;
+  }
+
   metadataDiv.innerHTML = `
     ${scenarioSection}
     <div><strong>Profile:</strong> ${data.metadata.profile_path.split('/').pop()}</div>
@@ -983,6 +1087,18 @@ function updateMetadata(data: GraphData) {
     ${fileMetadata.end_time ? `<div style="font-size: 11px; color: #888;"><strong>Computed:</strong> ${fileMetadata.end_time}</div>` : ''}
     ${playerParamsSection}
   `;
+
+  const payoffEmojiToggle = document.getElementById('payoff-emoji-toggle') as HTMLInputElement | null;
+  const applyPayoffEmoji = () => {
+    const on = payoffEmojiToggle?.checked ?? false;
+    shortTermPayoffEmoji = on;
+    metadataDiv.querySelectorAll<HTMLElement>('#short-term-payoff-table .pay-num').forEach(el => { el.style.display = on ? 'none' : ''; });
+    metadataDiv.querySelectorAll<HTMLElement>('#short-term-payoff-table .pay-emoji').forEach(el => { el.style.display = on ? '' : 'none'; });
+  };
+  if (payoffEmojiToggle) {
+    payoffEmojiToggle.addEventListener('change', applyPayoffEmoji);
+    applyPayoffEmoji();
+  }
 
   // Clear any pending highlight removal from previous profile switch
   if (highlightTimeoutId !== null) {
@@ -1129,8 +1245,12 @@ function handleNodeSelect(nodeId: string | null) {
 
       // Build the detail lines: target (prop_prob%) -> approval details
       const lines = pathEntries.map(entry => {
-        return `<div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>${entry.target} (${(entry.propProb * 100).toFixed(1)}%) \u2192 ${entry.approvalDetail}</span><span style="white-space:nowrap;margin-left:8px;color:#94a3b8;">${(entry.pathProb * 100).toFixed(1)}%</span></div>`;
+        const propPct = formatPercentDisplay(entry.propProb);
+        const pathPct = formatPercentDisplay(entry.pathProb);
+        return `<div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>${entry.target} (<span title="${propPct.title}">${propPct.text}</span>) \u2192 ${entry.approvalDetail}</span><span style="white-space:nowrap;margin-left:8px;color:#94a3b8;" title="${pathPct.title}">${pathPct.text}</span></div>`;
       }).join('');
+
+      const totalPct = formatPercentDisplay(data.total);
 
       // Single line: show inline
       if (pathEntries.length === 1) {
@@ -1138,7 +1258,7 @@ function handleNodeSelect(nodeId: string | null) {
           <div style="font-size:10px;color:#64748b;margin-left:16px;padding:4px 0;border-top:1px solid #e5e7eb;">
             <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
               <strong>${proposer} proposes:</strong>
-              <span>${(data.total * 100).toFixed(1)}%</span>
+              <span title="${totalPct.title}">${totalPct.text}</span>
             </div>
             <div style="margin-left:8px;">${lines}</div>
           </div>
@@ -1152,7 +1272,7 @@ function handleNodeSelect(nodeId: string | null) {
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <strong>${proposer} proposes:</strong>
             <div style="display:flex;align-items:center;gap:6px;">
-              <span>${(data.total * 100).toFixed(1)}%</span>
+              <span title="${totalPct.title}">${totalPct.text}</span>
               <button class="breakdown-toggle" data-target="${detailId}" style="background:none;border:none;cursor:pointer;padding:2px;color:#64748b;font-size:10px;">\u25BC</button>
             </div>
           </div>
@@ -1175,12 +1295,13 @@ function handleNodeSelect(nodeId: string | null) {
         const label = isSelfLoop
           ? `${targetName} <span style="color:#b0b8c4;font-style:italic;font-weight:normal;">\u2014 status quo</span>`
           : targetName;
+        const edgePct = formatPercentDisplay(edge.probability);
         return `
           <div class="transition-item" style="display:block;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <span>${label}</span>
               <div style="display:flex;align-items:center;gap:8px;">
-                <span class="prob">${(edge.probability * 100).toFixed(1)}%</span>
+                <span class="prob" title="${edgePct.title}">${edgePct.text}</span>
                 ${hasBreakdown ? `<button class="breakdown-toggle" data-target="${breakdownId}" style="background:none;border:none;cursor:pointer;padding:4px;color:#64748b;font-size:12px;">▼</button>` : ''}
               </div>
             </div>
@@ -1235,12 +1356,11 @@ downloadXlsxBtn.addEventListener('click', () => {
   const pathParts = profileSelect.value.split('/');
   const filename = pathParts[pathParts.length - 1];
 
-  // Create a temporary link to download the file from static data
-  // Use BASE_URL to handle GitHub Pages subdirectory deployment
-  const baseUrl = import.meta.env.BASE_URL || '/';
-  const xlsxBase = import.meta.env.DEV ? `${baseUrl}data/xlsx` : `${baseUrl}viz/data/xlsx`;
+  // Local mode downloads the real file from the backend; static hosting uses
+  // the committed copy. (A missing static file used to fall through to the
+  // dev server's index.html, which then got saved under an .xlsx name.)
   const link = document.createElement('a');
-  link.href = `${xlsxBase}/${filename}`;
+  link.href = profileXlsxUrl(profileSelect.value);
   link.download = filename;
   document.body.appendChild(link);
   link.click();
@@ -1258,6 +1378,7 @@ probThresholdInput.addEventListener('change', () => {
     // Don't call initRenderer() - positions will be preserved
     renderer.render(currentGraphData, threshold, getRenderOptions());
     updateLegend(currentGraphData, coloringMode);
+    updateRingLegend(currentGraphData, getRingColoringMode());
   }
 });
 
@@ -1275,6 +1396,7 @@ profileFilter.addEventListener('input', () => {
 // Node coloring mode change
 nodeColoringRadios.forEach(radio => {
   radio.addEventListener('change', () => {
+    try { localStorage.setItem(NODE_COLORING_STORAGE_KEY, getNodeColoringMode()); } catch { /* ignore */ }
     if (currentGraphData && renderer) {
       const threshold = parseFloat(probThresholdInput.value) || 0;
       const filterMode = getFilterMode();
@@ -1283,6 +1405,19 @@ nodeColoringRadios.forEach(radio => {
       // Don't call initRenderer() - positions will be preserved
       renderer.render(currentGraphData, threshold, getRenderOptions());
       updateLegend(currentGraphData, coloringMode);
+    }
+  });
+});
+
+// Ring coloring mode change
+ringColoringRadios.forEach(radio => {
+  radio.addEventListener('change', () => {
+    try { localStorage.setItem(RING_COLORING_STORAGE_KEY, getRingColoringMode()); } catch { /* ignore */ }
+    if (currentGraphData && renderer) {
+      const threshold = parseFloat(probThresholdInput.value) || 0;
+      // Don't call initRenderer() - positions will be preserved
+      renderer.render(currentGraphData, threshold, getRenderOptions());
+      updateRingLegend(currentGraphData, getRingColoringMode());
     }
   });
 });
@@ -1315,6 +1450,7 @@ filterModeRadios.forEach(radio => {
       // Don't call initRenderer() - positions will be preserved
       renderer.render(currentGraphData, threshold, getRenderOptions());
       updateLegend(currentGraphData, coloringMode);
+      updateRingLegend(currentGraphData, getRingColoringMode());
     }
   });
 });
@@ -1373,6 +1509,27 @@ layoutModeRadios.forEach(radio => {
   });
 });
 
+ringColoringRadios.forEach(radio => {
+  radio.addEventListener('change', () => {
+    if (window.innerWidth <= 768) {
+      setTimeout(closeMobileMenu, 300);
+    }
+  });
+});
+
+emojiModeCheckbox.addEventListener('change', () => {
+  if (emojiModeCheckbox.checked && currentGraphData && currentGraphData.nodes.length !== 5) {
+    emojiModeCheckbox.checked = false;
+    showStatus('Emoji mode is only available for 3-player profiles', 'info');
+    return;
+  }
+  showEmojiMode = emojiModeCheckbox.checked;
+  if (currentGraphData && renderer) {
+    const threshold = parseFloat(probThresholdInput.value) || 0;
+    renderer.render(currentGraphData, threshold, getRenderOptions());
+  }
+});
+
 // Keyboard shortcuts for quick toggles (temporary display changes)
 // s = toggle self-loops, e = toggle edge labels, l = toggle node labels
 document.addEventListener('keydown', (ev) => {
@@ -1391,6 +1548,15 @@ document.addEventListener('keydown', (ev) => {
     showNodeLabels = !showNodeLabels;
     showStatus(`Node labels ${showNodeLabels ? 'shown' : 'hidden'}`, 'info');
     changed = true;
+  } else if (key === 'm') {
+    if (currentGraphData && currentGraphData.nodes.length !== 5) {
+      showStatus('Emoji mode is only available for 3-player profiles', 'info');
+    } else {
+      showEmojiMode = !showEmojiMode;
+      emojiModeCheckbox.checked = showEmojiMode;
+      showStatus(`Emoji mode ${showEmojiMode ? 'on' : 'off'}`, 'info');
+      changed = true;
+    }
   } else if (key === 'g') {
     showGeoLevel = !showGeoLevel;
     showStatus(`G values ${showGeoLevel ? 'shown' : 'hidden'}`, 'info');
@@ -1466,6 +1632,11 @@ function setupGlobalTooltips() {
 
 // Initialize
 async function init() {
+  // Restore the last-picked coloring modes before the first graph loads, so
+  // it renders with the right selection from the start rather than flashing
+  // the default and then re-rendering.
+  restoreColoringModeSelections();
+
   // Initialize tooltip
   updateTooltip();
   setupGlobalTooltips();

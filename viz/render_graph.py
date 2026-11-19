@@ -265,7 +265,8 @@ def _apply_options(page, args):
         page.locator("#prob-threshold").dispatch_event("change")
         changed = True
 
-    if args.filter_mode is not None or args.coloring is not None or args.layout is not None:
+    if (args.filter_mode is not None or args.coloring is not None
+            or args.layout is not None or args.ring is not None):
         _expand_visualisation_options(page)
 
     if args.filter_mode is not None:
@@ -278,6 +279,10 @@ def _apply_options(page, args):
 
     if args.layout is not None:
         page.check(f'input[name="layout-mode"][value="{args.layout}"]')
+        changed = True
+
+    if args.ring is not None:
+        page.check(f'input[name="ring-coloring"][value="{args.ring}"]')
         changed = True
 
     # Keyboard toggles: blur any focused input first so the keys aren't typed.
@@ -408,6 +413,10 @@ def main():
     parser.add_argument(
         "--coloring", choices=["none", "absorbing", "geoengineering", "deployer", "internal", "external", "internal-external", "gamma-core", "ricke"], default="none",
         help="Node coloring mode.",
+    )
+    parser.add_argument(
+        "--ring", choices=["none", "absorbing"], default="none",
+        help="Ring (border) colouring: 'absorbing' outlines the states of the MPE's absorbing set(s).",
     )
     parser.add_argument(
         "--layout", choices=["default", "connections", "deployer", "geo-level"], default="default",

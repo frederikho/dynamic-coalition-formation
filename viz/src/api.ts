@@ -79,3 +79,16 @@ export async function fetchGraph(params: {
   }
   return response.json();
 }
+
+/**
+ * URL for downloading a profile's xlsx. In live-API (local) mode the backend
+ * serves the real file from strategy_tables/ by its path; static hosting falls
+ * back to the committed copy under viz/data/xlsx.
+ */
+export function profileXlsxUrl(profilePath: string): string {
+  if (USE_API) {
+    return `${API_BASE.replace(/\/$/, '')}/download?profile=${encodeURIComponent(profilePath)}`;
+  }
+  const filename = profilePath.split('/').pop() as string;
+  return `${import.meta.env.BASE_URL}viz/data/xlsx/${filename}`;
+}

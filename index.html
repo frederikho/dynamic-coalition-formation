@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Coalition Transition Graph Visualizer</title>
-  <script type="module" crossorigin src="./viz/assets/index-wl8ic9Yi.js"></script>
-  <link rel="stylesheet" crossorigin href="./viz/assets/index-BCsjGYtJ.css">
+  <script type="module" crossorigin src="./viz/assets/index-8cFxNerP.js"></script>
+  <link rel="stylesheet" crossorigin href="./viz/assets/index-DJnl-akX.css">
 </head>
 <body>
   <div id="app">
@@ -37,7 +37,8 @@
       <div id="status"></div>
 
       <div class="control-group">
-        <label for="profile-select">Strategy Profile</label>
+        <label for="profile-filter">Strategy Profile</label>
+        <input type="text" id="profile-filter" placeholder="Filter by name..." autocomplete="off" style="width:100%;box-sizing:border-box;margin-bottom:4px;">
         <select id="profile-select">
           <option value="">Loading...</option>
         </select>
@@ -46,28 +47,27 @@
       <button type="button" class="collapsible">Visualisation Options</button>
       <div class="collapsible-content">
         <div class="control-group" style="margin-bottom:12px;">
+          <label>Ring Coloring</label>
+          <label class="checkbox-group">
+            <input type="radio" name="ring-coloring" value="none" checked>
+            None
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="ring-coloring" value="absorbing">
+            By absorbing set (by filtered edges)
+          </label>
+          <!-- Legend for ring coloring (e.g. absorbing sets) -->
+          <div id="ring-legend" style="font-size:12px; color:#666; margin-top:12px; padding:8px; background:#f8fafc; border-radius:4px;"></div>
+        </div>
+        <div class="control-group" style="margin-bottom:12px;">
           <label>Node Coloring</label>
           <label class="checkbox-group">
             <input type="radio" name="node-coloring" value="none" checked>
             Default
           </label>
           <label class="checkbox-group">
-            <input type="radio" name="node-coloring" value="absorbing">
-            By absorbing set (by filtered edges)
-          </label>
-          <label class="checkbox-group">
             <input type="radio" name="node-coloring" value="geoengineering">
             By geoengineering level (G)
-          </label>
-          <label class="checkbox-group">
-            <input type="radio" name="node-coloring" value="deployer">
-            <span style="display:inline-flex;align-items:center;gap:6px;">
-              By deploying coalition
-              <span class="info-icon" style="position:relative;">
-                i
-                <span class="tooltip tooltip-deploying">States with G=0 are grouped as "None" (no actual deployment)</span>
-              </span>
-            </span>
           </label>
           <label class="checkbox-group">
             <input type="radio" name="node-coloring" value="internal">
@@ -106,6 +106,16 @@
               <span class="info-icon" style="position:relative;">
                 i
                 <span class="tooltip tooltip-stability">NTU gamma-core (Chander &amp; Tulkens 1997): a state is in the core if no coalition S can make every one of its members strictly better off by breaking away to S + singletons. Only single-coalition states are evaluated.</span>
+              </span>
+            </span>
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="node-coloring" value="ricke">
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              By Ricke winning coalition
+              <span class="info-icon" style="position:relative;">
+                i
+                <span class="tooltip tooltip-stability">Ricke, Moreno-Cruz &amp; Caldeira (2013)'s static exclusion game: a "winning coalition" holds a majority power share and no member wants to leave it (their game has only one active coalition, so this collapses onto internal stability). Ricke et al. claim this is unique per game -- watch for more than one solid node.</span>
               </span>
             </span>
           </label>
@@ -175,6 +185,25 @@
         <h3 style="font-size: 13px; font-weight: 600; margin: 12px 0 6px;">Transitions</h3>
         <div id="outgoing-transitions" class="transition-list"></div>
       </div>
+    </div>
+
+    <button id="relations-handle" type="button" title="Show/hide relations table">&lt;&lt;</button>
+
+    <div id="relations-panel">
+      <h2>Solution Concepts vs MPE</h2>
+      <p id="relations-subtitle"></p>
+      <table id="relations-table">
+        <thead>
+          <tr>
+            <th>Concept</th>
+            <th>Size</th>
+            <th>Relation</th>
+            <th>Jaccard</th>
+            <th>Hamming</th>
+          </tr>
+        </thead>
+        <tbody id="relations-tbody"></tbody>
+      </table>
     </div>
 
     <div id="graph-container"></div>

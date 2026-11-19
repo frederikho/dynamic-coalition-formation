@@ -46,28 +46,27 @@
       <button type="button" class="collapsible">Visualisation Options</button>
       <div class="collapsible-content">
         <div class="control-group" style="margin-bottom:12px;">
+          <label>Ring Coloring</label>
+          <label class="checkbox-group">
+            <input type="radio" name="ring-coloring" value="none" checked>
+            None
+          </label>
+          <label class="checkbox-group">
+            <input type="radio" name="ring-coloring" value="absorbing">
+            By absorbing set (by filtered edges)
+          </label>
+          <!-- Legend for ring coloring (e.g. absorbing sets) -->
+          <div id="ring-legend" style="font-size:12px; color:#666; margin-top:12px; padding:8px; background:#f8fafc; border-radius:4px;"></div>
+        </div>
+        <div class="control-group" style="margin-bottom:12px;">
           <label>Node Coloring</label>
           <label class="checkbox-group">
             <input type="radio" name="node-coloring" value="none" checked>
             Default
           </label>
           <label class="checkbox-group">
-            <input type="radio" name="node-coloring" value="absorbing">
-            By absorbing set (by filtered edges)
-          </label>
-          <label class="checkbox-group">
             <input type="radio" name="node-coloring" value="geoengineering">
             By geoengineering level (G)
-          </label>
-          <label class="checkbox-group">
-            <input type="radio" name="node-coloring" value="deployer">
-            <span style="display:inline-flex;align-items:center;gap:6px;">
-              By deploying coalition
-              <span class="info-icon" style="position:relative;">
-                i
-                <span class="tooltip tooltip-deploying">States with G=0 are grouped as "None" (no actual deployment)</span>
-              </span>
-            </span>
           </label>
           <label class="checkbox-group">
             <input type="radio" name="node-coloring" value="internal">
@@ -122,6 +121,12 @@
 
           <!-- Legend for absorbing sets and geoengineering -->
           <div id="absorbing-legend" style="font-size:12px; color:#666; margin-top:12px; padding:8px; background:#f8fafc; border-radius:4px;"></div>
+        </div>
+        <div class="control-group" style="margin-bottom:12px;">
+          <label class="checkbox-group" title="3-player profiles only. Flag + mood per country: top payoff = star-eyes, zero payoff = crying, otherwise increasingly unhappy by rank. Shortcut: M">
+            <input type="checkbox" id="emoji-mode">
+            Emoji mode (n=3): flag + mood per country
+          </label>
         </div>
         <div class="control-group" style="margin-bottom:12px;">
           <label>Layout Mode</label>

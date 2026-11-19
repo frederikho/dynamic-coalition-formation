@@ -1,7 +1,7 @@
 import cytoscape, { Core, NodeSingular } from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import cola from 'cytoscape-cola';
-import type { GraphData, NodeColoringMode } from './types';
+import type { GraphData, NodeColoringMode, RingColoringMode } from './types';
 import { computeAbsorbingSets } from './absorbing';
 
 // Register layout algorithms
@@ -19,16 +19,32 @@ const PENTAGON_COORDS = [
 const STABILITY_RED = '#dc2626';
 const STABILITY_RED_SOFT = '#f87171';
 const STABILITY_NEUTRAL = '#cbd5e1';
+// Distinct from STABILITY_RED: the red is reserved for the MPE absorbing-set
+// ring, so the "both internal and external stable" solid fill (and its
+// striped single-dimension variants) use orange instead, to avoid the two
+// concepts reading as visually identical.
+// Amber rather than a red-leaning orange, for better contrast against the
+// red absorbing-set ring.
+const STABILITY_ORANGE = '#f59e0b';
+const STABILITY_ORANGE_SOFT = '#fbbf24';
+const ABSORBING_RING_COLOR = '#dc2626';
+// Ricke's winning-coalition verdict gets its own color, distinct from the red
+// used by internal/external/gamma-core and the absorbing-set ring.
+const RICKE_PURPLE = '#7c3aed';
+// Gamma-core verdict also gets its own colour (teal): solid red is reserved for
+// the MPE absorbing-set ring, so the core must not read as the same thing.
+const GAMMA_CORE_TEAL = '#0d9488';
 
-// Soft red-with-white-diagonal-stripes tile, used to distinguish
-// internal-only (rotate 45°) from external-only (rotate -45°) in the combined
-// colouring. The fill is a lighter red so the striped states recede visually
-// behind the solid red "both stable" states.
-function stabilityStripeDataUri(rotateDeg: 45 | -45): string {
+// Soft-color-with-white-diagonal-stripes tile, used to distinguish
+// internal-only (rotate 45°) from external-only (rotate -45°) in the
+// single-dimension and combined stability colourings. The fill is a lighter
+// shade so the striped states recede visually behind the solid "both stable"
+// states.
+function stabilityStripeDataUri(rotateDeg: 45 | -45, fill: string): string {
   const svg =
     `<svg xmlns='http://www.w3.org/2000/svg' width='70' height='70'>` +
     `<defs><pattern id='s' width='14' height='14' patternUnits='userSpaceOnUse' patternTransform='rotate(${rotateDeg})'>` +
-    `<rect width='14' height='14' fill='${STABILITY_RED_SOFT}'/>` +
+    `<rect width='14' height='14' fill='${fill}'/>` +
     `<rect width='5' height='14' fill='#ffffff'/>` +
     `</pattern></defs>` +
     `<rect width='70' height='70' fill='url(#s)'/>` +
@@ -186,6 +202,203 @@ function getTwoCirclePositions(stateNames: string[]): Record<string, { x: number
   return positions;
 }
 
+type TaxonomyLabel = { id: string; label: string; x: number; y: number; width?: number };
+
+/**
+ * Static, labelled taxonomy for all 52 partitions of five players.
+ *
+ * The primary progression is the number of countries participating in a
+ * non-singleton coalition. The two ways to involve four or five countries
+ * are deliberately given their own labelled subcolumns.
+ */
+function getN5Taxonomy(
+  stateNames: string[], playerCodes: string[]
+): { positions: Record<string, { x: number; y: number }>; labels: TaxonomyLabel[] } {
+  const codes = playerCodes.slice().sort((a, b) => b.length - a.length);
+  const coalitionSizes = (state: string): number[] => {
+    const groups = state.match(/\([A-Z0-9]+\)/g) || [];
+    return groups.map(group => {
+      let rest = group.slice(1, -1);
+      let size = 0;
+      while (rest) {
+        const code = codes.find(candidate => rest.startsWith(candidate));
+        if (!code) return rest.length; // legacy defensive fallback
+        rest = rest.slice(code.length);
+        size += 1;
+      }
+      return size;
+    });
+  };
+  const partition = (state: string): string => {
+    if (state === '( )') return '0';
+    return coalitionSizes(state).sort((a, b) => b - a).join('+');
+  };
+
+  // Each subcolumn has exactly one structural meaning. The y-grid within it
+  // is alphabetical only, so it makes no claim about a transition ordering.
+  const lanes: Record<string, { x: number; y: number; columns: number }> = {
+    '0':   { x: 0,    y: 70, columns: 1 },
+    '2':   { x: 220,  y: 70, columns: 2 },
+    '3':   { x: 450,  y: 70, columns: 2 },
+    '4':   { x: 680,  y: 70, columns: 1 },
+    '2+2': { x: 900,  y: 70, columns: 3 },
+    '5':   { x: 1130, y: 70, columns: 1 },
+    '3+2': { x: 1350, y: 70, columns: 2 },
+  };
+  const byPartition = new Map<string, string[]>();
+  stateNames.forEach(state => {
+    const key = partition(state);
+    const states = byPartition.get(key) || [];
+    states.push(state);
+    byPartition.set(key, states);
+  });
+
+  const positions: Record<string, { x: number; y: number }> = {};
+  byPartition.forEach((states, key) => {
+    const lane = lanes[key];
+    if (!lane) return;
+    states.sort();
+    const rows = Math.ceil(states.length / lane.columns);
+    states.forEach((state, index) => {
+      const col = index % lane.columns;
+      const row = Math.floor(index / lane.columns);
+      positions[state] = {
+        x: lane.x + (col - (lane.columns - 1) / 2) * 82,
+        y: lane.y + (row - (rows - 1) / 2) * 76,
+      };
+    });
+  });
+
+  return {
+    positions,
+    labels: [
+      { id: '__tax_0', label: '0 involved — none', x: 0, y: -230 },
+      { id: '__tax_2', label: '2 involved — one pair', x: 220, y: -230 },
+      { id: '__tax_3', label: '3 involved — one triple', x: 450, y: -230 },
+      { id: '__tax_4', label: '4 involved', x: 790, y: -310, width: 350 },
+      { id: '__tax_4a', label: 'one bloc of 4', x: 680, y: -230 },
+      { id: '__tax_4b', label: 'two pairs (2 + 2)', x: 900, y: -230 },
+      { id: '__tax_5', label: '5 involved', x: 1240, y: -310, width: 350 },
+      { id: '__tax_5a', label: 'grand coalition (5)', x: 1130, y: -230 },
+      { id: '__tax_5b', label: 'triple + pair (3 + 2)', x: 1350, y: -230 },
+    ]
+  };
+}
+
+// Full country names make five-player labels dominate the graph. Keep them
+// available in the state-detail panel, but use unambiguous short forms in a
+// node. (CHN needs two letters to avoid colliding with the C player.)
+function compactN5StateLabel(stateName: string, playerCodes: string[]): string {
+  const shortCode: Record<string, string> = {
+    BRA: 'B', CAN: 'C', CHN: 'Ch', EUR: 'E', JPN: 'J',
+    NDE: 'D', RUS: 'R', USA: 'U',
+  };
+  const codes = playerCodes.slice().sort((a, b) => b.length - a.length);
+  return stateName.replace(/\(([A-Z0-9]+)\)/g, (_match, content: string) => {
+    let rest = content;
+    const compact: string[] = [];
+    while (rest) {
+      const code = codes.find(candidate => rest.startsWith(candidate));
+      if (!code) return `(${content})`; // preserve rather than mislabel
+      compact.push(shortCode[code] || code[0]);
+      rest = rest.slice(code.length);
+    }
+    return `(${compact.join('')})`;
+  });
+}
+
+const COUNTRY_FLAGS: Record<string, string> = {
+  BRA: '\u{1F1E7}\u{1F1F7}', CAN: '\u{1F1E8}\u{1F1E6}', CHN: '\u{1F1E8}\u{1F1F3}',
+  EUR: '\u{1F1EA}\u{1F1FA}', JPN: '\u{1F1EF}\u{1F1F5}', NDE: '\u{1F1EE}\u{1F1F3}',
+  RUS: '\u{1F1F7}\u{1F1FA}', USA: '\u{1F1FA}\u{1F1F8}',
+};
+
+// Mood by the rank of a state's static payoff among the player's distinct
+// payoffs (1 = best). Zero payoff (= no benefit from SG) is crying, unless it
+// is the player's best outcome.
+// n=3 has 5 states, hence at most 5 ranks: star-eyes, neutral, confused, worried, crying.
+const MOOD_BY_RANK = ['\u{1F929}', '\u{1F610}', '\u{1F615}', '\u{1F61F}', '\u{1F62D}'];
+const MOOD_ZERO = '\u{1F62D}';
+
+export function buildEmojiMoods(graphData: GraphData): Record<string, { player: string; flag: string; mood: string; member: boolean }[]> {
+  const players = Object.keys(graphData.nodes[0]?.meta?.payoffs || {});
+  if (players.length !== 3) {
+    throw new Error(`Emoji mode supports exactly 3 players, got ${players.length}`);
+  }
+  const EPS = 1e-9;
+  const rankOf: Record<string, number[]> = {};
+  for (const pl of players) {
+    const vals = graphData.nodes.map(n => n.meta!.payoffs![pl]);
+    const distinct: number[] = [];
+    for (const v of vals.slice().sort((a, b) => b - a)) {
+      if (!distinct.length || distinct[distinct.length - 1] - v > EPS) distinct.push(v);
+    }
+    rankOf[pl] = vals.map(v => distinct.findIndex(d => Math.abs(d - v) <= EPS) + 1);
+  }
+  const out: Record<string, { player: string; flag: string; mood: string; member: boolean }[]> = {};
+  graphData.nodes.forEach((n, i) => {
+    out[n.id] = players.map(pl => {
+      const rank = rankOf[pl][i];
+      const payoff = n.meta!.payoffs![pl];
+      const mood = rank === 1 ? MOOD_BY_RANK[0]
+        : Math.abs(payoff) <= EPS ? MOOD_ZERO
+        : MOOD_BY_RANK[rank - 1];
+      if (!mood) throw new Error(`No mood for payoff rank ${rank}`);
+      // n=3 has at most one non-singleton coalition, e.g. "(NDEUSA)"; "( )" has none.
+      const member = coalitionMembers(n.label, players).includes(pl);
+      return { player: pl, flag: COUNTRY_FLAGS[pl] ?? pl, mood, member };
+    });
+  });
+  return out;
+}
+
+// Split a coalition name such as "(EURUSA)" into player codes. A substring test
+// is wrong here ("RUS" occurs inside "EURUSA"), so segment the whole string.
+function coalitionMembers(stateLabel: string, players: string[]): string[] {
+  const content = stateLabel.match(/\(([^)]*)\)/)?.[1].trim() ?? '';
+  const split = (rest: string): string[] | null => {
+    if (!rest) return [];
+    for (const pl of players) {
+      if (rest.startsWith(pl)) {
+        const tail = split(rest.slice(pl.length));
+        if (tail) return [pl, ...tail];
+      }
+    }
+    return null;
+  };
+  const members = split(content);
+  if (!members) throw new Error(`Cannot parse coalition "${stateLabel}" into players ${players.join(',')}`);
+  return members;
+}
+
+// One SVG strip per state: each country is a flag with its mood emoji
+// overlapping the flag's lower-right corner, which saves width over text.
+function emojiSvgDataUri(items: { player: string; flag: string; mood: string; member: boolean }[]): string {
+  const pitch = 27;
+  const w = pitch * items.length + 4;
+  const cells = items.map((it, i) => {
+    const x = 2 + i * pitch;
+    // 1px outline around the flag of each country in the coalition.
+    const outline = it.member
+      ? `<rect x="${x + 0.5}" y="3.5" width="21" height="13.5" fill="none" stroke="#ffe600" stroke-width="1"/>`
+      : '';
+    return `<text x="${x}" y="17" font-size="18">${it.flag}</text>${outline}`
+      + `<text x="${x + 6}" y="17" font-size="16">${it.mood}</text>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="32">${cells}</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function getN5PlayerCodes(graphData: GraphData): string[] {
+  const listed = graphData.metadata.file_metadata?.players;
+  if (typeof listed === 'string') {
+    const codes = listed.split(',').map(code => code.trim()).filter(Boolean);
+    if (codes.length === 5) return codes;
+  }
+  // Kept only for legacy data that predates the `players` metadata field.
+  return ['CHN', 'EUR', 'NDE', 'RUS', 'USA'];
+}
+
 // Seed for deterministic force-directed layout (controls both initial positions and
 // internal random decisions in cose-bilkent, ensuring identical results across devices).
 const FORCE_LAYOUT_SEED = 42;
@@ -324,6 +537,7 @@ export class GraphRenderer {
 
   render(graphData: GraphData, probThreshold: number = 0.001, options?: {
     coloringMode?: NodeColoringMode;
+    ringColoringMode?: RingColoringMode;
     filterMode?: 'absolute' | 'cumulative';
     layoutMode?: 'default' | 'connections' | 'deployer' | 'geo-level';
     // UI toggles
@@ -331,6 +545,7 @@ export class GraphRenderer {
     showEdgeLabels?: boolean;
     showNodeLabels?: boolean;
     showGeoLevel?: boolean;
+    showEmojiMode?: boolean;
   }) {
     // Save current positions before destroying
     if (this.cy) {
@@ -341,11 +556,15 @@ export class GraphRenderer {
 
     const filterMode = options?.filterMode || 'absolute';
     const coloringMode = options?.coloringMode || 'none';
+    const ringColoringMode = options?.ringColoringMode || 'none';
     const layoutMode = options?.layoutMode || 'default';
     const showSelfLoops = options?.showSelfLoops !== false; // default true
     const showEdgeLabels = options?.showEdgeLabels !== false; // default true
     const showNodeLabels = options?.showNodeLabels !== false; // default true
     const showGeoLevel = options?.showGeoLevel !== false; // default true
+    // Emoji mode is n=3 only; anything else silently keeps the normal labels.
+    const showEmojiMode = options?.showEmojiMode === true && graphData.nodes.length === 5;
+    const emojiMoods = showEmojiMode ? buildEmojiMoods(graphData) : null;
 
     // Filter edges by probability threshold
     let filteredEdges: typeof graphData.edges;
@@ -387,6 +606,11 @@ export class GraphRenderer {
       filteredEdges = graphData.edges.filter(e => e.p >= probThreshold);
     }
 
+    const n5PlayerCodes = graphData.nodes.length === 52 ? getN5PlayerCodes(graphData) : [];
+
+    const useN5Taxonomy = graphData.nodes.length === 52 && layoutMode === 'default';
+    const n5Taxonomy = useN5Taxonomy ? getN5Taxonomy(graphData.nodes.map(n => n.id), n5PlayerCodes) : null;
+
     // Get preset positions for specific cases
     let presetPositions: Record<string, { x: number; y: number }> = {};
     if (graphData.nodes.length === 3) {
@@ -397,6 +621,8 @@ export class GraphRenderer {
       presetPositions = getPentagonPositions(graphData.nodes.map(n => n.id));
     } else if (graphData.nodes.length === 15) {
       presetPositions = getTwoCirclePositions(graphData.nodes.map(n => n.id));
+    } else if (n5Taxonomy) {
+      presetPositions = n5Taxonomy.positions;
     }
 
     // Compute cluster positions for clustering layouts
@@ -439,17 +665,9 @@ export class GraphRenderer {
 
     const usePresetPositions = Object.keys(finalPositions).length > 0;
 
-    // Prepare coloring based on mode
-    const palette = ['#e11d48','#06b6d4','#84cc16','#f59e0b','#7c3aed','#10b981','#0ea5e9','#f97316','#6366f1','#db2777','#14b8a6','#f43f5e'];
-
-    // Compute absorbing sets if needed
-    const nodeToAbsorbing = coloringMode === 'absorbing' ? computeAbsorbingSets(graphData, filteredEdges) : new Map<string, number | null>();
-    const absorbingSetIds = new Set<number>();
-    if (coloringMode === 'absorbing') {
-      nodeToAbsorbing.forEach(setId => {
-        if (setId !== null) absorbingSetIds.add(setId);
-      });
-    }
+    // Compute absorbing sets if needed (ring coloring only; absorbing-set
+    // membership is no longer a fill-coloring option).
+    const nodeToAbsorbing = ringColoringMode === 'absorbing' ? computeAbsorbingSets(graphData, filteredEdges) : new Map<string, number | null>();
 
     // Compute G level range for geoengineering coloring
     let minG = 0, maxG = 1;
@@ -459,37 +677,29 @@ export class GraphRenderer {
       maxG = Math.max(...geoLevels);
     }
 
-    // Get unique deployers for deployer coloring
-    const deployerToColor = new Map<string, string>();
-    if (coloringMode === 'deployer') {
-      const uniqueDeployers = Array.from(new Set(
-        graphData.nodes.map(n => n.meta?.deploying_coalition).filter(d => d !== undefined)
-      )).sort() as string[];
-      uniqueDeployers.forEach((deployer, i) => {
-        deployerToColor.set(deployer, palette[i % palette.length]);
-      });
-    }
-
     // If requested, remove self-loop edges from display
     const displayedEdgesList = showSelfLoops ? filteredEdges : filteredEdges.filter(e => e.source !== e.target);
 
     // Convert to Cytoscape format
     const elements: cytoscape.ElementDefinition[] = [
+      // N5 taxonomy headings are graph elements, so they remain correctly
+      // positioned when the user pans or zooms the static layout.
+      ...(n5Taxonomy?.labels.map(heading => ({
+        group: 'nodes' as const,
+        data: { id: heading.id, label: heading.label, is_taxonomy_label: true, label_width: heading.width || 150 },
+        position: { x: heading.x, y: heading.y },
+      })) || []),
       // Nodes
       ...graphData.nodes.map(node => {
         const geoLevel = node.meta?.geo_level || 0;
         const deployingCoalition = node.meta?.deploying_coalition || '';
         const normalizedLabel = normalizeStateName(node.label);
-        const label = showGeoLevel ? `${normalizedLabel}\nG=${geoLevel.toFixed(2)}` : normalizedLabel;
-
-        // Border should only appear when the state has exactly one coalition (the deployer)
-        // Count coalitions in state name: "(CF)" has 1, "(CF)(TW)" has 2, "( )" has 0
-        const coalitionCount = (node.id.match(/\([A-Z]+\)/g) || []).length;
-
-        // Border if: only when coloring by deployer, G > 0, has exactly one coalition, and it matches the deployer
-        // Compare normalized versions to handle different orderings
-        const normalizedState = normalizeStateName(node.id);
-        const hasDeploymentBorder = coloringMode === 'deployer' && geoLevel > 0 && coalitionCount === 1 && normalizedState === deployingCoalition;
+        const isN5 = graphData.nodes.length === 52;
+        // N5 uses compact country codes, leaving enough room to retain the
+        // G value directly on the state rather than requiring a click.
+        const displayLabel = isN5 ? compactN5StateLabel(normalizedLabel, n5PlayerCodes) : normalizedLabel;
+        let label = displayLabel;
+        if (showGeoLevel) label += `\nG=${geoLevel.toFixed(2)}`;
 
         const element: cytoscape.ElementDefinition = {
           group: 'nodes' as const,
@@ -498,11 +708,12 @@ export class GraphRenderer {
             label: label,
             geo_level: geoLevel,
             deploying_coalition: deployingCoalition,
-            has_deployment: hasDeploymentBorder,
             payoffs: node.meta?.payoffs,
             values: node.meta?.values,
           }
         };
+
+        if (emojiMoods) (element.data as any).emoji_img = emojiSvgDataUri(emojiMoods[node.id]);
 
         // Add preset position if available (prefers saved positions)
         if (usePresetPositions && node.id in finalPositions) {
@@ -517,7 +728,7 @@ export class GraphRenderer {
           if (stability && typeof stability.internal === 'boolean') {
             if (stability.internal) {
               color = STABILITY_RED_SOFT; // internally stable -> soft red stripes
-              (element.data as any).stab_pattern = 'internal';
+              (element.data as any).stab_pattern = 'internal-red';
             } else {
               color = STABILITY_NEUTRAL; // not stable -> no colour
             }
@@ -527,7 +738,7 @@ export class GraphRenderer {
           if (stability && typeof stability.external_consent === 'boolean') {
             if (stability.external_consent) {
               color = STABILITY_RED_SOFT; // externally stable -> soft red stripes
-              (element.data as any).stab_pattern = 'external';
+              (element.data as any).stab_pattern = 'external-red';
             } else {
               color = STABILITY_NEUTRAL; // not stable -> no colour
             }
@@ -536,13 +747,13 @@ export class GraphRenderer {
           const stability = node.meta?.stability as { internal?: boolean; external_consent?: boolean } | undefined;
           if (stability && typeof stability.internal === 'boolean' && typeof stability.external_consent === 'boolean') {
             if (stability.internal && stability.external_consent) {
-              color = STABILITY_RED; // both stable -> solid red
+              color = STABILITY_ORANGE; // both stable -> solid orange (kept distinct from the red absorbing-set ring)
             } else if (stability.internal) {
-              color = STABILITY_RED_SOFT; // internal only -> soft red stripes
-              (element.data as any).stab_pattern = 'internal';
+              color = STABILITY_ORANGE_SOFT; // internal only -> soft orange stripes
+              (element.data as any).stab_pattern = 'internal-orange';
             } else if (stability.external_consent) {
-              color = STABILITY_RED_SOFT; // external only -> soft red opposite stripes
-              (element.data as any).stab_pattern = 'external';
+              color = STABILITY_ORANGE_SOFT; // external only -> soft orange opposite stripes
+              (element.data as any).stab_pattern = 'external-orange';
             } else {
               color = STABILITY_NEUTRAL; // neither -> no colour (default gray)
             }
@@ -550,20 +761,12 @@ export class GraphRenderer {
         } else if (coloringMode === 'gamma-core') {
           const gc = node.meta?.gamma_core as { in_core?: boolean } | undefined;
           if (gc && typeof gc.in_core === 'boolean') {
-            color = gc.in_core ? STABILITY_RED : STABILITY_NEUTRAL;
+            color = gc.in_core ? GAMMA_CORE_TEAL : STABILITY_NEUTRAL;
           }
         } else if (coloringMode === 'ricke') {
           const rk = node.meta?.ricke as { majority?: boolean; winning?: boolean } | undefined;
           if (rk && typeof rk.majority === 'boolean' && rk.majority) {
-            color = rk.winning ? STABILITY_RED : STABILITY_NEUTRAL;
-          }
-        } else if (coloringMode === 'absorbing') {
-          const setId = nodeToAbsorbing.get(node.id) ?? null;
-          if (setId !== null) {
-            // Sort set IDs to get consistent coloring
-            const sortedIds = Array.from(absorbingSetIds).sort((a, b) => a - b);
-            const idx = sortedIds.indexOf(setId);
-            color = palette[idx % palette.length];
+            color = rk.winning ? RICKE_PURPLE : STABILITY_NEUTRAL;
           }
         } else if (coloringMode === 'geoengineering') {
           // Blue gradient based on G level
@@ -577,15 +780,17 @@ export class GraphRenderer {
           const g = Math.round(242 - normalized * (242 - 105));
           const b = Math.round(254 - normalized * (254 - 161));
           color = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-        } else if (coloringMode === 'deployer') {
-          // Color by deploying coalition
-          const deployer = node.meta?.deploying_coalition;
-          if (deployer && deployerToColor.has(deployer)) {
-            color = deployerToColor.get(deployer)!;
-          }
         }
 
         (element.data as any).color = color;
+
+        // Ring (border) coloring is a separate visual channel from the fill
+        // above: a border is painted outside the node's width/height box, so
+        // it does not change the node's apparent size.
+        if (ringColoringMode === 'absorbing') {
+          (element.data as any).in_absorbing_set = nodeToAbsorbing.get(node.id) !== null
+            && nodeToAbsorbing.get(node.id) !== undefined;
+        }
 
         return element;
       }),
@@ -619,42 +824,98 @@ export class GraphRenderer {
         'color': '#1e293b',
         'text-valign': 'center',
         'text-halign': 'center',
-        'font-size': '12px',
+        'font-size': graphData.nodes.length === 52 ? '10px' : '12px',
         'font-weight': 'normal',
-        'width': 70,
-        'height': 70,
+        'width': graphData.nodes.length === 52 ? 62 : (showEmojiMode ? 86 : 70),
+        'height': graphData.nodes.length === 52 ? 62 : (showEmojiMode ? 86 : 70),
         'text-outline-width': 0,
         'text-wrap': 'wrap',
-        'text-max-width': '65px',
+        'text-max-width': graphData.nodes.length === 52 ? '58px' : (showEmojiMode ? '82px' : '65px'),
         'border-width': 0,
         'border-color': '#1e293b'
       }
     });
 
-    // Deployment border
+    if (showEmojiMode) {
+      // Emoji strip sits in the upper part of the node; text label moves below it.
+      styles.push({
+        selector: 'node[emoji_img]',
+        style: {
+          'background-image': 'data(emoji_img)',
+          'background-fit': 'none',
+          'background-width': '85px',
+          'background-height': '32px',
+          'background-position-x': '50%',
+          'background-position-y': '21px',
+          'background-clip': 'none',
+          'text-valign': 'center',
+          'text-margin-y': 17,
+        }
+      });
+    }
+
+
     styles.push({
-      selector: 'node[has_deployment]',
+      selector: 'node[?is_taxonomy_label]',
       style: {
-        'border-width': function(ele: any) {
-          return ele.data('has_deployment') ? 3 : 0;
-        },
-        'border-color': '#1e293b'
+        'background-opacity': 0,
+        'border-width': 0,
+        'width': 'data(label_width)',
+        'height': 42,
+        'font-size': '13px',
+        'font-weight': 600,
+        'color': '#475569',
+        'text-wrap': 'wrap',
+        'text-max-width': 'data(label_width)',
+        'text-valign': 'center',
+        'text-halign': 'center',
+        'events': 'no'
       }
     });
 
-    // Red diagonal stripes for internal-only / external-only nodes in the
-    // combined stability colouring (background-color is set via data(color)).
+    // Absorbing-set ring: a secondary coloring channel independent of the
+    // fill color above. Cytoscape paints the border outside the node's
+    // width/height box, so this never changes the circle's apparent size --
+    // it reads as a ring around the existing fill, not a bigger node.
     styles.push({
-      selector: 'node[stab_pattern="internal"]',
+      selector: 'node[?in_absorbing_set]',
       style: {
-        'background-image': stabilityStripeDataUri(45),
+        'border-width': function(ele: any) {
+          return ele.data('in_absorbing_set') ? 6 : 0;
+        },
+        'border-color': ABSORBING_RING_COLOR,
+        'border-opacity': 1
+      }
+    });
+
+    // Diagonal stripes for internal-only / external-only nodes, in the
+    // single-dimension (red) and combined (orange) stability colourings.
+    // (background-color is set via data(color) as the stripe tile's fill.)
+    styles.push({
+      selector: 'node[stab_pattern="internal-red"]',
+      style: {
+        'background-image': stabilityStripeDataUri(45, STABILITY_RED_SOFT),
         'background-fit': 'cover'
       }
     });
     styles.push({
-      selector: 'node[stab_pattern="external"]',
+      selector: 'node[stab_pattern="external-red"]',
       style: {
-        'background-image': stabilityStripeDataUri(-45),
+        'background-image': stabilityStripeDataUri(-45, STABILITY_RED_SOFT),
+        'background-fit': 'cover'
+      }
+    });
+    styles.push({
+      selector: 'node[stab_pattern="internal-orange"]',
+      style: {
+        'background-image': stabilityStripeDataUri(45, STABILITY_ORANGE_SOFT),
+        'background-fit': 'cover'
+      }
+    });
+    styles.push({
+      selector: 'node[stab_pattern="external-orange"]',
+      style: {
+        'background-image': stabilityStripeDataUri(-45, STABILITY_ORANGE_SOFT),
         'background-fit': 'cover'
       }
     });
@@ -817,9 +1078,10 @@ export class GraphRenderer {
   ) {
     switch (layoutMode) {
       case 'default':
-        // Use preset positions for n=4/5/15 or when preset positions were computed,
+        // Use preset positions for compact graphs and the explicitly labelled
+        // five-player taxonomy. "By connections" remains the force layout.
         // otherwise force-directed
-        if (usePresetPositions || graphData.nodes.length === 3 || graphData.nodes.length === 4 || graphData.nodes.length === 5 || graphData.nodes.length === 15) {
+        if (usePresetPositions || graphData.nodes.length === 3 || graphData.nodes.length === 4 || graphData.nodes.length === 5 || graphData.nodes.length === 15 || graphData.nodes.length === 52) {
           return { name: 'preset' };
         } else {
           return {

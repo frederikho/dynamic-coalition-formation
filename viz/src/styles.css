@@ -21,6 +21,7 @@ body {
   width: 20rem;
   min-width: 280px;
   max-width: 400px;
+  flex-shrink: 0;
   background: white;
   border-right: 1px solid #ddd;
   padding: 1.25rem;
@@ -41,6 +42,7 @@ body {
 #relations-panel {
   width: 0;
   min-width: 0;
+  flex-shrink: 0;
   background: white;
   border-right: 1px solid #ddd;
   padding: 0;

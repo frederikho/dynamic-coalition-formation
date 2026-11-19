@@ -991,6 +991,15 @@ def compute_transition_graph(
                         if prop_key in P_proposals and P_proposals[prop_key] > 0:
                             app_key = prop_key
                             if app_key in P_approvals:
+                                # A proposal that is always rejected (P_approvals == 0)
+                                # contributes nothing to THIS edge -- the outcome of a
+                                # rejection is staying at source_state, which belongs to
+                                # that state's self-loop breakdown instead. Including it
+                                # here with path_prob == 0 mislabels it "direct"/"approved"
+                                # even though the committee unanimously vetoed it.
+                                if P_approvals[app_key] <= 0:
+                                    continue
+
                                 committee, not_in_committee, approvals = _get_committee_info(
                                     proposer, source_state, target_state
                                 )

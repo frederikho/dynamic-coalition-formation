@@ -1,13 +1,15 @@
 export type NodeColoringMode =
   | 'none'
-  | 'absorbing'
   | 'geoengineering'
-  | 'deployer'
   | 'internal'
   | 'external'
   | 'internal-external'
   | 'gamma-core'
   | 'ricke';
+
+// Secondary, ring-only coloring channel (drawn as a node border so it never
+// changes the node's apparent size), independent of the fill coloring above.
+export type RingColoringMode = 'none' | 'absorbing';
 
 export interface GraphNode {
   id: string;

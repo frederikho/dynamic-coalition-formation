@@ -38,7 +38,14 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
-    allowedHosts: ['.ngrok-free.app']
+    allowedHosts: ['.ngrok-free.app'],
+    // Native filesystem change events don't reliably reach chokidar for files
+    // on a Windows-mounted drive under WSL (/mnt/d/... via drvfs/9p), so HMR
+    // silently stops picking up edits. Polling works around that.
+    watch: {
+      usePolling: true,
+      interval: 300
+    }
   },
   build: {
     // Output directly to repo root so built files are ready to commit for GitHub Pages.
