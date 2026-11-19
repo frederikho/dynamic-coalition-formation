@@ -215,6 +215,19 @@ if __name__ == "__main__":
         description="Build static data and optionally rebuild frontend with Vite"
     )
     parser.add_argument(
+        "--strategy-dir",
+        type=str,
+        default="strategy_tables",
+        help="Directory with the strategy xlsx files to publish (default: strategy_tables; "
+             "use published/strategy_tables for the curated set, see publish.py)"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="viz/data",
+        help="Where to write the generated JSON, xlsx copies and profiles.json (default: viz/data)"
+    )
+    parser.add_argument(
         "--vite-build",
         action="store_true",
         help="Also run Vite build for GitHub Pages (uses REPO_NAME from .env)"
@@ -229,7 +242,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Build static data first
-    build_static_data()
+    build_static_data(strategy_tables_dir=args.strategy_dir, output_dir=args.output_dir)
     
     # Optionally build frontend
     if args.vite_build:

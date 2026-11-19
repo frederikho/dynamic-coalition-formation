@@ -1,0 +1,70 @@
+name: Deploy viz to GitHub Pages
+
+# The site is built from scratch on every push to main:
+#   published/  (curated strategy + payoff tables, see publish.py)
+#     -> build_static.py -> viz/data (JSON + xlsx copies + profiles.json)
+#     -> vite build      -> viz/dist (bundle)  -> GitHub Pages
+# No generated files are committed.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      # Profiles name their payoff table as payoff_tables/<file>; provide the published ones there.
+      - name: Generate static data from published/
+        run: |
+          cp -r published/payoff_tables payoff_tables
+          python build_static.py --strategy-dir published/strategy_tables --output-dir viz/data
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: viz/package-lock.json
+      - name: Build frontend
+        working-directory: viz
+        run: |
+          npm ci
+          npm run build          # -> viz/dist (index.html + viz/assets)
+
+      - name: Add data to the site
+        run: |
+          mkdir -p viz/dist/viz
+          cp -r viz/data viz/dist/viz/data
+          touch viz/dist/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: viz/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

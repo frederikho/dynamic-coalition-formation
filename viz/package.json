@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "cd .. && bash build_static.sh",
-    "build": "rm -rf ../viz/assets && vite build && cd .. && touch .nojekyll",
+    "build": "VITE_OUT_DIR=dist vite build",
     "preview": "vite preview"
   },
   "dependencies": {

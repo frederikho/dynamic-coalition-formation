@@ -48,11 +48,12 @@ export default defineConfig({
     }
   },
   build: {
-    // Output directly to repo root so built files are ready to commit for GitHub Pages.
-    // index.html → repo root, JS/CSS → viz/assets/
-    outDir: '../',
+    // VITE_OUT_DIR (relative to viz/, e.g. 'dist') is what CI and `npm run build` use:
+    // index.html + viz/assets/ in a self-contained folder that gets deployed to GitHub Pages.
+    // Without it, output goes to the repo root (legacy behaviour).
+    outDir: process.env.VITE_OUT_DIR || '../',
     assetsDir: 'viz/assets',
-    emptyOutDir: false,
+    emptyOutDir: !!process.env.VITE_OUT_DIR,
     sourcemap: true
   }
 })

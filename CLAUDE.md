@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repository implements a **flexible framework** for analyzing farsighted coalition formation in the context of solar geoengineering governance. The framework can accommodate different numbers of countries, various governance structures, heterogeneous country characteristics, and different climate-economic models.
 
+### Structure
+\payoff_tables is for payoff tables
+\strategy_tables is for the solutions of those payofff tables, if they have one
+
+
 ### Original Publication (2021)
 
 The code was originally developed for "Solar Geoengineering Governance: A Dynamic Framework of Farsighted Coalition Formation" by Heyen & Lehtomaa (Oxford Open Climate Change, 2021). That paper used a **three-country illustrative example** to demonstrate the framework's capabilities.
@@ -100,6 +105,31 @@ cd viz
 npm install  # first time only
 npm run dev
 ```
+
+### Publishing to GitHub Pages (curated set, built in CI)
+
+The public site (https://frederikho.github.io/dynamic-coalition-formation/) shows only a
+**hand-picked set** of strategy tables. Nothing generated is committed; CI builds the site.
+
+```bash
+python publish.py add eq_n3_power_threshold_RICE_7078fd   # NAME = file stem; searched in strategy_tables/ then viz/data/xlsx/
+python publish.py remove NAME
+python publish.py list
+```
+
+- `published/strategy_tables/` + `published/payoff_tables/` are the **only** committed source for the
+  site. `publish.py add` copies the strategy xlsx and the payoff table it names in its Metadata sheet
+  (deduplicated; falls back to `payoff_tables/<basename>` because profiles solved on another machine
+  record that machine's absolute path).
+- On every push to `main`, `.github/workflows/pages.yml` runs
+  `build_static.py --strategy-dir published/strategy_tables --output-dir viz/data`, then `vite build`
+  (-> `viz/dist`), and deploys. Pages source must be set to "GitHub Actions" in the repo settings.
+- **Never commit** `viz/data/`, `viz/assets/`, `viz/dist/` or the root `index.html`; all are generated
+  and gitignored. `npm run build` (in `viz/`) only builds into `viz/dist` for local testing.
+- `build_static.py` without arguments still reads *all top-level* `strategy_tables/*.xlsx` and
+  **deletes** previously listed profiles that are no longer there from the output dir. Always pass
+  `--strategy-dir published/strategy_tables` when publishing.
+- Known: `weak_governance.xlsx` fails static conversion ("Minimum power threshold is not defined").
 
 ### Rendering transition-graph images (for AI agents)
 

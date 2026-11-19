@@ -20,7 +20,11 @@ results/hpo/
 # Note: /docs is committed (GitHub Pages deploys from this folder)
 # full_search generated artifacts (order/corpora/checkpoints, large+derived)
 lib/equilibrium/full_search/data/
+# Generated for GitHub Pages by CI (.github/workflows/pages.yml) from published/ -- never commit
 viz/assets/
+viz/dist/
+viz/data/
+/index.html
 
 # reports/ is run output: gitignored by default (also covers already-tracked
 # files/dirs below, whose git history is unaffected). Un-ignore a specific
