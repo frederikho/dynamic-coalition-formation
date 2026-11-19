@@ -1,0 +1,2790 @@
+{
+  "nodes": [
+    {
+      "id": "( )",
+      "label": "( )",
+      "meta": {
+        "index": 0,
+        "geo_level": 0.0,
+        "deploying_coalition": "None",
+        "payoffs": {
+          "CHN": 0.0,
+          "EUR": 0.0,
+          "NDE": 0.0,
+          "USA": 0.0
+        },
+        "values": {
+          "CHN": 0.9846843426564588,
+          "EUR": 0.855723289418049,
+          "NDE": 0.9569210817593443,
+          "USA": 0.9866857271764519
+        },
+        "stability": {
+          "internal": true,
+          "external_open": true,
+          "external_consent": true,
+          "stable_open": true,
+          "stable_consent": true
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "NDE",
+              "USA"
+            ]
+          ]
+        },
+        "ricke": {}
+      }
+    },
+    {
+      "id": "(CHNEUR)",
+      "label": "(CHNEUR)",
+      "meta": {
+        "index": 1,
+        "geo_level": 0.0,
+        "deploying_coalition": "None",
+        "payoffs": {
+          "CHN": 0.0,
+          "EUR": 0.0,
+          "NDE": 0.0,
+          "USA": 0.0
+        },
+        "values": {
+          "CHN": 0.9846843426564588,
+          "EUR": 0.855723289418049,
+          "NDE": 0.9569210817593443,
+          "USA": 0.9866857271764519
+        },
+        "stability": {
+          "internal": true,
+          "external_open": false,
+          "external_consent": false,
+          "stable_open": false,
+          "stable_consent": false
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "NDE",
+              "USA"
+            ]
+          ]
+        },
+        "ricke": {
+          "majority": false,
+          "stable": true,
+          "winning": false
+        }
+      }
+    },
+    {
+      "id": "(CHNNDE)",
+      "label": "(CHNNDE)",
+      "meta": {
+        "index": 2,
+        "geo_level": 0.0,
+        "deploying_coalition": "None",
+        "payoffs": {
+          "CHN": 0.0,
+          "EUR": 0.0,
+          "NDE": 0.0,
+          "USA": 0.0
+        },
+        "values": {
+          "CHN": 0.9846843426564588,
+          "EUR": 0.855723289418049,
+          "NDE": 0.9569210817593443,
+          "USA": 0.9866857271764519
+        },
+        "stability": {
+          "internal": true,
+          "external_open": false,
+          "external_consent": false,
+          "stable_open": false,
+          "stable_consent": false
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "NDE",
+              "USA"
+            ]
+          ]
+        },
+        "ricke": {
+          "majority": false,
+          "stable": true,
+          "winning": false
+        }
+      }
+    },
+    {
+      "id": "(CHNUSA)",
+      "label": "(CHNUSA)",
+      "meta": {
+        "index": 3,
+        "geo_level": 0.0,
+        "deploying_coalition": "None",
+        "payoffs": {
+          "CHN": 0.0,
+          "EUR": 0.0,
+          "NDE": 0.0,
+          "USA": 0.0
+        },
+        "values": {
+          "CHN": 0.9846843426564588,
+          "EUR": 0.855723289418049,
+          "NDE": 0.9569210817593443,
+          "USA": 0.9866857271764519
+        },
+        "stability": {
+          "internal": true,
+          "external_open": false,
+          "external_consent": false,
+          "stable_open": false,
+          "stable_consent": false
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "NDE",
+              "USA"
+            ]
+          ]
+        },
+        "ricke": {
+          "majority": false,
+          "stable": true,
+          "winning": false
+        }
+      }
+    },
+    {
+      "id": "(EURNDE)",
+      "label": "(EURNDE)",
+      "meta": {
+        "index": 4,
+        "geo_level": 0.0,
+        "deploying_coalition": "None",
+        "payoffs": {
+          "CHN": 0.0,
+          "EUR": 0.0,
+          "NDE": 0.0,
+          "USA": 0.0
+        },
+        "values": {
+          "CHN": 0.9846843426564588,
+          "EUR": 0.855723289418049,
+          "NDE": 0.9569210817593443,
+          "USA": 0.9866857271764519
+        },
+        "stability": {
+          "internal": true,
+          "external_open": false,
+          "external_consent": false,
+          "stable_open": false,
+          "stable_consent": false
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "NDE",
+              "USA"
+            ]
+          ]
+        },
+        "ricke": {
+          "majority": false,
+          "stable": true,
+          "winning": false
+        }
+      }
+    },
+    {
+      "id": "(EURUSA)",
+      "label": "(EURUSA)",
+      "meta": {
+        "index": 5,
+        "geo_level": 0.0,
+        "deploying_coalition": "None",
+        "payoffs": {
+          "CHN": 0.0,
+          "EUR": 0.0,
+          "NDE": 0.0,
+          "USA": 0.0
+        },
+        "values": {
+          "CHN": 0.9846843426564588,
+          "EUR": 0.855723289418049,
+          "NDE": 0.9569210817593443,
+          "USA": 0.9866857271764519
+        },
+        "stability": {
+          "internal": true,
+          "external_open": false,
+          "external_consent": false,
+          "stable_open": false,
+          "stable_consent": false
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "NDE",
+              "USA"
+            ]
+          ]
+        },
+        "ricke": {
+          "majority": false,
+          "stable": true,
+          "winning": false
+        }
+      }
+    },
+    {
+      "id": "(NDEUSA)",
+      "label": "(NDEUSA)",
+      "meta": {
+        "index": 6,
+        "geo_level": 0.0,
+        "deploying_coalition": "None",
+        "payoffs": {
+          "CHN": 0.0,
+          "EUR": 0.0,
+          "NDE": 0.0,
+          "USA": 0.0
+        },
+        "values": {
+          "CHN": 0.9846843426564588,
+          "EUR": 0.855723289418049,
+          "NDE": 0.9569210817593443,
+          "USA": 0.9866857271764519
+        },
+        "stability": {
+          "internal": true,
+          "external_open": false,
+          "external_consent": false,
+          "stable_open": false,
+          "stable_consent": false
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            [
+              "CHN",
+              "EUR",
+              "NDE",
+              "USA"
+            ]
+          ]
+        },
+        "ricke": {
+          "majority": false,
+          "stable": true,
+          "winning": false
+        }
+      }
+    },
+    {
+      "id": "(CHNEURNDE)",
+      "label": "(CHNEURNDE)",
+      "meta": {
+        "index": 7,
+        "geo_level": 0.8139667816890042,
+        "deploying_coalition": "(CHNEURNDE)",
+        "payoffs": {
+          "CHN": 0.9897992771738442,
+          "EUR": 0.8599375777894516,
+          "NDE": 0.9618950974431759,
+          "USA": 0.9919423411059465
+        },
+        "values": {
+          "CHN": 0.9897992771738441,
+          "EUR": 0.8599375777894515,
+          "NDE": 0.9618950974431759,
+          "USA": 0.9919423411059464
+        },
+        "stability": {
+          "internal": true,
+          "external_open": true,
+          "external_consent": true,
+          "stable_open": true,
+          "stable_consent": true
+        },
+        "gamma_core": {
+          "in_core": true,
+          "blockers": []
+        },
+        "ricke": {
+          "majority": true,
+          "stable": true,
+          "winning": true
+        }
+      }
+    },
+    {
+      "id": "(CHNEURUSA)",
+      "label": "(CHNEURUSA)",
+      "meta": {
+        "index": 8,
+        "geo_level": 0.6100414202748466,
+        "deploying_coalition": "(CHNEURUSA)",
+        "payoffs": {
+          "CHN": 0.8884225613133677,
+          "EUR": 0.9456800296309317,
+          "NDE": 0.7890297469718032,
+          "USA": 0.8892420431146566
+        },
+        "values": {
+          "CHN": 0.9843511252069397,
+          "EUR": 0.8602808924328478,
+          "NDE": 0.9546612381225902,
+          "USA": 0.9861342981476774
+        },
+        "stability": {
+          "internal": true,
+          "external_open": false,
+          "external_consent": true,
+          "stable_open": false,
+          "stable_consent": true
+        },
+        "gamma_core": {
+          "in_core": true,
+          "blockers": []
+        },
+        "ricke": {
+          "majority": true,
+          "stable": true,
+          "winning": true
+        }
+      }
+    },
+    {
+      "id": "(CHNNDEUSA)",
+      "label": "(CHNNDEUSA)",
+      "meta": {
+        "index": 9,
+        "geo_level": 0.848104654994911,
+        "deploying_coalition": "(CHNNDEUSA)",
+        "payoffs": {
+          "CHN": 0.9693337734631655,
+          "EUR": 1.0,
+          "NDE": 0.9871921215209398,
+          "USA": 0.8106320678815684
+        },
+        "values": {
+          "CHN": 0.9864692670548193,
+          "EUR": 0.8602808924328484,
+          "NDE": 0.9594217469958213,
+          "USA": 0.9855530596241671
+        },
+        "stability": {
+          "internal": true,
+          "external_open": true,
+          "external_consent": true,
+          "stable_open": true,
+          "stable_consent": true
+        },
+        "gamma_core": {
+          "in_core": true,
+          "blockers": []
+        },
+        "ricke": {
+          "majority": true,
+          "stable": true,
+          "winning": true
+        }
+      }
+    },
+    {
+      "id": "(EURNDEUSA)",
+      "label": "(EURNDEUSA)",
+      "meta": {
+        "index": 10,
+        "geo_level": 0.866708931095688,
+        "deploying_coalition": "(EURNDEUSA)",
+        "payoffs": {
+          "CHN": 1.0,
+          "EUR": 0.7998503243671216,
+          "NDE": 1.0,
+          "USA": 1.0
+        },
+        "values": {
+          "CHN": 0.9883636342011467,
+          "EUR": 0.8553621392498274,
+          "NDE": 0.9618950974431764,
+          "USA": 0.9903467846921081
+        },
+        "stability": {
+          "internal": true,
+          "external_open": true,
+          "external_consent": true,
+          "stable_open": true,
+          "stable_consent": true
+        },
+        "gamma_core": {
+          "in_core": true,
+          "blockers": []
+        },
+        "ricke": {
+          "majority": true,
+          "stable": true,
+          "winning": true
+        }
+      }
+    },
+    {
+      "id": "(CHNEURNDEUSA)",
+      "label": "(CHNEURNDEUSA)",
+      "meta": {
+        "index": 11,
+        "geo_level": 0.7953653362355341,
+        "deploying_coalition": "(CHNEURNDEUSA)",
+        "payoffs": {
+          "CHN": 0.9846020574993724,
+          "EUR": 0.877360795941801,
+          "NDE": 0.9478244731044294,
+          "USA": 0.987282788996197
+        },
+        "values": {
+          "CHN": 0.9891321892079502,
+          "EUR": 0.8602808924328477,
+          "NDE": 0.9612336293160778,
+          "USA": 0.9907487643261884
+        },
+        "stability": {
+          "internal": false,
+          "external_open": true,
+          "external_consent": true,
+          "stable_open": false,
+          "stable_consent": false
+        },
+        "gamma_core": {
+          "in_core": true,
+          "blockers": []
+        },
+        "ricke": {
+          "majority": true,
+          "stable": false,
+          "winning": false
+        }
+      }
+    },
+    {
+      "id": "(CHNEUR)(NDEUSA)",
+      "label": "(CHNEUR)(NDEUSA)",
+      "meta": {
+        "index": 12,
+        "geo_level": 0.0,
+        "deploying_coalition": "None",
+        "payoffs": {
+          "CHN": 0.0,
+          "EUR": 0.0,
+          "NDE": 0.0,
+          "USA": 0.0
+        },
+        "values": {
+          "CHN": 0.9846843426564588,
+          "EUR": 0.855723289418049,
+          "NDE": 0.9569210817593443,
+          "USA": 0.9866857271764519
+        },
+        "stability": {
+          "internal": true,
+          "external_open": true,
+          "external_consent": true,
+          "stable_open": true,
+          "stable_consent": true
+        },
+        "gamma_core": {},
+        "ricke": {}
+      }
+    },
+    {
+      "id": "(CHNNDE)(EURUSA)",
+      "label": "(CHNNDE)(EURUSA)",
+      "meta": {
+        "index": 13,
+        "geo_level": 0.0,
+        "deploying_coalition": "None",
+        "payoffs": {
+          "CHN": 0.0,
+          "EUR": 0.0,
+          "NDE": 0.0,
+          "USA": 0.0
+        },
+        "values": {
+          "CHN": 0.9846843426564588,
+          "EUR": 0.855723289418049,
+          "NDE": 0.9569210817593443,
+          "USA": 0.9866857271764519
+        },
+        "stability": {
+          "internal": true,
+          "external_open": true,
+          "external_consent": true,
+          "stable_open": true,
+          "stable_consent": true
+        },
+        "gamma_core": {},
+        "ricke": {}
+      }
+    },
+    {
+      "id": "(CHNUSA)(EURNDE)",
+      "label": "(CHNUSA)(EURNDE)",
+      "meta": {
+        "index": 14,
+        "geo_level": 0.0,
+        "deploying_coalition": "None",
+        "payoffs": {
+          "CHN": 0.0,
+          "EUR": 0.0,
+          "NDE": 0.0,
+          "USA": 0.0
+        },
+        "values": {
+          "CHN": 0.9846843426564588,
+          "EUR": 0.855723289418049,
+          "NDE": 0.9569210817593443,
+          "USA": 0.9866857271764519
+        },
+        "stability": {
+          "internal": true,
+          "external_open": true,
+          "external_consent": true,
+          "stable_open": true,
+          "stable_consent": true
+        },
+        "gamma_core": {},
+        "ricke": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "source": "( )",
+      "target": "(CHNEURNDE)",
+      "p": 0.75,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "USA"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR"
+            ],
+            "not_in_committee": [
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e1",
+      "source": "( )",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e2",
+      "source": "(CHNEUR)",
+      "target": "(CHNEURNDE)",
+      "p": 0.75,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "USA"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR"
+            ],
+            "not_in_committee": [
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e3",
+      "source": "(CHNEUR)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e4",
+      "source": "(CHNNDE)",
+      "target": "(CHNEURNDE)",
+      "p": 0.75,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "USA"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR"
+            ],
+            "not_in_committee": [
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e5",
+      "source": "(CHNNDE)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e6",
+      "source": "(CHNUSA)",
+      "target": "(CHNEURNDE)",
+      "p": 0.75,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e7",
+      "source": "(CHNUSA)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e8",
+      "source": "(EURNDE)",
+      "target": "(CHNEURNDE)",
+      "p": 0.75,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "USA"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR"
+            ],
+            "not_in_committee": [
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e9",
+      "source": "(EURNDE)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e10",
+      "source": "(EURUSA)",
+      "target": "(CHNEURNDE)",
+      "p": 0.75,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e11",
+      "source": "(EURUSA)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e12",
+      "source": "(NDEUSA)",
+      "target": "(CHNEURNDE)",
+      "p": 0.75,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e13",
+      "source": "(NDEUSA)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e14",
+      "source": "(CHNEURNDE)",
+      "target": "(CHNEURNDE)",
+      "p": 1.0,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN"
+            ],
+            "not_in_committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "EUR": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "NDE"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "approvals": {
+              "NDE": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "approvals": {
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e15",
+      "source": "(CHNEURUSA)",
+      "target": "(CHNEUR)",
+      "p": 0.09415944994805925,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEUR)",
+            "prop_prob": 0.376637799792237,
+            "approval_prob": 1.0,
+            "path_prob": 0.09415944994805925,
+            "committee": [
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "approvals": {
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e16",
+      "source": "(CHNEURUSA)",
+      "target": "(CHNEURUSA)",
+      "p": 0.8115775339037846,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURUSA)",
+            "prop_prob": 0.9364399005060428,
+            "approval_prob": 1.0,
+            "path_prob": 0.2341099751265107,
+            "committee": [
+              "EUR"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "EUR": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.1195000694428849,
+            "rejection_prob": 0.8804999305571151,
+            "path_prob": 0.22012498263927877,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 0.1195000694428849,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.1195000694428849,
+            "rejection_prob": 0.8804999305571151,
+            "path_prob": 0.22012498263927877,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 0.1195000694428849,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 0.623362200207763,
+            "approval_prob": 0.1195000694428849,
+            "rejection_prob": 0.8804999305571151,
+            "path_prob": 0.13721759349871646,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 0.1195000694428849,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e17",
+      "source": "(CHNEURUSA)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.09426301614815605,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.1195000694428849,
+            "path_prob": 0.029875017360721224,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 0.1195000694428849,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.1195000694428849,
+            "path_prob": 0.029875017360721224,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 0.1195000694428849,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 0.623362200207763,
+            "approval_prob": 0.1195000694428849,
+            "path_prob": 0.0186229565532243,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 0.1195000694428849,
+              "NDE": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 0.0635600994939572,
+            "approval_prob": 1.0,
+            "path_prob": 0.0158900248734893,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e18",
+      "source": "(CHNNDEUSA)",
+      "target": "(CHNNDE)",
+      "p": 0.15405160692950176,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNNDE)",
+            "prop_prob": 0.616206427718007,
+            "approval_prob": 1.0,
+            "path_prob": 0.15405160692950176,
+            "committee": [
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "approvals": {
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e19",
+      "source": "(CHNNDEUSA)",
+      "target": "(CHNNDEUSA)",
+      "p": 0.7103535618852346,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNNDEUSA)",
+            "prop_prob": 0.9772894758392736,
+            "approval_prob": 1.0,
+            "path_prob": 0.2443223689598184,
+            "committee": [
+              "EUR"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "EUR": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.2180007558636263,
+            "rejection_prob": 0.7819992441363737,
+            "path_prob": 0.19549981103409342,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 0.2180007558636263,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.2180007558636263,
+            "rejection_prob": 0.7819992441363737,
+            "path_prob": 0.19549981103409342,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 0.2180007558636263,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 0.383793572281993,
+            "approval_prob": 0.2180007558636263,
+            "rejection_prob": 0.7819992441363737,
+            "path_prob": 0.07503157085722931,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 0.2180007558636263,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e20",
+      "source": "(CHNNDEUSA)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.1355948311852637,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.2180007558636263,
+            "path_prob": 0.054500188965906575,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 0.2180007558636263,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.2180007558636263,
+            "path_prob": 0.054500188965906575,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 0.2180007558636263,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 0.383793572281993,
+            "approval_prob": 0.2180007558636263,
+            "path_prob": 0.020916822213268942,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 0.2180007558636263,
+              "NDE": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 0.0227105241607264,
+            "approval_prob": 1.0,
+            "path_prob": 0.0056776310401816,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e21",
+      "source": "(EURNDEUSA)",
+      "target": "(NDEUSA)",
+      "p": 0.0384964452401082,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(NDEUSA)",
+            "prop_prob": 0.1539857809604328,
+            "approval_prob": 1.0,
+            "path_prob": 0.0384964452401082,
+            "committee": [
+              "EUR"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "EUR": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e22",
+      "source": "(EURNDEUSA)",
+      "target": "(CHNEURNDE)",
+      "p": 0.05792905831034694,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.0789323613669454,
+            "path_prob": 0.01973309034173635,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 0.0789323613669454,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.0789323613669454,
+            "path_prob": 0.01973309034173635,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 0.0789323613669454
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 0.8460142190395672,
+            "approval_prob": 0.0789323613669454,
+            "path_prob": 0.016694475014701303,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 0.0789323613669454,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 0.007073610448691767,
+            "approval_prob": 1.0,
+            "path_prob": 0.0017684026121729418,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e23",
+      "source": "(EURNDEUSA)",
+      "target": "(EURNDEUSA)",
+      "p": 0.9035744964495449,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(EURNDEUSA)",
+            "prop_prob": 0.9929263895513082,
+            "approval_prob": 1.0,
+            "path_prob": 0.24823159738782705,
+            "committee": [
+              "NDE"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "approvals": {
+              "NDE": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.0789323613669454,
+            "rejection_prob": 0.9210676386330546,
+            "path_prob": 0.23026690965826366,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 0.0789323613669454,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 0.0789323613669454,
+            "rejection_prob": 0.9210676386330546,
+            "path_prob": 0.23026690965826366,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 0.0789323613669454
+            }
+          },
+          {
+            "type": "rejection",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 0.8460142190395672,
+            "approval_prob": 0.0789323613669454,
+            "rejection_prob": 0.9210676386330546,
+            "path_prob": 0.1948090797451905,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 0.0789323613669454,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e24",
+      "source": "(CHNEURNDEUSA)",
+      "target": "(CHNEURNDE)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "approvals": {
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e25",
+      "source": "(CHNEURNDEUSA)",
+      "target": "(CHNNDEUSA)",
+      "p": 0.054078753431264,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNNDEUSA)",
+            "prop_prob": 0.216315013725056,
+            "approval_prob": 1.0,
+            "path_prob": 0.054078753431264,
+            "committee": [
+              "EUR"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "EUR": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e26",
+      "source": "(CHNEURNDEUSA)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.695921246568736,
+      "meta": {
+        "is_self_loop": true,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN"
+            ],
+            "not_in_committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "NDE"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "approvals": {
+              "NDE": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 0.783684986274944,
+            "approval_prob": 1.0,
+            "path_prob": 0.195921246568736,
+            "committee": [
+              "EUR"
+            ],
+            "not_in_committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "approvals": {
+              "EUR": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e27",
+      "source": "(CHNEUR)(NDEUSA)",
+      "target": "(CHNEURNDE)",
+      "p": 0.75,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e28",
+      "source": "(CHNEUR)(NDEUSA)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e29",
+      "source": "(CHNNDE)(EURUSA)",
+      "target": "(CHNEURNDE)",
+      "p": 0.75,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e30",
+      "source": "(CHNNDE)(EURUSA)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e31",
+      "source": "(CHNUSA)(EURNDE)",
+      "target": "(CHNEURNDE)",
+      "p": 0.75,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "CHN",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "EUR",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "CHN"
+            ],
+            "approvals": {
+              "EUR": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "NDE",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "USA"
+            ],
+            "not_in_committee": [
+              "NDE"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "USA": 1.0
+            }
+          },
+          {
+            "type": "direct",
+            "proposer": "USA",
+            "proposed_target": "(CHNEURNDE)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "EUR",
+              "NDE"
+            ],
+            "not_in_committee": [
+              "USA"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "EUR": 1.0,
+              "NDE": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "e32",
+      "source": "(CHNUSA)(EURNDE)",
+      "target": "(CHNEURNDEUSA)",
+      "p": 0.25,
+      "meta": {
+        "is_self_loop": false,
+        "breakdown": [
+          {
+            "type": "direct",
+            "proposer": "EUR",
+            "proposed_target": "(CHNEURNDEUSA)",
+            "prop_prob": 1.0,
+            "approval_prob": 1.0,
+            "path_prob": 0.25,
+            "committee": [
+              "CHN",
+              "NDE",
+              "USA"
+            ],
+            "not_in_committee": [
+              "EUR"
+            ],
+            "approvals": {
+              "CHN": 1.0,
+              "NDE": 1.0,
+              "USA": 1.0
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "profile_path": "strategy_tables/eq_n4_power_threshold_RICE_a3d5d7.xlsx",
+    "num_players": 4,
+    "num_states": 15,
+    "num_transitions": 33,
+    "expected_geo_level": 0.8139667816890042,
+    "stationary_distribution": {
+      "( )": 0.0,
+      "(CHNEUR)": 0.0,
+      "(CHNNDE)": 0.0,
+      "(CHNUSA)": 0.0,
+      "(EURNDE)": 0.0,
+      "(EURUSA)": 0.0,
+      "(NDEUSA)": 0.0,
+      "(CHNEURNDE)": 1.0,
+      "(CHNEURUSA)": 0.0,
+      "(CHNNDEUSA)": 0.0,
+      "(EURNDEUSA)": 0.0,
+      "(CHNEURNDEUSA)": 0.0,
+      "(CHNEUR)(NDEUSA)": 0.0,
+      "(CHNNDE)(EURUSA)": 0.0,
+      "(CHNUSA)(EURNDE)": 0.0
+    },
+    "mixing_time": null,
+    "scenario_name": "power_threshold_RICE",
+    "scenario_description": "General RICE scenario: power threshold with equal power. Players are inferred from the payoff table. Default majority requirement: 0.501. Unanimity required.",
+    "config": {
+      "power_rule": "power_threshold",
+      "unanimity_required": true,
+      "min_power": 0.501
+    },
+    "file_metadata": {
+      "start_time": "2026-10-01 12:18:21",
+      "end_time": "2026-10-01 12:18:33",
+      "runtime_seconds": "11.60",
+      "runtime_formatted": "0m 11.6s",
+      "verification_success": true,
+      "scenario_name": "power_threshold_RICE",
+      "scenario_description": "General RICE scenario: power threshold with equal power. Players are inferred from the payoff table. Default majority requirement: 0.501. Unanimity required.",
+      "n_players": 4,
+      "players": "CHN, EUR, NDE, USA",
+      "n_states": 15,
+      "states": "( ), (CHNEUR), (CHNNDE), (CHNUSA), (EURNDE), (EURUSA), (NDEUSA), (CHNEURNDE), (CHNEURUSA), (CHNNDEUSA), (EURNDEUSA), (CHNEURNDEUSA), (CHNEUR)(NDEUSA), (CHNNDE)(EURUSA), (CHNUSA)(EURNDE)",
+      "power_rule": "power_threshold",
+      "min_power": 0.501,
+      "effectivity_rule": "heyen_lehtomaa_2021",
+      "unanimity_required": 1,
+      "discounting": 0.995,
+      "normalise_payoffs": 1,
+      "payoff_source": "precomputed_table",
+      "payoff_table": "payoff_tables/kalkuhl_chneurndeusa_2035-2100.xlsx",
+      "base_temp_CHN": 13,
+      "ideal_temp_CHN": 13,
+      "delta_temp_CHN": 3,
+      "m_damage_CHN": 1,
+      "power_CHN": 0.25,
+      "base_temp_EUR": 13,
+      "ideal_temp_EUR": 13,
+      "delta_temp_EUR": 3,
+      "m_damage_EUR": 1,
+      "power_EUR": 0.25,
+      "base_temp_NDE": 13,
+      "ideal_temp_NDE": 13,
+      "delta_temp_NDE": 3,
+      "m_damage_NDE": 1,
+      "power_NDE": 0.25,
+      "base_temp_USA": 13,
+      "ideal_temp_USA": 13,
+      "delta_temp_USA": 3,
+      "m_damage_USA": 1,
+      "power_USA": 0.25,
+      "protocol_CHN": 0.25,
+      "protocol_EUR": 0.25,
+      "protocol_NDE": 0.25,
+      "protocol_USA": 0.25,
+      "solver_approach": "smpe",
+      "converged": 1,
+      "outer_iterations": 0,
+      "final_tau_p": "0.000000",
+      "final_tau_r": "0.000000",
+      "random_seed": 1780610767,
+      "solver_tau_p_init": 2e-06,
+      "solver_tau_r_init": 2e-06,
+      "solver_tau_decay": 0.99,
+      "solver_tau_min": 1e-07,
+      "solver_max_outer_iter": 1000,
+      "solver_max_inner_iter": 100,
+      "solver_damping": 0,
+      "solver_inner_tol": 0.02,
+      "solver_outer_tol": 0.02,
+      "solver_consecutive_tol": 1,
+      "solver_verify_every_n": 1,
+      "solver_tau_margin": 0.01,
+      "solver_max_cycles_at_tau_min": 8,
+      "solver_cycle_break_tau_threshold": 0.01,
+      "solver_project_to_exact": 1,
+      "solver_link_player_updates": 1,
+      "solver_inner_cycle_check_interval": 20,
+      "solver_ordinal_ranking_shuffle": 0,
+      "solver_ordinal_ranking_random_seed": 0,
+      "solver_ordinal_ranking_order": "payoff",
+      "solver_ordinal_ranking_progress_every": 100,
+      "config_hash": "a3d5d799e5",
+      "custom_description": "relbatch2_d0.995"
+    },
+    "absorption_time": {
+      "max": 11.216647574518095,
+      "mean": 3.725814001471325,
+      "by_state": {
+        "( )": 2.1189200720255608,
+        "(CHNEUR)": 2.1189200720255608,
+        "(CHNNDE)": 2.118920072025561,
+        "(CHNUSA)": 2.1189200720255608,
+        "(EURNDE)": 2.1189200720255608,
+        "(EURUSA)": 2.1189200720255608,
+        "(NDEUSA)": 2.118920072025561,
+        "(CHNEURUSA)": 8.605170632408797,
+        "(CHNNDEUSA)": 6.674696805313812,
+        "(EURNDEUSA)": 11.216647574518095,
+        "(CHNEURNDEUSA)": 4.475680288102244,
+        "(CHNEUR)(NDEUSA)": 2.1189200720255608,
+        "(CHNNDE)(EURUSA)": 2.1189200720255608,
+        "(CHNUSA)(EURNDE)": 2.1189200720255608
+      }
+    },
+    "chain_diagnostics": {
+      "is_ergodic": false,
+      "num_absorbing_sets": 1,
+      "absorbing_sets": [
+        [
+          "(CHNEURNDE)"
+        ]
+      ]
+    }
+  }
+}

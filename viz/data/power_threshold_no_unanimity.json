@@ -13,10 +13,13 @@
           "C": -0.0
         },
         "values": {
-          "W": 96.81615142570725,
-          "T": 13.049338104254847,
-          "C": -14.872933002895957
-        }
+          "W": null,
+          "T": null,
+          "C": null
+        },
+        "stability": {},
+        "gamma_core": {},
+        "ricke": {}
       }
     },
     {
@@ -24,18 +27,21 @@
       "label": "(TC)",
       "meta": {
         "index": 1,
-        "geo_level": 2.75,
+        "geo_level": NaN,
         "deploying_coalition": "(TC)",
         "payoffs": {
-          "W": 55.6875,
-          "T": 14.4375,
-          "C": 0.6875
+          "W": NaN,
+          "T": NaN,
+          "C": NaN
         },
         "values": {
-          "W": 97.58737562189053,
-          "T": 13.240360696517415,
-          "C": -14.875310945273624
-        }
+          "W": null,
+          "T": null,
+          "C": null
+        },
+        "stability": {},
+        "gamma_core": {},
+        "ricke": {}
       }
     },
     {
@@ -43,18 +49,21 @@
       "label": "(WC)",
       "meta": {
         "index": 2,
-        "geo_level": 6.5,
+        "geo_level": NaN,
         "deploying_coalition": "(WC)",
         "payoffs": {
-          "W": 107.25,
-          "T": 9.75,
-          "C": -22.75
+          "W": NaN,
+          "T": NaN,
+          "C": NaN
         },
         "values": {
-          "W": 98.10300062189053,
-          "T": 13.193485696517415,
-          "C": -15.109685945273624
-        }
+          "W": null,
+          "T": null,
+          "C": null
+        },
+        "stability": {},
+        "gamma_core": {},
+        "ricke": {}
       }
     },
     {
@@ -62,18 +71,21 @@
       "label": "(WT)",
       "meta": {
         "index": 3,
-        "geo_level": 7.749999999999999,
+        "geo_level": NaN,
         "deploying_coalition": "(WT)",
         "payoffs": {
-          "W": 118.1875,
-          "T": 1.937500000000007,
-          "C": -36.812499999999986
+          "W": NaN,
+          "T": NaN,
+          "C": NaN
         },
         "values": {
-          "W": 98.20752580381672,
-          "T": 13.062727407737436,
-          "C": -15.318872057622325
-        }
+          "W": null,
+          "T": null,
+          "C": null
+        },
+        "stability": {},
+        "gamma_core": {},
+        "ricke": {}
       }
     },
     {
@@ -81,18 +93,21 @@
       "label": "(WTC)",
       "meta": {
         "index": 4,
-        "geo_level": 5.666666666666666,
+        "geo_level": NaN,
         "deploying_coalition": "(WTC)",
         "payoffs": {
-          "W": 98.22222222222221,
-          "T": 13.222222222222225,
-          "C": -15.111111111111107
+          "W": NaN,
+          "T": NaN,
+          "C": NaN
         },
         "values": {
-          "W": 98.22222222222221,
-          "T": 13.222222222222227,
-          "C": -15.111111111111105
-        }
+          "W": null,
+          "T": null,
+          "C": null
+        },
+        "stability": {},
+        "gamma_core": {},
+        "ricke": {}
       }
     }
   ],
@@ -490,7 +505,7 @@
     "num_players": 3,
     "num_states": 5,
     "num_transitions": 10,
-    "expected_geo_level": 5.666666666666666,
+    "expected_geo_level": NaN,
     "stationary_distribution": {
       "( )": 0.0,
       "(TC)": 0.0,

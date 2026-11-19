@@ -16,7 +16,28 @@
           "W": 55.130625,
           "T": 14.293125000000003,
           "C": 0.680625
-        }
+        },
+        "stability": {
+          "internal": true,
+          "external_open": false,
+          "external_consent": false,
+          "stable_open": false,
+          "stable_consent": false
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "T",
+              "W"
+            ],
+            [
+              "C",
+              "T"
+            ]
+          ]
+        },
+        "ricke": {}
       }
     },
     {
@@ -35,6 +56,22 @@
           "W": 55.6875,
           "T": 14.437500000000004,
           "C": 0.6875
+        },
+        "stability": {
+          "internal": true,
+          "external_open": false,
+          "external_consent": true,
+          "stable_open": false,
+          "stable_consent": true
+        },
+        "gamma_core": {
+          "in_core": true,
+          "blockers": []
+        },
+        "ricke": {
+          "majority": true,
+          "stable": true,
+          "winning": true
         }
       }
     },
@@ -54,6 +91,27 @@
           "W": 56.663547794117626,
           "T": 14.159503676470587,
           "C": -0.008511029411765418
+        },
+        "stability": {
+          "internal": false,
+          "external_open": false,
+          "external_consent": true,
+          "stable_open": false,
+          "stable_consent": false
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "C",
+              "T"
+            ]
+          ]
+        },
+        "ricke": {
+          "majority": true,
+          "stable": false,
+          "winning": false
         }
       }
     },
@@ -73,6 +131,27 @@
           "W": 56.98523897058822,
           "T": 13.92972426470588,
           "C": -0.4221139705882359
+        },
+        "stability": {
+          "internal": true,
+          "external_open": false,
+          "external_consent": true,
+          "stable_open": false,
+          "stable_consent": true
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "C",
+              "T"
+            ]
+          ]
+        },
+        "ricke": {
+          "majority": true,
+          "stable": true,
+          "winning": true
         }
       }
     },
@@ -92,6 +171,27 @@
           "W": 57.442271424739026,
           "T": 14.032339466881275,
           "C": -0.4376378524046442
+        },
+        "stability": {
+          "internal": true,
+          "external_open": true,
+          "external_consent": true,
+          "stable_open": true,
+          "stable_consent": true
+        },
+        "gamma_core": {
+          "in_core": false,
+          "blockers": [
+            [
+              "C",
+              "T"
+            ]
+          ]
+        },
+        "ricke": {
+          "majority": true,
+          "stable": true,
+          "winning": true
         }
       }
     }
