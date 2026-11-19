@@ -282,7 +282,10 @@ async function loadProfiles() {
       if (matchedPath) {
         profileSelect.value = matchedPath;
       } else {
+        // Do NOT fall through to auto-loading the first profile: that would silently
+        // show a different table (and rewrite the URL) instead of the requested one.
         showStatus(`Profile not found for URL key: ${requestedKey}`, 'error');
+        return;
       }
     }
 
