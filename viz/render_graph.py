@@ -435,6 +435,12 @@ def main():
         help="Keep the small result box (states/transitions/E_pi[G]) that floats in "
              "the top-right corner of the graph; it is hidden by default.",
     )
+    parser.add_argument(
+        "--share", help="Share-link view flags appended to the page hash, e.g. "
+        "'pos=1p3339...&emoji=1' (the part after '#<profile>&' of a share link). "
+        "Node positions are keyed by node order, so one link can be reused for "
+        "profiles with the same state set.",
+    )
     parser.add_argument("--api-base", default=DEFAULT_API_BASE, help="Backend API base URL.")
     parser.add_argument("--frontend-url", default=DEFAULT_FRONTEND_URL, help="Frontend (vite) URL.")
     parser.add_argument(
@@ -486,7 +492,8 @@ def main():
         browser = p.chromium.launch(**launch_kwargs)
         try:
             page = browser.new_page(viewport={"width": args.width, "height": args.height})
-            page.goto(f"{args.frontend_url}/#", wait_until="domcontentloaded")
+            share_hash = f"{Path(profile_path).stem}&{args.share}" if args.share else ""
+            page.goto(f"{args.frontend_url}/#{share_hash}", wait_until="domcontentloaded")
 
             # Wait until the profile dropdown is populated, then select our
             # profile by its exact path (same code path as picking it in the
@@ -501,8 +508,15 @@ def main():
             # already auto-loaded a different profile). Wait deterministically for
             # the re-render that our selection triggers by watching the render
             # counter instead of transient status text.
-            render_count_before = page.evaluate("() => window.__graphRenderCount || 0")
-            page.select_option("#profile-select", value=profile_path)
+            if args.share:
+                # The share hash already loads the profile with the shared node
+                # positions; re-selecting it could discard them.
+                page.wait_for_function("() => (window.__graphRenderCount || 0) > 0",
+                                       timeout=args.timeout * 1000)
+                render_count_before = page.evaluate("() => window.__graphRenderCount || 0") - 1
+            else:
+                render_count_before = page.evaluate("() => window.__graphRenderCount || 0")
+                page.select_option("#profile-select", value=profile_path)
             try:
                 page.wait_for_function(
                     f"(window.__graphRenderCount || 0) > {render_count_before}",
