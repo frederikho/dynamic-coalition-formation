@@ -410,7 +410,7 @@ function emojiStripInner(items: EmojiItem[]): string {
     const yOff = Math.floor(i / L.cols) * L.pitchY;
     // 1px outline around the flag of each country in a coalition.
     const outline = it.member
-      ? `<rect x="${x + 0.5}" y="${yOff + 3.5}" width="21" height="13.5" fill="none" stroke="#ffe600" stroke-width="1"/>`
+      ? `<rect x="${x + 0.5}" y="${yOff + 3.5}" width="21" height="13.5" fill="none" stroke="#ffe600" stroke-width="2"/>`
       : '';
     return `<text x="${x}" y="${yOff + 17}" font-size="18">${it.flag}</text>${outline}`
       + `<text x="${x + 6}" y="${yOff + 17}" font-size="16">${it.mood}</text>`;
@@ -495,6 +495,9 @@ export class GraphRenderer {
   // Set by clearUserPositions(): the next render must not re-save the live node
   // positions (that would immediately undo the reset).
   private discardLivePositions = false;
+  // Positions from a shared link, waiting for the matching graph to be rendered.
+  private pendingShared: { hash: string; positions: Record<string, { x: number; y: number }> } | null = null;
+  private fitAfterShared = false;
   private savedZoom: number | null = null;
   private savedPan: { x: number; y: number } | null = null;
 
@@ -504,6 +507,51 @@ export class GraphRenderer {
 
   setOnNodeSelect(callback: (nodeId: string | null) => void) {
     this.onNodeSelect = callback;
+  }
+
+  /** Bottom-centre legend for emoji mode (nPlayers = 0 removes it). Re-synced on every render. */
+  private updateEmojiLegend(nPlayers: number) {
+    const existing = this.container.querySelector<HTMLElement>('#emoji-legend');
+    if (!nPlayers) {
+      existing?.remove();
+      return;
+    }
+    const el = existing ?? Object.assign(document.createElement('div'), { id: 'emoji-legend' });
+    // n=3 has at most 3 in-between ranks, n=4 at most 4 (see MOOD_MIDDLE).
+    const middle = MOOD_MIDDLE.slice(0, nPlayers === 3 ? 3 : 4);
+    const scale = [MOOD_BEST, ...middle, MOOD_WORST].join(' &gt; ');
+    el.innerHTML = `<div class="emoji-legend-scale">${scale}</div>`
+      + `<div class="emoji-legend-caption">short-term payoff per country, best to worst &middot; yellow flag outline = in coalition</div>`;
+    if (!existing) this.container.appendChild(el);
+  }
+
+  /** Short checksum of the node-id set, so a link made for another graph is rejected. */
+  private static stateHash(stateKey: string): string {
+    let h = 5381;
+    for (let i = 0; i < stateKey.length; i++) h = ((h * 33) ^ stateKey.charCodeAt(i)) >>> 0;
+    return h.toString(36).slice(0, 6);
+  }
+
+  /** Compact code for the current bubble positions: `<hash>.<x>_<y>,<x>_<y>,...` (base36, nodes in sorted-id order). */
+  exportShareCode(): string | null {
+    if (!this.cy || !this.userPositionsKey) return null;
+    const nodes = this.cy.nodes().filter(n => !n.data('is_taxonomy_label')).toArray()
+      .sort((a, b) => (a.id() < b.id() ? -1 : 1));
+    const pairs = nodes.map(n => {
+      const p = (n as any).position();
+      return `${Math.round(p.x).toString(36)}_${Math.round(p.y).toString(36)}`;
+    });
+    return `${GraphRenderer.stateHash(this.userPositionsKey)}.${pairs.join(',')}`;
+  }
+
+  /** Queue positions from a share code; applied by the next render of a matching graph. Returns false if malformed. */
+  setSharedPositions(code: string): boolean {
+    const [hash, body] = code.split('.');
+    if (!hash || !body) return false;
+    const nums = body.split(',').map(pair => pair.split('_').map(v => parseInt(v, 36)));
+    if (nums.some(pr => pr.length !== 2 || pr.some(Number.isNaN))) return false;
+    this.pendingShared = { hash, positions: Object.fromEntries(nums.map((pr, i) => [String(i), { x: pr[0], y: pr[1] }])) };
+    return true;
   }
 
   private static storageKey(stateKey: string) {
@@ -737,6 +785,18 @@ export class GraphRenderer {
 
     const stateKey = graphData.nodes.map(n => n.id).sort().join(',');
     if (stateKey !== this.userPositionsKey) this.loadUserPositions(stateKey);
+    if (this.pendingShared) {
+      const shared = this.pendingShared;
+      this.pendingShared = null;
+      const ids = graphData.nodes.map(n => n.id).sort();
+      if (shared.hash === GraphRenderer.stateHash(stateKey) && Object.keys(shared.positions).length === ids.length) {
+        // In memory only: the recipient's own saved layout is replaced only once they drag something.
+        this.userPositions = Object.fromEntries(ids.map((id, i) => [id, shared.positions[String(i)]]));
+        this.fitAfterShared = true;
+      } else {
+        console.warn('Shared positions do not match this graph; ignored');
+      }
+    }
 
     for (const nodeId of graphData.nodes.map(n => n.id)) {
       if (this.userPositions[nodeId]) {
@@ -906,6 +966,9 @@ export class GraphRenderer {
           label: this.formatProbability(edge.p),
           probability: edge.p,
           isSelfLoop: edge.source === edge.target,
+          // Draw order among regular edges (must stay below the bubbles, z 5): likelier
+          // transitions last, so their % labels are covered by fewer other edges.
+          z_order: Math.min(4, Math.floor(edge.p * 5)),
           width: this.getEdgeWidth(edge.p, edge.source === edge.target, filteredEdges),
           breakdown: (edge as any).meta?.breakdown
         }
@@ -933,7 +996,11 @@ export class GraphRenderer {
         'text-wrap': 'wrap',
         'text-max-width': graphData.nodes.length === 52 ? '58px' : (emojiLayout ? `${emojiLayout.nodeSize - 4}px` : '65px'),
         'border-width': 0,
-        'border-color': '#1e293b'
+        'border-color': '#1e293b',
+        // Explicit draw order (edges 0 < nodes 5 < self-loops 10); the default 'auto'
+        // always draws every node above every edge, so loops could never be on top.
+        'z-index-compare': 'manual',
+        'z-index': 5
       }
     });
 
@@ -1053,6 +1120,8 @@ export class GraphRenderer {
     styles.push({
       selector: 'edge',
       style: {
+        'z-index-compare': 'manual',
+        'z-index': 'data(z_order)',
         'width': 'data(width)',
         'line-color': '#334155',
         'target-arrow-color': '#334155',
@@ -1064,8 +1133,12 @@ export class GraphRenderer {
         'text-rotation': 'autorotate',
         'text-margin-y': -10,
         'color': '#1e293b',
-        'text-background-color': 'transparent',
-        'text-background-opacity': 0
+        // Semi-transparent backing so % labels stay readable where arrows cross them.
+        // Tied to the label toggle: text-opacity alone would leave empty boxes behind.
+        'text-background-color': '#fafafa',
+        'text-background-opacity': showEdgeLabels ? 0.85 : 0,
+        'text-background-padding': '2px',
+        'text-background-shape': 'roundrectangle'
       }
     });
 
@@ -1077,6 +1150,15 @@ export class GraphRenderer {
         'loop-direction': '0deg',
         'loop-sweep': '90deg',
         'control-point-step-size': 40
+      }
+    });
+
+    // Self-loops above the bubbles. Note `[?isSelfLoop]` (truthy), not `[isSelfLoop]`:
+    // the latter matches every edge since the field is always defined (true or false).
+    styles.push({
+      selector: 'edge[?isSelfLoop]',
+      style: {
+        'z-index': 10
       }
     });
 
@@ -1133,6 +1215,7 @@ export class GraphRenderer {
     }
 
     this.setupInteractions();
+    this.updateEmojiLegend(emojiLayout ? Object.keys(graphData.nodes[0].meta!.payoffs!).length : 0);
 
     // Restore zoom and pan if previously saved
     if (this.savedZoom !== null && this.savedPan !== null) {
@@ -1140,7 +1223,8 @@ export class GraphRenderer {
       this.cy.pan(this.savedPan);
     } else {
       // For larger graphs (n=4 with 15 nodes), fit to view with padding on initial render
-      if (graphData.nodes.length >= 15) {
+      if (graphData.nodes.length >= 15 || this.fitAfterShared) {
+        this.fitAfterShared = false;
         this.cy.fit(undefined, 50); // Fit all elements with 50px padding
       }
     }

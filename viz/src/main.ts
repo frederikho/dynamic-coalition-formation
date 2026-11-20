@@ -13,6 +13,7 @@ const filterModeRadios = document.querySelectorAll('input[name="filter-mode"]') 
 const thresholdTooltip = document.getElementById('threshold-tooltip') as HTMLSpanElement;
 const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
 const resetViewBtn = document.getElementById('reset-view-btn') as HTMLButtonElement;
+const shareViewBtn = document.getElementById('share-view-btn') as HTMLButtonElement;
 const statusDiv = document.getElementById('status') as HTMLDivElement;
 const metadataDiv = document.getElementById('metadata') as HTMLDivElement;
 const nodeDetailsDiv = document.getElementById('node-details') as HTMLDivElement;
@@ -76,6 +77,18 @@ function initRenderer() {
   }
   renderer = new GraphRenderer(graphContainer);
   renderer.setOnNodeSelect(handleNodeSelect);
+  applyShareParamsFromUrl();
+}
+
+/** Share links look like `#<profile>&pos=<code>&emoji=1`: queue the positions and apply the view flags (not persisted). */
+function applyShareParamsFromUrl() {
+  const params = new URLSearchParams((window.location.hash.slice(1).split('&').slice(1)).join('&'));
+  const pos = params.get('pos');
+  if (pos && renderer && !renderer.setSharedPositions(pos)) console.warn('Malformed pos parameter in URL; ignored');
+  if (params.get('emoji') === '1') {
+    showEmojiMode = true;
+    emojiModeCheckbox.checked = true;
+  }
 }
 
 // Get selected filter mode
@@ -172,7 +185,8 @@ function normalizeProfileKey(raw: string): string {
 function getRequestedProfileKeyFromUrl(): string | null {
   if (typeof window === 'undefined') return null;
 
-  const hash = window.location.hash?.slice(1)?.trim();
+  // Hash is `<profile>` or `<profile>&pos=...&emoji=1` (share links)
+  const hash = window.location.hash?.slice(1)?.split('&')[0]?.trim();
   if (hash) {
     return normalizeProfileKey(hash);
   }
@@ -1363,6 +1377,21 @@ refreshBtn.addEventListener('click', loadGraph);
 relationsHandle.addEventListener('click', () => setRelationsPanelVisible(!relationsPanelVisible));
 window.addEventListener('resize', positionRelationsHandle);
 positionRelationsHandle();
+
+shareViewBtn.addEventListener('click', async () => {
+  const code = renderer?.exportShareCode();
+  if (!code || !profileSelect.value) return;
+  const url = new URL(window.location.href);
+  url.hash = `${getProfileSlug(profileSelect.value)}&pos=${code}${showEmojiMode ? '&emoji=1' : ''}`;
+  try {
+    await navigator.clipboard.writeText(url.toString());
+    const old = shareViewBtn.textContent;
+    shareViewBtn.textContent = 'Link copied!';
+    setTimeout(() => { shareViewBtn.textContent = old; }, 2000);
+  } catch {
+    window.prompt('Copy this link:', url.toString());
+  }
+});
 
 resetViewBtn.addEventListener('click', () => {
   if (renderer) {
